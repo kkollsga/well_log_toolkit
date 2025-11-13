@@ -87,12 +87,12 @@ def example_property_types():
 
 
 # =============================================================================
-# Example 4: Filtering Data
+# Example 4: Filtering Data with Labels
 # =============================================================================
 
 def example_filtering():
-    """Filter well log data using discrete properties."""
-    print("Example 4: Filtering Data")
+    """Filter well log data using discrete properties with label mapping."""
+    print("Example 4: Filtering Data with Labels")
     print("-" * 50)
 
     manager = WellDataManager()
@@ -100,9 +100,14 @@ def example_filtering():
 
     well = manager.well_12_3_2_B
 
-    # Mark discrete properties
-    well.get_property('Zone').type = 'discrete'
-    well.get_property('NTG_Flag').type = 'discrete'
+    # Mark discrete properties and set labels
+    zone_prop = well.get_property('Zone')
+    zone_prop.type = 'discrete'
+    zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir', 2: 'Transition'}
+
+    ntg_prop = well.get_property('NTG_Flag')
+    ntg_prop.type = 'discrete'
+    ntg_prop.labels = {0: 'NonNet', 1: 'Net'}
 
     # Filter by a single discrete property
     filtered_phie = well.phie.filter('Zone')
@@ -112,12 +117,13 @@ def example_filtering():
     multi_filtered = well.phie.filter('Zone').filter('NTG_Flag')
     print(f"PHIE filtered by Zone and NTG_Flag: {multi_filtered}")
 
-    # Access filtered values
-    for zone_value, zone_data in filtered_phie.items():
-        print(f"\nZone {zone_value}:")
-        print(f"  Mean: {zone_data.mean():.4f}")
-        print(f"  Std: {zone_data.std():.4f}")
-        print(f"  Count: {len(zone_data)}")
+    # Compute statistics - labels will appear in results
+    stats = multi_filtered.sums_avg()
+    print("\nStatistics with labels:")
+    for zone_label, ntg_dict in stats.items():
+        print(f"  {zone_label}:")
+        for ntg_label, stat_dict in ntg_dict.items():
+            print(f"    {ntg_label}: mean={stat_dict['mean']:.4f}, count={stat_dict['count']}")
     print()
 
 
@@ -283,6 +289,24 @@ def example_dataframe_export():
     df = well.to_dataframe(exclude=['QC_Flag'])
     print("Typical usage - simple and automatic:")
     print(f"Shape: {df.shape}, Columns: {len(df.columns)}")
+    print()
+
+    # 8. Export with discrete property labels
+    # Set up labels for discrete properties
+    zone_prop = well.get_property('Zone')
+    zone_prop.type = 'discrete'
+    zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir', 2: 'Transition'}
+
+    # By default, labels are applied
+    df_with_labels = well.to_dataframe()
+    print("DataFrame with discrete labels applied:")
+    print(df_with_labels[['DEPT', 'Zone']].head())
+    print()
+
+    # Can disable labels if needed
+    df_without_labels = well.to_dataframe(discrete_labels=False)
+    print("DataFrame without labels (numeric values):")
+    print(df_without_labels[['DEPT', 'Zone']].head())
     print()
 
 

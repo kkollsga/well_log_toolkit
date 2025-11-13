@@ -10,6 +10,7 @@ import pandas as pd
 from .exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
 from .property import Property
 from .las_file import LasFile
+from .utils import sanitize_property_name
 
 if TYPE_CHECKING:
     from .manager import WellDataManager
@@ -57,7 +58,8 @@ class Well:
         self.name = name
         self.sanitized_name = sanitized_name
         self.parent_manager = parent_manager
-        self._properties: dict[str, Property] = {}
+        self._properties: dict[str, Property] = {}  # {original_name: Property}
+        self._property_name_mapping: dict[str, str] = {}  # {sanitized_name: original_name}
         self._depth_grid: Optional[np.ndarray] = None
     
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
@@ -136,7 +138,10 @@ class Well:
                 self._merge_property(prop_name, prop)
             else:
                 self._properties[prop_name] = prop
-        
+                # Create sanitized name mapping for attribute access
+                sanitized_prop_name = sanitize_property_name(prop_name)
+                self._property_name_mapping[sanitized_prop_name] = prop_name
+
         return self  # Enable chaining
     
     def _merge_property(self, name: str, new_prop: Property) -> None:
@@ -169,8 +174,9 @@ class Well:
     def __getattr__(self, name: str) -> Property:
         """
         Enable property access via attributes: well.phie
-        
+
         This is called when normal attribute lookup fails.
+        Supports both original and sanitized property names.
         """
         # Don't intercept private attributes, methods, or class attributes
         if name.startswith('_') or name in [
@@ -180,12 +186,17 @@ class Well:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
             )
-        
-        # Try to get from properties
+
+        # Try original name first
         if name in self._properties:
             return self._properties[name]
-        
-        # Not found
+
+        # Try sanitized name mapping
+        if name in self._property_name_mapping:
+            original_name = self._property_name_mapping[name]
+            return self._properties[original_name]
+
+        # Not found - provide helpful error with available names
         available = ', '.join(self._properties.keys())
         raise AttributeError(
             f"Well '{self.name}' has no property '{name}'. "
@@ -200,29 +211,44 @@ class Well:
     def get_property(self, name: str) -> Property:
         """
         Explicit property getter.
-        
+
+        Supports both original and sanitized property names.
+
         Parameters
         ----------
         name : str
-            Property name
-        
+            Property name (original or sanitized)
+
         Returns
         -------
         Property
             The requested property
-        
+
         Raises
         ------
         PropertyNotFoundError
             If property not found
+
+        Examples
+        --------
+        >>> prop = well.get_property("Zoneloglinkedto'CerisaTops'")  # Original
+        >>> prop = well.get_property("Zoneloglinkedto_CerisaTops_")  # Sanitized
         """
-        if name not in self._properties:
-            available = ', '.join(self._properties.keys())
-            raise PropertyNotFoundError(
-                f"Property '{name}' not found in well '{self.name}'. "
-                f"Available: {available or 'none'}"
-            )
-        return self._properties[name]
+        # Try original name first
+        if name in self._properties:
+            return self._properties[name]
+
+        # Try sanitized name mapping
+        if name in self._property_name_mapping:
+            original_name = self._property_name_mapping[name]
+            return self._properties[original_name]
+
+        # Not found
+        available = ', '.join(self._properties.keys())
+        raise PropertyNotFoundError(
+            f"Property '{name}' not found in well '{self.name}'. "
+            f"Available: {available or 'none'}"
+        )
     
     def resample(
         self,
@@ -293,7 +319,8 @@ class Well:
         reference_property: Optional[str] = None,
         include: Optional[list[str]] = None,
         exclude: Optional[list[str]] = None,
-        auto_resample: bool = True
+        auto_resample: bool = True,
+        discrete_labels: bool = True
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional resampling and filtering.
@@ -315,6 +342,8 @@ class Well:
             If True, automatically resample all properties to the reference
             property's depth grid (uses first property if not specified).
             Set to False only if properties are already aligned.
+        discrete_labels : bool, default True
+            If True, apply label mappings to discrete properties with labels defined.
 
         Returns
         -------
@@ -346,6 +375,9 @@ class Well:
 
         >>> # Combine reference and filtering
         >>> df = well.to_dataframe(reference_property='PHIE', exclude=['Zone'])
+
+        >>> # Disable label mapping for discrete properties
+        >>> df = well.to_dataframe(discrete_labels=False)
         """
         if not self._properties:
             return pd.DataFrame()
@@ -417,7 +449,11 @@ class Well:
         # Build DataFrame
         data = {'DEPT': depth}
         for name, prop in props_to_export.items():
-            data[name] = prop.values
+            # Apply labels to discrete properties if requested
+            if discrete_labels and prop.labels:
+                data[name] = prop._apply_labels(prop.values)
+            else:
+                data[name] = prop.values
 
         return pd.DataFrame(data)
     

@@ -28,12 +28,22 @@ manager.load_las("well1.las").load_las("well2.las")
 # Access well and properties
 well = manager.well_12_3_2_B
 
-# Mark discrete logs
-well.get_property('Zone').type = 'discrete'
-well.get_property('NTG_Flag').type = 'discrete'
+# Mark discrete logs and add labels
+zone_prop = well.get_property('Zone')
+zone_prop.type = 'discrete'
+zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir'}
 
-# Filter and compute statistics
+ntg_prop = well.get_property('NTG_Flag')
+ntg_prop.type = 'discrete'
+ntg_prop.labels = {0: 'NonNet', 1: 'Net'}
+
+# Filter and compute statistics (labels appear in output)
 stats = well.phie.filter('Zone').filter('NTG_Flag').sums_avg()
+# Returns: {'Reservoir': {'Net': {...}, 'NonNet': {...}}, ...}
+
+# Properties with special characters are automatically sanitized
+# "Zoneloglinkedto'CerisaTops'" -> well.Zoneloglinkedto_CerisaTops_
+zone_prop = well.Zoneloglinkedto_CerisaTops_
 ```
 
 ## Main Classes

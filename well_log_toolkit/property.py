@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 class Property:
     """
     Single log property with depth-value pairs and filtering operations.
-    
+
     A Property can contain secondary properties (filters) that are aligned
     on the same depth grid. This enables chained filtering operations.
-    
+
     Parameters
     ----------
     name : str
@@ -38,7 +38,9 @@ class Property:
         Property description
     null_value : float, default -999.25
         Value to treat as null/missing
-    
+    labels : dict[int, str], optional
+        Label mapping for discrete properties (e.g., {0: 'NonNet', 1: 'Net'})
+
     Attributes
     ----------
     name : str
@@ -55,9 +57,11 @@ class Property:
         Description
     parent_well : Well | None
         Parent well reference
+    labels : dict[int, str] | None
+        Label mapping for discrete values
     secondary_properties : list[Property]
         List of aligned filter properties
-    
+
     Examples
     --------
     >>> phie = well.get_property('PHIE')
@@ -74,7 +78,8 @@ class Property:
         unit: str = '',
         prop_type: str = 'continuous',
         description: str = '',
-        null_value: float = -999.25
+        null_value: float = -999.25,
+        labels: Optional[dict[int, str]] = None
     ):
         self.name = name
         self.depth = np.asarray(depth, dtype=np.float64)
@@ -83,10 +88,11 @@ class Property:
         self.unit = unit
         self.type = prop_type
         self.description = description
-        
+        self.labels = labels  # Mapping for discrete property values {0: 'NonNet', 1: 'Net'}
+
         # Secondary properties (filters) aligned on same depth grid
         self.secondary_properties: list[Property] = []
-        
+
         # Replace null values with np.nan
         self.values = np.where(
             np.abs(self.values - null_value) < 1e-6,
@@ -166,7 +172,8 @@ class Property:
                 unit=sec_prop.unit,
                 prop_type=sec_prop.type,
                 description=sec_prop.description,
-                null_value=-999.25  # Already cleaned
+                null_value=-999.25,  # Already cleaned
+                labels=sec_prop.labels
             ))
         
         # Add new secondary property
@@ -178,7 +185,8 @@ class Property:
             unit=discrete_prop.unit,
             prop_type=discrete_prop.type,
             description=discrete_prop.description,
-            null_value=-999.25  # Already cleaned
+            null_value=-999.25,  # Already cleaned
+            labels=discrete_prop.labels
         ))
         
         # Create new Property instance with all secondaries
@@ -190,10 +198,11 @@ class Property:
             unit=self.unit,
             prop_type=self.type,
             description=self.description,
-            null_value=-999.25  # Already cleaned
+            null_value=-999.25,  # Already cleaned
+            labels=self.labels
         )
         new_prop.secondary_properties = aligned_secondaries
-        
+
         return new_prop
     
     def _align_depths(self, other: 'Property') -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -357,15 +366,18 @@ class Property:
         result = {}
         for val in unique_vals:
             sub_mask = mask & (current_filter.values == val)
-            
-            # Create readable key
-            if val == int(val):  # Integer value
+
+            # Create readable key with label if available
+            if current_filter.labels is not None and val == int(val) and int(val) in current_filter.labels:
+                # Use label from mapping
+                key = current_filter.labels[int(val)]
+            elif val == int(val):  # Integer value without label
                 key = f"{current_filter.name}_{int(val)}"
-            else:
+            else:  # Float value
                 key = f"{current_filter.name}_{val:.2f}"
-            
+
             result[key] = self._recursive_group(filter_idx + 1, sub_mask)
-        
+
         return result
     
     def _compute_stats(self, mask: np.ndarray) -> dict:
@@ -401,15 +413,49 @@ class Property:
             'std': float(np.std(valid)) if len(valid) > 0 else np.nan,
         }
     
-    def to_dataframe(self) -> pd.DataFrame:
+    def _apply_labels(self, values: np.ndarray) -> np.ndarray:
+        """
+        Apply label mapping to numeric values.
+
+        Parameters
+        ----------
+        values : np.ndarray
+            Numeric values to map
+
+        Returns
+        -------
+        np.ndarray
+            Array with labels applied (object dtype), preserving NaN values
+        """
+        if self.labels is None:
+            return values
+
+        # Create result array as object type to hold strings
+        result = np.empty(len(values), dtype=object)
+
+        for i, val in enumerate(values):
+            if np.isnan(val):
+                result[i] = np.nan
+            else:
+                int_val = int(val)
+                result[i] = self.labels.get(int_val, int_val)  # Use label or fall back to numeric
+
+        return result
+
+    def to_dataframe(self, discrete_labels: bool = True) -> pd.DataFrame:
         """
         Export property and secondary properties as DataFrame.
-        
+
+        Parameters
+        ----------
+        discrete_labels : bool, default True
+            If True, apply label mappings to discrete properties
+
         Returns
         -------
         pd.DataFrame
             DataFrame with DEPT, main property, and secondary properties
-        
+
         Examples
         --------
         >>> filtered = well.phie.filter('Zone').filter('NTG_Flag')
@@ -418,12 +464,15 @@ class Property:
         """
         data = {
             'DEPT': self.depth,
-            self.name: self.values
+            self.name: self._apply_labels(self.values) if discrete_labels and self.labels else self.values
         }
-        
+
         for sec_prop in self.secondary_properties:
-            data[sec_prop.name] = sec_prop.values
-        
+            if discrete_labels and sec_prop.labels:
+                data[sec_prop.name] = sec_prop._apply_labels(sec_prop.values)
+            else:
+                data[sec_prop.name] = sec_prop.values
+
         return pd.DataFrame(data)
     
     def __repr__(self) -> str:

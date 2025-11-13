@@ -48,6 +48,50 @@ def sanitize_well_name(name: str) -> str:
     return sanitized
 
 
+def sanitize_property_name(name: str) -> str:
+    """
+    Convert property name to valid Python attribute.
+
+    Parameters
+    ----------
+    name : str
+        Original property name (e.g., "Zoneloglinkedto'CerisaTops'")
+
+    Returns
+    -------
+    str
+        Sanitized name usable as Python attribute (e.g., "Zoneloglinkedto_CerisaTops_")
+
+    Examples
+    --------
+    >>> sanitize_property_name("Zoneloglinkedto'CerisaTops'")
+    'Zoneloglinkedto_CerisaTops_'
+    >>> sanitize_property_name("PHIE-2025")
+    'PHIE_2025'
+    >>> sanitize_property_name("SW (v/v)")
+    'SW__v_v_'
+    >>> sanitize_property_name("2025_PERM")
+    'prop_2025_PERM'
+    """
+    if not name or not isinstance(name, str):
+        raise ValueError(f"Property name must be a non-empty string, got: {name}")
+
+    # Replace invalid characters with underscore
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+
+    # Remove consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+
+    # Ensure it doesn't start with a number (add 'prop_' prefix if needed)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = 'prop_' + sanitized
+
+    # Remove trailing underscores
+    sanitized = sanitized.strip('_')
+
+    return sanitized
+
+
 def parse_las_line(line: str) -> tuple[str, str, str]:
     """
     Parse a LAS header line into mnemonic, unit/value, and description.
