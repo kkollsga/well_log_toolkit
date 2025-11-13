@@ -228,12 +228,12 @@ def example_multi_well_analysis():
 
 
 # =============================================================================
-# Example 8: Working with Raw Data
+# Example 8: Exporting Data to DataFrame
 # =============================================================================
 
-def example_raw_data_access():
-    """Access raw pandas DataFrames for custom analysis."""
-    print("Example 8: Raw Data Access")
+def example_dataframe_export():
+    """Export well data to pandas DataFrame with various options."""
+    print("Example 8: Exporting to DataFrame")
     print("-" * 50)
 
     manager = WellDataManager()
@@ -241,29 +241,92 @@ def example_raw_data_access():
 
     well = manager.well_12_3_2_B
 
-    # Access property as pandas Series
-    phie_series = well.phie.values
-    print(f"PHIE as pandas Series:\n{phie_series.head()}")
+    # 1. Export all properties (automatically resamples to first property's grid)
+    # Note: By default, uses the first property added as reference
+    # (typically the first property from the first LAS file loaded)
+    df_all = well.to_dataframe()
+    print("All properties (auto-resampled to first property's grid):")
+    print(df_all.head())
+    print(f"Columns: {list(df_all.columns)}\n")
+
+    # 2. Export with specific reference property (auto-resamples to PHIE's grid)
+    df_ref = well.to_dataframe(reference_property='PHIE')
+    print("Using PHIE as reference (auto-resampled):")
+    print(f"Shape: {df_ref.shape}\n")
+
+    # 3. Include only specific properties
+    df_subset = well.to_dataframe(include=['PHIE', 'SW', 'PERM'])
+    print("Only PHIE, SW, and PERM:")
+    print(df_subset.head())
+    print()
+
+    # 4. Exclude specific properties (useful when you want most properties)
+    df_exclude = well.to_dataframe(exclude=['QC_Flag', 'Temp_Data'])
+    print("All properties except QC_Flag and Temp_Data:")
+    print(f"Columns: {list(df_exclude.columns)}\n")
+
+    # 5. Combine reference property with filtering
+    df_combined = well.to_dataframe(
+        reference_property='PHIE',
+        exclude=['Zone', 'Facies']
+    )
+    print("Using PHIE reference, excluding Zone and Facies:")
+    print(f"Columns: {list(df_combined.columns)}\n")
+
+    # 6. Export without auto-resampling (only if data is already aligned)
+    # Note: Only use auto_resample=False if you've pre-aligned the data
+    # well.resample(depth_step=0.1)
+    # df_no_resample = well.to_dataframe(auto_resample=False)
+    print()
+
+    # 7. Typical workflow: just call to_dataframe() and it handles everything
+    df = well.to_dataframe(exclude=['QC_Flag'])
+    print("Typical usage - simple and automatic:")
+    print(f"Shape: {df.shape}, Columns: {len(df.columns)}")
+    print()
+
+
+# =============================================================================
+# Example 9: Working with Raw Data
+# =============================================================================
+
+def example_raw_data_access():
+    """Access raw data directly for custom analysis."""
+    print("Example 9: Raw Data Access")
+    print("-" * 50)
+
+    manager = WellDataManager()
+    manager.load_las("path/to/well1.las")
+
+    well = manager.well_12_3_2_B
+
+    # Access property as numpy array
+    phie_values = well.phie.values
+    print(f"PHIE values (numpy array): {phie_values[:5]}")
 
     # Access depth values
     depth = well.phie.depth
-    print(f"\nDepth values:\n{depth[:5]}")
+    print(f"\nDepth values: {depth[:5]}")
 
     # Get property metadata
     phie_prop = well.get_property('PHIE')
     print(f"\nProperty name: {phie_prop.name}")
     print(f"Property type: {phie_prop.type}")
     print(f"Parent well: {phie_prop.parent_well.name}")
+
+    # Export single property to DataFrame
+    df_prop = phie_prop.to_dataframe()
+    print(f"\nProperty as DataFrame:\n{df_prop.head()}")
     print()
 
 
 # =============================================================================
-# Example 9: Error Handling
+# Example 10: Error Handling
 # =============================================================================
 
 def example_error_handling():
     """Demonstrate proper error handling."""
-    print("Example 9: Error Handling")
+    print("Example 10: Error Handling")
     print("-" * 50)
 
     manager = WellDataManager()
@@ -292,12 +355,12 @@ def example_error_handling():
 
 
 # =============================================================================
-# Example 10: Complete Workflow
+# Example 11: Complete Workflow
 # =============================================================================
 
 def example_complete_workflow():
     """Complete workflow from loading to analysis."""
-    print("Example 10: Complete Workflow")
+    print("Example 11: Complete Workflow")
     print("-" * 50)
 
     # Step 1: Initialize and load data
@@ -364,6 +427,7 @@ if __name__ == "__main__":
     # example_statistics()
     # example_advanced_las_handling()
     # example_multi_well_analysis()
+    # example_dataframe_export()
     # example_raw_data_access()
     # example_error_handling()
     # example_complete_workflow()

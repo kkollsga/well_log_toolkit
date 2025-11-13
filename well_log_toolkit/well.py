@@ -288,45 +288,137 @@ class Well:
         
         return self
     
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        reference_property: Optional[str] = None,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None,
+        auto_resample: bool = True
+    ) -> pd.DataFrame:
         """
-        Export all properties as DataFrame.
-        
+        Export properties as DataFrame with optional resampling and filtering.
+
+        Parameters
+        ----------
+        reference_property : str, optional
+            Property to use as depth reference for resampling. If auto_resample
+            is True, all properties will be resampled to this property's depth
+            grid. If not specified, defaults to the first property that was added
+            (typically the first property from the first LAS file loaded).
+        include : list[str], optional
+            List of property names to include. If None, includes all properties.
+            Cannot be used with exclude.
+        exclude : list[str], optional
+            List of property names to exclude. If None, no properties are excluded.
+            Cannot be used with include. Useful when you want all properties except a few.
+        auto_resample : bool, default True
+            If True, automatically resample all properties to the reference
+            property's depth grid (uses first property if not specified).
+            Set to False only if properties are already aligned.
+
         Returns
         -------
         pd.DataFrame
-            DataFrame with DEPT and all properties
-        
+            DataFrame with DEPT and selected properties
+
         Raises
         ------
         WellError
-            If properties have different depth grids
-        
+            If properties have different depth grids and auto_resample is False
+        ValueError
+            If both include and exclude are specified
+        PropertyNotFoundError
+            If reference_property is not found
+
         Examples
         --------
-        >>> well.resample(depth_step=0.1)
+        >>> # Export all properties (auto-resamples to first property's grid)
         >>> df = well.to_dataframe()
+
+        >>> # Export with specific reference property
+        >>> df = well.to_dataframe(reference_property='DEPT')
+
+        >>> # Include only specific properties
+        >>> df = well.to_dataframe(include=['PHIE', 'SW', 'PERM'])
+
+        >>> # Exclude specific properties
+        >>> df = well.to_dataframe(exclude=['QC_Flag', 'Temp_Data'])
+
+        >>> # Combine reference and filtering
+        >>> df = well.to_dataframe(reference_property='PHIE', exclude=['Zone'])
         """
         if not self._properties:
             return pd.DataFrame()
-        
-        # Get first property for depth reference
-        first_prop = next(iter(self._properties.values()))
-        depth = first_prop.depth
-        
-        # Verify all properties on same grid
-        for prop in self._properties.values():
-            if not np.array_equal(prop.depth, depth):
-                raise WellError(
-                    f"Cannot export to DataFrame: properties have different depth grids. "
-                    f"Call well.resample() first to align all properties."
+
+        # Validate include/exclude
+        if include is not None and exclude is not None:
+            raise ValueError(
+                "Cannot specify both 'include' and 'exclude'. "
+                "Use either include to specify properties to include, "
+                "or exclude to specify properties to skip."
+            )
+
+        # Determine reference property
+        if reference_property is None:
+            # Default: use first property added (first from first LAS file)
+            ref_prop = next(iter(self._properties.values()))
+        else:
+            # Get specified reference property
+            if reference_property not in self._properties:
+                available = ', '.join(self._properties.keys())
+                raise PropertyNotFoundError(
+                    f"Reference property '{reference_property}' not found. "
+                    f"Available: {available}"
                 )
-        
+            ref_prop = self._properties[reference_property]
+
+        depth = ref_prop.depth
+
+        # Auto-resample if requested
+        if auto_resample:
+            # Resample all properties to reference property's depth grid
+            self.resample(depth_grid=depth)
+
+        # Determine which properties to include
+        if include is not None:
+            # Only include specified properties
+            props_to_export = {
+                name: prop for name, prop in self._properties.items()
+                if name in include
+            }
+            # Warn if some requested properties are missing
+            missing = set(include) - set(props_to_export.keys())
+            if missing:
+                available = ', '.join(self._properties.keys())
+                raise PropertyNotFoundError(
+                    f"Properties not found: {', '.join(missing)}. "
+                    f"Available: {available}"
+                )
+        elif exclude is not None:
+            # Include all except excluded properties
+            props_to_export = {
+                name: prop for name, prop in self._properties.items()
+                if name not in exclude
+            }
+        else:
+            # Include all properties
+            props_to_export = self._properties
+
+        # Verify all properties on same grid if auto_resample is False
+        if not auto_resample:
+            for name, prop in props_to_export.items():
+                if not np.array_equal(prop.depth, depth):
+                    raise WellError(
+                        f"Cannot export to DataFrame: property '{name}' has different "
+                        f"depth grid than reference. Either set auto_resample=True or "
+                        f"call well.resample() first to align all properties."
+                    )
+
         # Build DataFrame
         data = {'DEPT': depth}
-        for name, prop in self._properties.items():
+        for name, prop in props_to_export.items():
             data[name] = prop.values
-        
+
         return pd.DataFrame(data)
     
     def __repr__(self) -> str:
