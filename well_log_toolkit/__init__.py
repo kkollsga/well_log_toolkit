@@ -31,9 +31,12 @@ Examples
 >>> # Filter and compute statistics (labels appear in output)
 >>> stats = well.phie.filter('Zone').filter('NTG_Flag').sums_avg()
 >>> # Returns: {'Reservoir': {'Net': {...}, 'NonNet': {...}}, ...}
+>>>
+>>> # Export to LAS format
+>>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.5"
+__version__ = "0.1.4"
 
 from .manager import WellDataManager
 from .well import Well

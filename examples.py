@@ -426,6 +426,143 @@ def example_complete_workflow():
 
 
 # =============================================================================
+# Example 12: Exporting to LAS Format
+# =============================================================================
+
+def example_las_export():
+    """Export well data back to LAS format."""
+    print("Example 12: Exporting to LAS Format")
+    print("-" * 50)
+
+    manager = WellDataManager()
+    manager.load_las("path/to/well1.las")
+
+    well = manager.well_12_3_2_B
+
+    # 1. Export all properties to LAS
+    well.export_to_las("output_all.las")
+    print("Exported all properties to output_all.las")
+
+    # 2. Export specific properties only
+    well.export_to_las("output_subset.las", include=['PHIE', 'SW', 'PERM'])
+    print("Exported PHIE, SW, PERM to output_subset.las")
+
+    # 3. Export all except certain properties
+    well.export_to_las("output_no_qc.las", exclude=['QC_Flag', 'Temp_Data'])
+    print("Exported all except QC flags to output_no_qc.las")
+
+    # 4. Export single property to LAS
+    phie_prop = well.get_property('PHIE')
+    phie_prop.export_to_las("phie_only.las")
+    print("Exported PHIE property to phie_only.las")
+
+    # 5. Export filtered property with filters included
+    zone_prop = well.get_property('Zone')
+    zone_prop.type = 'discrete'
+    zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir'}
+
+    ntg_prop = well.get_property('NTG_Flag')
+    ntg_prop.type = 'discrete'
+    ntg_prop.labels = {0: 'NonNet', 1: 'Net'}
+
+    # Filtered property includes secondary properties in export
+    filtered = well.phie.filter('Zone').filter('NTG_Flag')
+    filtered.export_to_las("filtered_phie.las")
+    print("Exported filtered PHIE with Zone and NTG_Flag to filtered_phie.las")
+
+    # 6. Export with discrete labels stored in parameter section
+    well.export_to_las("output_with_labels.las", store_labels=True)
+    print("Exported with discrete labels stored in ~Parameter section (data remains numeric)")
+
+    # 7. Export with custom null value
+    well.export_to_las("output_custom_null.las", null_value=-9999.0)
+    print("Exported with custom null value (-9999.0)")
+
+    # 8. Standalone export using LasFile.export_las()
+    from well_log_toolkit import LasFile
+
+    # Create any DataFrame with DEPT column
+    df = well.to_dataframe(include=['DEPT', 'PHIE', 'SW'])
+
+    # Export with custom unit mappings and labels
+    LasFile.export_las(
+        filepath="standalone_export.las",
+        well_name="12/3-2 B",
+        df=df,
+        unit_mappings={'DEPT': 'm', 'PHIE': 'v/v', 'SW': 'v/v'},
+        discrete_labels={'Zone': {0: 'NonReservoir', 1: 'Reservoir'}}
+    )
+    print("Exported using standalone LasFile.export_las() method")
+
+    # 9. Round-trip: Export and reload with automatic discrete detection
+    # Export with discrete properties and labels
+    zone_prop.type = 'discrete'
+    zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir'}
+    ntg_prop.type = 'discrete'
+    ntg_prop.labels = {0: 'NonNet', 1: 'Net'}
+
+    well.export_to_las("roundtrip.las", store_labels=True)
+    print("\nExported with discrete properties marked")
+
+    # Reload the file - discrete properties and labels are automatically loaded
+    manager2 = WellDataManager()
+    manager2.load_las("roundtrip.las")
+    well2 = manager2.well_12_3_2_B
+
+    # Check that discrete types and labels were preserved
+    zone_reloaded = well2.get_property('Zone')
+    print(f"Zone type after reload: {zone_reloaded.type}")  # 'discrete'
+    print(f"Zone labels after reload: {zone_reloaded.labels}")  # {0: 'NonReservoir', 1: 'Reservoir'}
+
+    # 10. Template-based export: Preserve original metadata
+    # This prevents data erosion when updating existing LAS files
+    print("\n10. Template-based export (preserves metadata):")
+
+    # Load a LAS file
+    manager3 = WellDataManager()
+    manager3.load_las("path/to/original.las")
+    well3 = manager3.well_12_3_2_B
+
+    # Access the original LAS object
+    original_las = well3.original_las
+    print(f"Original LAS file loaded: {original_las is not None}")
+    print(f"Source LAS files: {well3.sources}")
+
+    # Properties know their source
+    zone_prop = well3.get_property('Zone')
+    print(f"Zone property source: {zone_prop.source}")
+
+    # Add new discrete mappings or modify properties
+    zone_prop = well3.get_property('Zone')
+    zone_prop.type = 'discrete'
+    zone_prop.labels = {0: 'NonReservoir', 1: 'Reservoir', 2: 'Transition'}
+
+    # Export using original LAS as template (preserves all metadata)
+    well3.export_to_las("updated.las", use_template=True)
+    print("Exported with original metadata preserved using use_template=True")
+
+    # Alternative: specify a specific template
+    well3.export_to_las("updated2.las", use_template=original_las)
+    print("Exported with specific LAS file as template")
+
+    # Without template (creates new minimal LAS file)
+    well3.export_to_las("minimal.las", use_template=False)
+    print("Exported without template (minimal metadata)")
+
+    print("\nTemplate mode preserves:")
+    print("  - Original ~Version information")
+    print("  - Original ~Well parameters (FLD, COMP, LOC, etc.)")
+    print("  - Original ~Curve descriptions")
+    print("  - Original ~Parameter entries (except discrete labels)")
+    print("This ensures zero data erosion when updating LAS files!")
+
+    print("\nNote: All exported LAS files are in LAS 2.0 format")
+    print("Discrete properties are marked with DISCRETE_PROPS parameter")
+    print("Labels are stored in the ~Parameter section and automatically loaded")
+    print()
+
+
+# =============================================================================
 # Main Execution
 # =============================================================================
 
@@ -455,3 +592,4 @@ if __name__ == "__main__":
     # example_raw_data_access()
     # example_error_handling()
     # example_complete_workflow()
+    # example_las_export()

@@ -39,6 +39,10 @@ class Well:
         Parent manager
     properties : list[str]
         List of property names
+    sources : list[str]
+        List of source LAS file paths loaded into this well
+    original_las : LasFile | None
+        First LAS file loaded (for template-based export)
     
     Examples
     --------
@@ -46,6 +50,13 @@ class Well:
     >>> well.load_las("log1.las").load_las("log2.las")
     >>> print(well.properties)
     ['PHIE', 'PERM', 'Zone', 'NTG_Flag']
+    >>> print(well.sources)  # ['log1.las', 'log2.las']
+    >>>
+    >>> # Add DataFrame as source
+    >>> df = pd.DataFrame({'DEPT': [2800, 2801], 'SW': [0.3, 0.32]})
+    >>> well.add_dataframe(df, unit_mappings={'SW': 'v/v'})
+    >>> print(well.sources)  # ['log1.las', 'log2.las', 'external_df']
+    >>>
     >>> stats = well.phie.filter('Zone').sums_avg()
     """
     
@@ -61,6 +72,8 @@ class Well:
         self._properties: dict[str, Property] = {}  # {original_name: Property}
         self._property_name_mapping: dict[str, str] = {}  # {sanitized_name: original_name}
         self._depth_grid: Optional[np.ndarray] = None
+        self._source_las_files: list[LasFile] = []  # Track original LAS files for metadata preservation
+        self._external_df_count: int = 0  # Counter for external DataFrame sources
     
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
@@ -90,7 +103,7 @@ class Well:
         # Parse if path provided
         if isinstance(las, (str, Path)):
             las = LasFile(las)
-        
+
         # Validate well name
         if las.well_name != self.name:
             raise WellNameMismatchError(
@@ -98,7 +111,10 @@ class Well:
                 f"into well '{self.name}'. Create a new well or use "
                 f"manager.load_las() for automatic well creation."
             )
-        
+
+        # Store reference to source LAS file for metadata preservation
+        self._source_las_files.append(las)
+
         # Load data
         data = las.data
         depth_col = las.depth_column
@@ -108,19 +124,31 @@ class Well:
         
         depth_values = data[depth_col].values
         
+        # Get discrete property information from LAS file
+        discrete_props = las.discrete_properties
+
         # Load each curve as a property
         for curve_name in las.curves.keys():
             if curve_name == depth_col:
                 continue  # Skip depth itself
-            
+
             curve_meta = las.curves[curve_name]
             prop_name = curve_meta.get('alias') or curve_name
-            
+
             # Get values
             values = data.get(curve_meta.get('alias') or curve_name, data.get(curve_name))
             if values is None:
                 continue
-            
+
+            # Check if this property is marked as discrete
+            is_discrete = prop_name in discrete_props
+            prop_type = 'discrete' if is_discrete else curve_meta['type']
+
+            # Get labels if property is discrete
+            labels = None
+            if is_discrete:
+                labels = las.get_discrete_labels(prop_name)
+
             # Create property
             prop = Property(
                 name=prop_name,
@@ -128,11 +156,14 @@ class Well:
                 values=values.values,
                 parent_well=self,
                 unit=curve_meta['unit'],
-                prop_type=curve_meta['type'],
+                prop_type=prop_type,
                 description=curve_meta['description'],
-                null_value=las.null_value
+                null_value=las.null_value,
+                labels=labels,
+                source_las=las,
+                source_name=str(las.filepath)
             )
-            
+
             if prop_name in self._properties:
                 # Merge with existing property
                 self._merge_property(prop_name, prop)
@@ -143,7 +174,81 @@ class Well:
                 self._property_name_mapping[sanitized_prop_name] = prop_name
 
         return self  # Enable chaining
-    
+
+    def add_dataframe(
+        self,
+        df: pd.DataFrame,
+        unit_mappings: Optional[dict[str, str]] = None,
+        type_mappings: Optional[dict[str, str]] = None,
+        label_mappings: Optional[dict[str, dict[int, str]]] = None
+    ) -> 'Well':
+        """
+        Add properties from a DataFrame to this well.
+
+        The DataFrame must contain a DEPT column. All other columns will be
+        added as properties. The DataFrame is converted to a LasFile object
+        with source name 'external_df', 'external_df1', etc.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame containing DEPT and property columns
+        unit_mappings : dict[str, str], optional
+            Mapping of property names to units (e.g., {'PHIE': 'v/v'})
+        type_mappings : dict[str, str], optional
+            Mapping of property names to types: 'continuous' or 'discrete'
+            Default is 'continuous' for all properties
+        label_mappings : dict[str, dict[int, str]], optional
+            Label mappings for discrete properties
+            Format: {'PropertyName': {0: 'Label0', 1: 'Label1'}}
+
+        Returns
+        -------
+        Well
+            Self for method chaining
+
+        Examples
+        --------
+        >>> # Create DataFrame with properties
+        >>> df = pd.DataFrame({
+        ...     'DEPT': [2800, 2800.5, 2801],
+        ...     'PHIE': [0.2, 0.25, 0.22],
+        ...     'SW': [0.3, 0.35, 0.32],
+        ...     'Zone': [0, 1, 1]
+        ... })
+        >>>
+        >>> # Add to well with metadata
+        >>> well.add_dataframe(
+        ...     df,
+        ...     unit_mappings={'PHIE': 'v/v', 'SW': 'v/v', 'Zone': ''},
+        ...     type_mappings={'Zone': 'discrete'},
+        ...     label_mappings={'Zone': {0: 'NonReservoir', 1: 'Reservoir'}}
+        ... )
+        >>>
+        >>> # Check sources
+        >>> print(well.sources)  # ['original.las', 'external_df']
+        >>> print(well.Zone.source)  # 'external_df'
+        """
+        # Generate source name
+        if self._external_df_count == 0:
+            source_name = 'external_df'
+        else:
+            source_name = f'external_df{self._external_df_count}'
+        self._external_df_count += 1
+
+        # Create LasFile from DataFrame
+        las = LasFile.from_dataframe(
+            df=df,
+            well_name=self.name,
+            source_name=source_name,
+            unit_mappings=unit_mappings,
+            type_mappings=type_mappings,
+            label_mappings=label_mappings
+        )
+
+        # Load it like any other LAS file
+        return self.load_las(las)
+
     def _merge_property(self, name: str, new_prop: Property) -> None:
         """
         Merge new property data with existing property.
@@ -207,6 +312,68 @@ class Well:
     def properties(self) -> list[str]:
         """List of property names in this well."""
         return list(self._properties.keys())
+
+    @property
+    def sources(self) -> list[str]:
+        """
+        List of all data sources loaded into this well.
+
+        Includes both LAS file paths and external DataFrame sources
+        (labeled as 'external_df', 'external_df1', etc.)
+
+        Returns
+        -------
+        list[str]
+            List of source names in the order they were loaded
+
+        Examples
+        --------
+        >>> well.load_las("log1.las")
+        >>> well.add_dataframe(df)
+        >>> print(well.sources)  # ['log1.las', 'external_df']
+        """
+        # Collect all unique sources from properties in order
+        seen_sources = set()
+        sources_list = []
+
+        # Add LAS file sources first (in order they were loaded)
+        for las in self._source_las_files:
+            source = str(las.filepath)
+            if source not in seen_sources:
+                sources_list.append(source)
+                seen_sources.add(source)
+
+        # Then add any external DataFrame sources found in properties
+        for i in range(self._external_df_count):
+            if i == 0:
+                source = 'external_df'
+            else:
+                source = f'external_df{i}'
+            if source not in seen_sources:
+                sources_list.append(source)
+                seen_sources.add(source)
+
+        return sources_list
+
+    @property
+    def original_las(self) -> Optional[LasFile]:
+        """
+        Get the first (original) LAS file loaded into this well.
+
+        Returns None if no LAS files have been loaded yet.
+
+        Returns
+        -------
+        Optional[LasFile]
+            First LasFile object loaded, or None
+
+        Examples
+        --------
+        >>> well.load_las("log1.las")
+        >>> original = well.original_las
+        >>> well.export_to_las("output.las", use_template=original)
+        """
+        return self._source_las_files[0] if self._source_las_files else None
     
     def get_property(self, name: str) -> Property:
         """
@@ -456,7 +623,112 @@ class Well:
                 data[name] = prop.values
 
         return pd.DataFrame(data)
-    
+
+    def export_to_las(
+        self,
+        filepath: Union[str, Path],
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None,
+        store_labels: bool = True,
+        null_value: float = -999.25,
+        use_template: Union[bool, LasFile, None] = None
+    ) -> None:
+        """
+        Export well data to LAS 2.0 format file.
+
+        Parameters
+        ----------
+        filepath : Union[str, Path]
+            Output LAS file path
+        include : list[str], optional
+            List of property names to include. If None, includes all properties.
+        exclude : list[str], optional
+            List of property names to exclude. If None, no properties are excluded.
+        store_labels : bool, default True
+            If True, store discrete property label mappings in the ~Parameter section.
+            The actual data values remain numeric (standard LAS format).
+        null_value : float, default -999.25
+            Value to use for missing data in LAS file
+        use_template : Union[bool, LasFile, None], optional
+            If True, uses the primary (first) LAS file as template to preserve original
+            metadata. If a LasFile object is provided, uses that specific file as template.
+            If None or False, creates a new LAS file without template (default).
+            Template mode preserves: ~Version info, ~Well parameters, and ~Parameter entries
+            not related to discrete labels.
+
+        Raises
+        ------
+        WellError
+            If properties have different depth grids (call resample() first)
+            If use_template=True but no source LAS files exist
+        ValueError
+            If both include and exclude are specified
+
+        Examples
+        --------
+        >>> # Export all properties with labels stored in parameter section
+        >>> well.export_to_las('output.las')
+
+        >>> # Export specific properties
+        >>> well.export_to_las('output.las', include=['PHIE', 'SW', 'PERM'])
+
+        >>> # Export without storing discrete labels
+        >>> well.export_to_las('output.las', store_labels=False)
+
+        >>> # Export using original LAS as template (preserves metadata)
+        >>> well.export_to_las('updated.las', use_template=True)
+
+        >>> # Export using specific LAS file as template
+        >>> template = well.original_las
+        >>> well.export_to_las('output.las', use_template=template)
+        """
+        # Determine template LAS file if requested
+        template_las = None
+        if use_template is True:
+            # Use original (first) LAS file as template
+            if not self.original_las:
+                raise WellError(
+                    "Cannot use template: no source LAS files have been loaded. "
+                    "Either load a LAS file first or set use_template=False."
+                )
+            template_las = self.original_las
+        elif isinstance(use_template, LasFile):
+            # Use specific LAS file as template
+            template_las = use_template
+
+        # Get DataFrame with properties (always numeric values for LAS)
+        df = self.to_dataframe(
+            include=include,
+            exclude=exclude,
+            auto_resample=True,
+            discrete_labels=False  # Always export numeric values
+        )
+
+        # Build unit mappings from properties
+        unit_mappings = {'DEPT': 'm'}  # Default depth unit
+        for prop_name, prop in self._properties.items():
+            if prop_name in df.columns:
+                unit_mappings[prop_name] = prop.unit
+
+        # Collect discrete labels if store_labels is True
+        label_mappings = None
+        if store_labels:
+            label_mappings = {}
+            for prop_name, prop in self._properties.items():
+                if prop_name in df.columns and prop.labels:
+                    label_mappings[prop_name] = prop.labels
+
+        # Export using LasFile static method
+        LasFile.export_las(
+            filepath=filepath,
+            well_name=self.name,
+            df=df,
+            unit_mappings=unit_mappings,
+            null_value=null_value,
+            discrete_labels=label_mappings if label_mappings else None,
+            template_las=template_las
+        )
+
     def __repr__(self) -> str:
         """String representation."""
         return (

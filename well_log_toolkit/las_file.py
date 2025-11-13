@@ -15,18 +15,21 @@ from .utils import parse_las_line
 class LasFile:
     """
     Fast LAS file reader with lazy data loading.
-    
+
     Workflow:
     1. Instantiate and parse headers (fast)
     2. Inspect metadata (well name, curves, units)
     3. Update curve metadata if needed
     4. Load data when ready
-    
+
+    When loading LAS files created by this toolkit, discrete properties
+    and their label mappings are automatically detected and loaded.
+
     Parameters
     ----------
     filepath : Union[str, Path]
         Path to LAS file
-    
+
     Attributes
     ----------
     filepath : Path
@@ -36,10 +39,20 @@ class LasFile:
     well_info : dict
         Well section data (WELL, STRT, STOP, NULL, etc.)
     parameter_info : dict
-        Parameter section data
+        Parameter section data (includes discrete property markers and labels)
     curves : dict
         Curve metadata: {name: {unit, description, type, alias, multiplier}}
-    
+
+    Properties
+    ----------
+    discrete_properties : list[str]
+        List of properties marked as discrete in ~Parameter section
+
+    Methods
+    -------
+    get_discrete_labels(property_name: str) -> dict[int, str] | None
+        Extract label mappings for a discrete property
+
     Examples
     --------
     >>> las = LasFile("well.las")
@@ -49,33 +62,136 @@ class LasFile:
     dict_keys(['DEPT', 'PHIE_2025', 'PERM_Lam_2025', ...])
     >>> las.update_curve('PHIE_2025', type='continuous', alias='PHIE')
     >>> df = las.data  # Lazy load
+
+    >>> # Check for discrete properties
+    >>> print(las.discrete_properties)
+    ['Zone', 'NTG_Flag']
+    >>> labels = las.get_discrete_labels('Zone')
+    >>> print(labels)
+    {0: 'NonReservoir', 1: 'Reservoir'}
     """
     
     # Supported LAS versions
     SUPPORTED_VERSIONS = {'2.0', '2'}
 
-    def __init__(self, filepath: Union[str, Path]):
+    def __init__(self, filepath: Union[str, Path], _from_dataframe: bool = False):
         self.filepath = Path(filepath)
-        
-        if not self.filepath.exists():
+
+        if not _from_dataframe and not self.filepath.exists():
             raise LasFileError(f"File not found: {filepath}")
-        
+
         # Metadata containers
         self.version_info: dict[str, str] = {}
         self.well_info: dict[str, str] = {}
         self.parameter_info: dict[str, str] = {}
         self.curves: dict[str, dict] = {}
-        
+
         # Data management
         self._data: Optional[pd.DataFrame] = None
         self._ascii_start_line: Optional[int] = None
         self._curve_names: list[str] = []  # Preserve original order
         self._file_lines: Optional[list[str]] = None
-        
-        # Auto-parse headers on init
-        self._parse_headers()
-        self._validate_version()
+
+        # Auto-parse headers on init (skip if from DataFrame)
+        if not _from_dataframe:
+            self._parse_headers()
+            self._validate_version()
     
+    @classmethod
+    def from_dataframe(
+        cls,
+        df: pd.DataFrame,
+        well_name: str,
+        source_name: str = 'external_df',
+        unit_mappings: Optional[dict[str, str]] = None,
+        type_mappings: Optional[dict[str, str]] = None,
+        label_mappings: Optional[dict[str, dict[int, str]]] = None
+    ) -> 'LasFile':
+        """
+        Create a LasFile object from a DataFrame.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame with DEPT column and property columns
+        well_name : str
+            Well name for this data
+        source_name : str, default 'external_df'
+            Name for this data source (e.g., 'external_df', 'external_df1')
+        unit_mappings : dict[str, str], optional
+            Mapping of column names to units
+        type_mappings : dict[str, str], optional
+            Mapping of column names to 'continuous' or 'discrete'
+        label_mappings : dict[str, dict[int, str]], optional
+            Label mappings for discrete properties
+
+        Returns
+        -------
+        LasFile
+            LasFile object populated with DataFrame data
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({'DEPT': [2800, 2801], 'PHIE': [0.2, 0.22]})
+        >>> las = LasFile.from_dataframe(
+        ...     df,
+        ...     well_name='12/3-2 B',
+        ...     source_name='external_df',
+        ...     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v'}
+        ... )
+        """
+        if 'DEPT' not in df.columns:
+            raise LasFileError(
+                "DataFrame must contain 'DEPT' column. "
+                f"Available columns: {', '.join(df.columns)}"
+            )
+
+        unit_mappings = unit_mappings or {}
+        type_mappings = type_mappings or {}
+        label_mappings = label_mappings or {}
+
+        # Create instance without parsing file
+        instance = cls(source_name, _from_dataframe=True)
+
+        # Set version info
+        instance.version_info = {'VERS': '2.0', 'WRAP': 'NO'}
+
+        # Set well info
+        dept = df['DEPT'].dropna()
+        instance.well_info = {
+            'WELL': well_name,
+            'STRT': str(float(dept.min())) if len(dept) > 0 else '0.0',
+            'STOP': str(float(dept.max())) if len(dept) > 0 else '0.0',
+            'STEP': str(float(dept.diff().median())) if len(dept) > 1 else '0.1',
+            'NULL': '-999.25'
+        }
+
+        # Set curve metadata
+        for col in df.columns:
+            instance._curve_names.append(col)
+            instance.curves[col] = {
+                'unit': unit_mappings.get(col, ''),
+                'description': col,
+                'type': type_mappings.get(col, 'continuous'),
+                'alias': None,
+                'multiplier': None
+            }
+
+        # Set parameter info (discrete labels)
+        if label_mappings:
+            discrete_props = ','.join(sorted(label_mappings.keys()))
+            instance.parameter_info['DISCRETE_PROPS'] = discrete_props
+
+            for prop_name, labels in label_mappings.items():
+                for value, label in labels.items():
+                    param_name = f"{prop_name}_{value}"
+                    instance.parameter_info[param_name] = label
+
+        # Set data directly
+        instance._data = df.copy()
+
+        return instance
+
     @property
     def well_name(self) -> Optional[str]:
         """Extract well name from well info."""
@@ -94,6 +210,59 @@ class LasFile:
             return float(null_str)
         except ValueError:
             return -999.25
+
+    @property
+    def discrete_properties(self) -> list[str]:
+        """
+        List of properties marked as discrete in ~Parameter section.
+
+        Returns
+        -------
+        list[str]
+            List of discrete property names from DISCRETE_PROPS parameter
+        """
+        discrete_props_str = self.parameter_info.get('DISCRETE_PROPS', '')
+        if not discrete_props_str:
+            return []
+        # Split by comma and strip whitespace
+        return [name.strip() for name in discrete_props_str.split(',') if name.strip()]
+
+    def get_discrete_labels(self, property_name: str) -> Optional[dict[int, str]]:
+        """
+        Extract label mappings for a discrete property from ~Parameter section.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the discrete property
+
+        Returns
+        -------
+        dict[int, str] | None
+            Label mapping {0: 'Label0', 1: 'Label1'} or None if no labels found
+
+        Examples
+        --------
+        >>> las = LasFile("well.las")
+        >>> labels = las.get_discrete_labels('Zone')
+        >>> # Returns: {0: 'NonReservoir', 1: 'Reservoir'}
+        """
+        labels = {}
+        prefix = f"{property_name}_"
+
+        # Look for parameters like "Zone_0", "Zone_1", etc.
+        for param_name, label_value in self.parameter_info.items():
+            if param_name.startswith(prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(prefix):]
+                try:
+                    value = int(suffix)
+                    labels[value] = label_value.strip()
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        return labels if labels else None
     
     @property
     def data(self) -> pd.DataFrame:
@@ -324,6 +493,205 @@ class LasFile:
         # Clear file lines to free memory
         self._file_lines = None
     
+    @staticmethod
+    def export_las(
+        filepath: Union[str, Path],
+        well_name: str,
+        df: pd.DataFrame,
+        unit_mappings: Optional[dict[str, str]] = None,
+        null_value: float = -999.25,
+        discrete_labels: Optional[dict[str, dict[int, str]]] = None,
+        template_las: Optional['LasFile'] = None
+    ) -> None:
+        """
+        Export DataFrame to LAS 2.0 format file.
+
+        Parameters
+        ----------
+        filepath : Union[str, Path]
+            Output LAS file path
+        well_name : str
+            Well name for the LAS file
+        df : pd.DataFrame
+            DataFrame to export (must contain DEPT column)
+        unit_mappings : dict[str, str], optional
+            Mapping of column names to units (e.g., {'PHIE': 'v/v', 'DEPT': 'm'})
+            If not provided, uses empty units
+        null_value : float, default -999.25
+            Value to use for missing data
+        discrete_labels : dict[str, dict[int, str]], optional
+            Label mappings for discrete properties stored in ~Parameter section.
+            Format: {'PropertyName': {0: 'Label0', 1: 'Label1'}}
+            Example: {'Zone': {0: 'NonReservoir', 1: 'Reservoir'}}
+        template_las : LasFile, optional
+            Source LAS file to use as template. Preserves original ~Version info,
+            ~Well parameters (excluding STRT/STOP/STEP/NULL), and ~Parameter entries
+            not related to discrete labels. This prevents data erosion when updating
+            existing LAS files.
+
+        Raises
+        ------
+        ValueError
+            If DEPT column not found in DataFrame
+        LasFileError
+            If file write fails
+
+        Examples
+        --------
+        >>> df = well.to_dataframe()
+        >>> LasFile.export_las(
+        ...     'output.las',
+        ...     well_name='12/3-2 B',
+        ...     df=df,
+        ...     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v', 'SW': 'v/v'}
+        ... )
+
+        >>> # Export with discrete labels stored in parameter section
+        >>> LasFile.export_las(
+        ...     'output.las',
+        ...     well_name='12/3-2 B',
+        ...     df=df,
+        ...     unit_mappings={'DEPT': 'm', 'Zone': ''},
+        ...     discrete_labels={'Zone': {0: 'NonReservoir', 1: 'Reservoir'}}
+        ... )
+
+        >>> # Export using original LAS as template (preserves metadata)
+        >>> LasFile.export_las(
+        ...     'updated.las',
+        ...     well_name='12/3-2 B',
+        ...     df=df,
+        ...     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v'},
+        ...     template_las=original_las
+        ... )
+        """
+        if 'DEPT' not in df.columns:
+            raise ValueError(
+                "DataFrame must contain 'DEPT' column. "
+                f"Available columns: {', '.join(df.columns)}"
+            )
+
+        unit_mappings = unit_mappings or {}
+        filepath = Path(filepath)
+
+        # Get depth range
+        dept = df['DEPT'].dropna()
+        if len(dept) == 0:
+            raise ValueError("DEPT column contains no valid data")
+
+        start_depth = float(dept.min())
+        stop_depth = float(dept.max())
+        step_depth = float(dept.diff().median()) if len(dept) > 1 else 0.1
+
+        # Build LAS file content
+        lines = []
+
+        # ~Version section (use template if available)
+        lines.append("~Version Information")
+        if template_las:
+            # Preserve original version info
+            version_info = template_las.version_info
+            for key, value in version_info.items():
+                desc = f"CWLS log ASCII Standard -VERSION {value}" if key == 'VERS' else ""
+                lines.append(f" {key:<12}.              {value:>10} : {desc}")
+        else:
+            # Default version info
+            lines.append(" VERS.                          2.0 : CWLS log ASCII Standard -VERSION 2.0")
+            lines.append(" WRAP.                          NO  : One line per depth step")
+        lines.append("")
+
+        # ~Well section (use template for non-depth parameters)
+        lines.append("~Well Information")
+        lines.append(f" STRT.m                  {start_depth:10.4f} : START DEPTH")
+        lines.append(f" STOP.m                  {stop_depth:10.4f} : STOP DEPTH")
+        lines.append(f" STEP.m                  {step_depth:10.4f} : STEP")
+        lines.append(f" NULL.                   {null_value:10.4f} : NULL VALUE")
+
+        if template_las:
+            # Preserve all original well parameters except STRT/STOP/STEP/NULL
+            well_info = template_las.well_info
+            skip_params = {'STRT', 'STOP', 'STEP', 'NULL'}
+            for key, value in well_info.items():
+                if key not in skip_params:
+                    # Format parameter line
+                    lines.append(f" {key:<12}.              {value:>10} : {key}")
+        else:
+            # Just add well name if no template
+            lines.append(f" WELL.                   {well_name:>10} : WELL")
+        lines.append("")
+
+        # ~Curve section (preserve template descriptions if available)
+        lines.append("~Curve Information")
+        for col in df.columns:
+            unit = unit_mappings.get(col, '')
+            # Try to get description from template
+            description = col
+            if template_las and col in template_las.curves:
+                description = template_las.curves[col].get('description', col)
+            # Format: MNEM.UNIT VALUE : DESCRIPTION
+            lines.append(f" {col:<12}.{unit:<8}              : {description}")
+        lines.append("")
+
+        # ~Parameter section (preserve non-discrete-label parameters from template, add new discrete labels)
+        # Collect parameters to write
+        params_to_write = {}
+
+        # First, add non-discrete-label parameters from template if available
+        if template_las:
+            # Get discrete label parameter names to skip
+            skip_params = {'DISCRETE_PROPS'}
+            if template_las.discrete_properties:
+                for prop_name in template_las.discrete_properties:
+                    # Skip any parameter starting with discrete property name
+                    for param_key in template_las.parameter_info.keys():
+                        if param_key.startswith(f"{prop_name}_"):
+                            skip_params.add(param_key)
+
+            # Preserve all other parameters
+            for param_key, param_value in template_las.parameter_info.items():
+                if param_key not in skip_params:
+                    params_to_write[param_key] = (param_value, f"Preserved from original")
+
+        # Add new discrete labels if provided
+        if discrete_labels:
+            # Add list of discrete properties
+            discrete_prop_names = ','.join(sorted(discrete_labels.keys()))
+            params_to_write['DISCRETE_PROPS'] = (discrete_prop_names, "Discrete properties")
+
+            # Add label mappings for each discrete property
+            for prop_name, label_mapping in sorted(discrete_labels.items()):
+                # Sort by value for consistent output
+                for value in sorted(label_mapping.keys()):
+                    label = label_mapping[value]
+                    param_name = f"{prop_name}_{value}"
+                    params_to_write[param_name] = (label, f"{prop_name} label for value {value}")
+
+        # Write parameter section if we have any parameters
+        if params_to_write:
+            lines.append("~Parameter Information")
+            for param_name, (param_value, param_desc) in params_to_write.items():
+                lines.append(f" {param_name:<12}.       {param_value:>10} : {param_desc}")
+            lines.append("")
+
+        # ~Ascii section
+        lines.append("~Ascii")
+
+        # Write data rows
+        # Replace NaN with null_value
+        df_export = df.fillna(null_value)
+
+        # Format data rows
+        for _, row in df_export.iterrows():
+            row_values = [f"{val:12.4f}" if isinstance(val, (int, float)) else f"{str(val):>12}"
+                         for val in row]
+            lines.append("".join(row_values))
+
+        # Write to file
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+        except Exception as e:
+            raise LasFileError(f"Failed to write LAS file to {filepath}: {e}")
+
     def __repr__(self) -> str:
         """String representation."""
         return (

@@ -1,7 +1,8 @@
 """
 Property class for well log data with filtering support.
 """
-from typing import Optional, TYPE_CHECKING
+from pathlib import Path
+from typing import Optional, TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError,
 
 if TYPE_CHECKING:
     from .well import Well
+    from .las_file import LasFile
 
 
 class Property:
@@ -59,6 +61,10 @@ class Property:
         Parent well reference
     labels : dict[int, str] | None
         Label mapping for discrete values
+    source_las : LasFile | None
+        Source LAS file this property came from
+    source : str | None
+        Source LAS file path (read-only property)
     secondary_properties : list[Property]
         List of aligned filter properties
 
@@ -79,7 +85,9 @@ class Property:
         prop_type: str = 'continuous',
         description: str = '',
         null_value: float = -999.25,
-        labels: Optional[dict[int, str]] = None
+        labels: Optional[dict[int, str]] = None,
+        source_las: Optional['LasFile'] = None,
+        source_name: Optional[str] = None
     ):
         self.name = name
         self.depth = np.asarray(depth, dtype=np.float64)
@@ -89,6 +97,8 @@ class Property:
         self.type = prop_type
         self.description = description
         self.labels = labels  # Mapping for discrete property values {0: 'NonNet', 1: 'Net'}
+        self.source_las = source_las  # Source LAS file this property came from
+        self.source_name = source_name  # Source name (file path or external_df)
 
         # Secondary properties (filters) aligned on same depth grid
         self.secondary_properties: list[Property] = []
@@ -99,7 +109,27 @@ class Property:
             np.nan,
             self.values
         )
-    
+
+    @property
+    def source(self) -> Optional[str]:
+        """
+        Get the source this property came from.
+
+        Returns
+        -------
+        Optional[str]
+            Source name - either a LAS file path or external DataFrame name
+            (e.g., 'path/to/original.las' or 'external_df')
+
+        Examples
+        --------
+        >>> prop = well.get_property('PHIE')
+        >>> print(prop.source)  # 'path/to/original.las' or 'external_df'
+        """
+        if self.source_name:
+            return self.source_name
+        return str(self.source_las.filepath) if self.source_las else None
+
     def filter(self, property_name: str) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
@@ -173,9 +203,11 @@ class Property:
                 prop_type=sec_prop.type,
                 description=sec_prop.description,
                 null_value=-999.25,  # Already cleaned
-                labels=sec_prop.labels
+                labels=sec_prop.labels,
+                source_las=sec_prop.source_las,
+                source_name=sec_prop.source_name
             ))
-        
+
         # Add new secondary property
         aligned_secondaries.append(Property(
             name=discrete_prop.name,
@@ -186,9 +218,11 @@ class Property:
             prop_type=discrete_prop.type,
             description=discrete_prop.description,
             null_value=-999.25,  # Already cleaned
-            labels=discrete_prop.labels
+            labels=discrete_prop.labels,
+            source_las=discrete_prop.source_las,
+            source_name=discrete_prop.source_name
         ))
-        
+
         # Create new Property instance with all secondaries
         new_prop = Property(
             name=self.name,
@@ -199,7 +233,9 @@ class Property:
             prop_type=self.type,
             description=self.description,
             null_value=-999.25,  # Already cleaned
-            labels=self.labels
+            labels=self.labels,
+            source_las=self.source_las,
+            source_name=self.source_name
         )
         new_prop.secondary_properties = aligned_secondaries
 
@@ -474,7 +510,84 @@ class Property:
                 data[sec_prop.name] = sec_prop.values
 
         return pd.DataFrame(data)
-    
+
+    def export_to_las(
+        self,
+        filepath: Union[str, Path],
+        well_name: Optional[str] = None,
+        store_labels: bool = True,
+        null_value: float = -999.25
+    ) -> None:
+        """
+        Export property to LAS 2.0 format file.
+
+        Parameters
+        ----------
+        filepath : Union[str, Path]
+            Output LAS file path
+        well_name : str, optional
+            Well name for the LAS file. If not provided and parent_well exists,
+            uses parent well's name. Otherwise uses 'UNKNOWN'.
+        store_labels : bool, default True
+            If True, store discrete property label mappings in the ~Parameter section.
+            The actual data values remain numeric (standard LAS format).
+        null_value : float, default -999.25
+            Value to use for missing data in LAS file
+
+        Examples
+        --------
+        >>> prop = well.get_property('PHIE')
+        >>> prop.export_to_las('phie_only.las')
+
+        >>> # Export with secondary properties (filters) and labels
+        >>> filtered = well.phie.filter('Zone').filter('NTG_Flag')
+        >>> filtered.export_to_las('filtered_phie.las', well_name='12/3-2 B')
+        """
+        # Import here to avoid circular import
+        from .las_file import LasFile
+
+        # Determine well name
+        if well_name is None:
+            if self.parent_well is not None:
+                well_name = self.parent_well.name
+            else:
+                well_name = 'UNKNOWN'
+
+        # Get DataFrame with property and secondary properties (numeric values)
+        df = self.to_dataframe(discrete_labels=False)
+
+        # Build unit mappings
+        unit_mappings = {
+            'DEPT': 'm',  # Default depth unit
+            self.name: self.unit
+        }
+
+        # Add secondary property units
+        for sec_prop in self.secondary_properties:
+            unit_mappings[sec_prop.name] = sec_prop.unit
+
+        # Collect discrete labels if store_labels is True
+        label_mappings = None
+        if store_labels:
+            label_mappings = {}
+            # Check main property
+            if self.labels:
+                label_mappings[self.name] = self.labels
+            # Check secondary properties
+            for sec_prop in self.secondary_properties:
+                if sec_prop.labels:
+                    label_mappings[sec_prop.name] = sec_prop.labels
+
+        # Export using LasFile static method
+        LasFile.export_las(
+            filepath=filepath,
+            well_name=well_name,
+            df=df,
+            unit_mappings=unit_mappings,
+            null_value=null_value,
+            discrete_labels=label_mappings if label_mappings else None
+        )
+
     def __repr__(self) -> str:
         """String representation."""
         filters = f", filters={len(self.secondary_properties)}" if self.secondary_properties else ""
