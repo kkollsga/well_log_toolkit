@@ -25,7 +25,7 @@ class Property:
     Parameters
     ----------
     name : str
-        Property name
+        Property name (sanitized for Python attribute access)
     depth : np.ndarray
         Depth values
     values : np.ndarray
@@ -42,11 +42,15 @@ class Property:
         Value to treat as null/missing
     labels : dict[int, str], optional
         Label mapping for discrete properties (e.g., {0: 'NonNet', 1: 'Net'})
+    original_name : str, optional
+        Original property name with special characters (from LAS file)
 
     Attributes
     ----------
     name : str
-        Property name
+        Property name (sanitized for Python attribute access)
+    original_name : str
+        Original property name with special characters (from LAS file)
     depth : np.ndarray
         Depth values
     values : np.ndarray
@@ -87,9 +91,11 @@ class Property:
         null_value: float = -999.25,
         labels: Optional[dict[int, str]] = None,
         source_las: Optional['LasFile'] = None,
-        source_name: Optional[str] = None
+        source_name: Optional[str] = None,
+        original_name: Optional[str] = None
     ):
-        self.name = name
+        self.name = name  # Sanitized name for Python attribute access
+        self.original_name = original_name or name  # Original name with special characters
         self.depth = np.asarray(depth, dtype=np.float64)
         self.values = np.asarray(values, dtype=np.float64)
         self.parent_well = parent_well
@@ -205,7 +211,8 @@ class Property:
                 null_value=-999.25,  # Already cleaned
                 labels=sec_prop.labels,
                 source_las=sec_prop.source_las,
-                source_name=sec_prop.source_name
+                source_name=sec_prop.source_name,
+                original_name=sec_prop.original_name
             ))
 
         # Add new secondary property
@@ -220,7 +227,8 @@ class Property:
             null_value=-999.25,  # Already cleaned
             labels=discrete_prop.labels,
             source_las=discrete_prop.source_las,
-            source_name=discrete_prop.source_name
+            source_name=discrete_prop.source_name,
+            original_name=discrete_prop.original_name
         ))
 
         # Create new Property instance with all secondaries
@@ -235,7 +243,8 @@ class Property:
             null_value=-999.25,  # Already cleaned
             labels=self.labels,
             source_las=self.source_las,
-            source_name=self.source_name
+            source_name=self.source_name,
+            original_name=self.original_name
         )
         new_prop.secondary_properties = aligned_secondaries
 
@@ -556,27 +565,35 @@ class Property:
         # Get DataFrame with property and secondary properties (numeric values)
         df = self.to_dataframe(discrete_labels=False)
 
-        # Build unit mappings
+        # Build column name mapping: sanitized -> original
+        column_rename_map = {self.name: self.original_name}
+        for sec_prop in self.secondary_properties:
+            column_rename_map[sec_prop.name] = sec_prop.original_name
+
+        # Rename DataFrame columns to use original names for LAS export
+        df = df.rename(columns=column_rename_map)
+
+        # Build unit mappings (use original names)
         unit_mappings = {
             'DEPT': 'm',  # Default depth unit
-            self.name: self.unit
+            self.original_name: self.unit
         }
 
         # Add secondary property units
         for sec_prop in self.secondary_properties:
-            unit_mappings[sec_prop.name] = sec_prop.unit
+            unit_mappings[sec_prop.original_name] = sec_prop.unit
 
-        # Collect discrete labels if store_labels is True
+        # Collect discrete labels if store_labels is True (use original names)
         label_mappings = None
         if store_labels:
             label_mappings = {}
             # Check main property
             if self.labels:
-                label_mappings[self.name] = self.labels
+                label_mappings[self.original_name] = self.labels
             # Check secondary properties
             for sec_prop in self.secondary_properties:
                 if sec_prop.labels:
-                    label_mappings[sec_prop.name] = sec_prop.labels
+                    label_mappings[sec_prop.original_name] = sec_prop.labels
 
         # Export using LasFile static method
         LasFile.export_las(

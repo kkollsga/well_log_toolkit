@@ -69,7 +69,7 @@ class Well:
         self.name = name
         self.sanitized_name = sanitized_name
         self.parent_manager = parent_manager
-        self._properties: dict[str, Property] = {}  # {original_name: Property}
+        self._properties: dict[str, Property] = {}  # {sanitized_name: Property}
         self._property_name_mapping: dict[str, str] = {}  # {sanitized_name: original_name}
         self._depth_grid: Optional[np.ndarray] = None
         self._source_las_files: list[LasFile] = []  # Track original LAS files for metadata preservation
@@ -149,9 +149,12 @@ class Well:
             if is_discrete:
                 labels = las.get_discrete_labels(prop_name)
 
-            # Create property
+            # Sanitize property name for Python attribute access
+            sanitized_prop_name = sanitize_property_name(prop_name)
+
+            # Create property with sanitized name
             prop = Property(
-                name=prop_name,
+                name=sanitized_prop_name,
                 depth=depth_values,
                 values=values.values,
                 parent_well=self,
@@ -161,16 +164,16 @@ class Well:
                 null_value=las.null_value,
                 labels=labels,
                 source_las=las,
-                source_name=str(las.filepath)
+                source_name=str(las.filepath),
+                original_name=prop_name
             )
 
-            if prop_name in self._properties:
+            if sanitized_prop_name in self._properties:
                 # Merge with existing property
-                self._merge_property(prop_name, prop)
+                self._merge_property(sanitized_prop_name, prop)
             else:
-                self._properties[prop_name] = prop
-                # Create sanitized name mapping for attribute access
-                sanitized_prop_name = sanitize_property_name(prop_name)
+                # Store with sanitized name as key
+                self._properties[sanitized_prop_name] = prop
                 self._property_name_mapping[sanitized_prop_name] = prop_name
 
         return self  # Enable chaining
@@ -292,14 +295,14 @@ class Well:
                 f"'{type(self).__name__}' object has no attribute '{name}'"
             )
 
-        # Try original name first
+        # Try as-is (sanitized name)
         if name in self._properties:
             return self._properties[name]
 
-        # Try sanitized name mapping
-        if name in self._property_name_mapping:
-            original_name = self._property_name_mapping[name]
-            return self._properties[original_name]
+        # Try sanitizing the name (in case original name was somehow used)
+        sanitized_name = sanitize_property_name(name)
+        if sanitized_name in self._properties:
+            return self._properties[sanitized_name]
 
         # Not found - provide helpful error with available names
         available = ', '.join(self._properties.keys())
@@ -401,14 +404,14 @@ class Well:
         >>> prop = well.get_property("Zoneloglinkedto'CerisaTops'")  # Original
         >>> prop = well.get_property("Zoneloglinkedto_CerisaTops_")  # Sanitized
         """
-        # Try original name first
+        # Try as-is (sanitized name)
         if name in self._properties:
             return self._properties[name]
 
-        # Try sanitized name mapping
-        if name in self._property_name_mapping:
-            original_name = self._property_name_mapping[name]
-            return self._properties[original_name]
+        # Try sanitizing the name (in case original name was passed)
+        sanitized_name = sanitize_property_name(name)
+        if sanitized_name in self._properties:
+            return self._properties[sanitized_name]
 
         # Not found
         available = ', '.join(self._properties.keys())
@@ -704,19 +707,28 @@ class Well:
             discrete_labels=False  # Always export numeric values
         )
 
-        # Build unit mappings from properties
-        unit_mappings = {'DEPT': 'm'}  # Default depth unit
+        # Build column name mapping: sanitized -> original
+        column_rename_map = {}
         for prop_name, prop in self._properties.items():
             if prop_name in df.columns:
-                unit_mappings[prop_name] = prop.unit
+                column_rename_map[prop_name] = prop.original_name
 
-        # Collect discrete labels if store_labels is True
+        # Rename DataFrame columns to use original names for LAS export
+        df = df.rename(columns=column_rename_map)
+
+        # Build unit mappings from properties (use original names for export)
+        unit_mappings = {'DEPT': 'm'}  # Default depth unit
+        for prop_name, prop in self._properties.items():
+            if prop_name in column_rename_map:
+                unit_mappings[prop.original_name] = prop.unit
+
+        # Collect discrete labels if store_labels is True (use original names)
         label_mappings = None
         if store_labels:
             label_mappings = {}
             for prop_name, prop in self._properties.items():
-                if prop_name in df.columns and prop.labels:
-                    label_mappings[prop_name] = prop.labels
+                if prop_name in column_rename_map and prop.labels:
+                    label_mappings[prop.original_name] = prop.labels
 
         # Export using LasFile static method
         LasFile.export_las(
