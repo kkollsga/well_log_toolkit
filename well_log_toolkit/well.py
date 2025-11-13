@@ -2,7 +2,7 @@
 Well class for managing log properties from a single well.
 """
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
@@ -34,7 +34,7 @@ class Well:
         Original well name
     sanitized_name : str
         Sanitized name for attribute access
-    parent_manager : WellDataManager | None
+    parent_manager : Optional[WellDataManager]
         Parent manager
     properties : list[str]
         List of property names
@@ -60,14 +60,14 @@ class Well:
         self._properties: dict[str, Property] = {}
         self._depth_grid: Optional[np.ndarray] = None
     
-    def load_las(self, las: LasFile | str | Path) -> 'Well':
+    def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
         Load LAS file into this well.
         Validates well name matches.
-        
+
         Parameters
         ----------
-        las : LasFile | str | Path
+        las : Union[LasFile, str, Path]
             Either a LasFile instance or path to LAS file
         
         Returns

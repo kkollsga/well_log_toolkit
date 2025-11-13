@@ -3,7 +3,7 @@ LAS file reader with lazy data loading.
 """
 import io
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ class LasFile:
     
     Parameters
     ----------
-    filepath : str | Path
+    filepath : Union[str, Path]
         Path to LAS file
     
     Attributes
@@ -53,8 +53,8 @@ class LasFile:
     
     # Supported LAS versions
     SUPPORTED_VERSIONS = {'2.0', '2'}
-    
-    def __init__(self, filepath: str | Path):
+
+    def __init__(self, filepath: Union[str, Path]):
         self.filepath = Path(filepath)
         
         if not self.filepath.exists():

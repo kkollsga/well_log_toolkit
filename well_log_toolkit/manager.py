@@ -2,7 +2,7 @@
 Global orchestrator for multi-well analysis.
 """
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from .exceptions import LasFileError
 from .las_file import LasFile
@@ -34,13 +34,13 @@ class WellDataManager:
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
     
-    def load_las(self, filepath: str | Path) -> 'WellDataManager':
+    def load_las(self, filepath: Union[str, Path]) -> 'WellDataManager':
         """
         Load LAS file, auto-create well if needed.
-        
+
         Parameters
         ----------
-        filepath : str | Path
+        filepath : Union[str, Path]
             Path to LAS file
         
         Returns
