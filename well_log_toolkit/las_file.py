@@ -44,7 +44,7 @@ class LasFile:
     --------
     >>> las = LasFile("well.las")
     >>> print(las.well_name)
-    '36/7-5 B'
+    '12/3-2 B'
     >>> print(las.curves.keys())
     dict_keys(['DEPT', 'PHIE_2025', 'PERM_Lam_2025', ...])
     >>> las.update_curve('PHIE_2025', type='continuous', alias='PHIE')

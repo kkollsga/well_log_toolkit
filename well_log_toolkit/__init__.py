@@ -17,7 +17,7 @@ Examples
 >>> manager.load_las("well1.las").load_las("well2.las")
 >>> 
 >>> # Access well and properties
->>> well = manager.well_36_7_5_B
+>>> well = manager.well_12_3_2_B
 >>> 
 >>> # Mark discrete logs
 >>> well.get_property('Zone').type = 'discrete'

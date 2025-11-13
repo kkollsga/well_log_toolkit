@@ -11,17 +11,17 @@ def sanitize_well_name(name: str) -> str:
     Parameters
     ----------
     name : str
-        Original well name (e.g., "36/7-5 B")
-    
+        Original well name (e.g., "12/3-2 B")
+
     Returns
     -------
     str
-        Sanitized name usable as Python attribute (e.g., "well_36_7_5_B")
-    
+        Sanitized name usable as Python attribute (e.g., "well_12_3_2_B")
+
     Examples
     --------
-    >>> sanitize_well_name("36/7-5 B")
-    'well_36_7_5_B'
+    >>> sanitize_well_name("12/3-2 B")
+    'well_12_3_2_B'
     >>> sanitize_well_name("Well-A")
     'well_Well_A'
     >>> sanitize_well_name("Test_Well_123")
@@ -66,8 +66,8 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
     --------
     >>> parse_las_line("DEPT .m : DEPTH")
     ('DEPT', 'm', 'DEPTH')
-    >>> parse_las_line("WELL.  36/7-5 B   : WELL")
-    ('WELL', '36/7-5 B', 'WELL')
+    >>> parse_las_line("WELL.  12/3-2 B   : WELL")
+    ('WELL', '12/3-2 B', 'WELL')
     >>> parse_las_line("NULL .  -999.25 : NULL VALUE")
     ('NULL', '-999.25', 'NULL VALUE')
     """
@@ -84,7 +84,7 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
     mnemonic = tokens[0].rstrip('.')  # Remove trailing dot from mnemonic
     
     # Everything after mnemonic (and optional dot) is unit/value
-    # Handle unit format: ".m" or ". m3/m3" or value: "36/7-5 B"
+    # Handle unit format: ".m" or ". m3/m3" or value: "12/3-2 B"
     rest = left[len(tokens[0]):].strip()
     
     if rest.startswith('.'):
