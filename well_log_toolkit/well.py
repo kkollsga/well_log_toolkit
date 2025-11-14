@@ -118,6 +118,8 @@ class Well:
         self._sources: dict[str, dict] = {}  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
         # Track sources marked for deletion (to delete files on save)
         self._deleted_sources: list[str] = []  # List of source names to delete
+        # Track sources marked for rename (to rename files on save)
+        self._renamed_sources: dict[str, str] = {}  # {old_name: new_name}
 
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
@@ -355,6 +357,9 @@ class Well:
         """
         Rename a source to resolve conflicts or improve clarity.
 
+        The source is marked for rename. When the project is saved,
+        the corresponding LAS file will be renamed on disk.
+
         Parameters
         ----------
         old_name : str
@@ -381,6 +386,7 @@ class Well:
         >>> # Both have PHIE - rename one for clarity
         >>> well.rename_source("log", "wireline")
         >>> well.wireline.PHIE  # Access renamed source
+        >>> manager.save()  # Will rename log.las to wireline.las on disk
         """
         # Validate old source exists
         if old_name not in self._sources:
@@ -404,12 +410,15 @@ class Well:
         if sanitized_new_name == old_name:
             return self
 
+        # Mark source for rename (to rename file on save)
+        self._renamed_sources[old_name] = sanitized_new_name
+
         # Get source data
         source_data = self._sources[old_name]
 
         # Update all properties in this source to have new source_name
         for prop in source_data['properties'].values():
-            prop.source = sanitized_new_name
+            prop.source_name = sanitized_new_name
 
         # Move source to new key
         self._sources[sanitized_new_name] = source_data
@@ -499,7 +508,7 @@ class Well:
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
             'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
             'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
-            'export_sources', 'delete_marked_sources'
+            'export_sources', 'delete_renamed_sources', 'delete_marked_sources'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
@@ -1416,6 +1425,43 @@ class Well:
             use_template=use_template
         )
         las.export(filepath, null_value=null_value)
+
+    def delete_renamed_sources(self, folder_path: Union[str, Path]) -> None:
+        """
+        Delete old LAS files for sources that were renamed.
+
+        This method is called automatically by WellDataManager.save() after exporting
+        sources to delete the old files with the previous names.
+
+        Parameters
+        ----------
+        folder_path : Union[str, Path]
+            Folder path containing the source LAS files
+
+        Examples
+        --------
+        >>> well.rename_source("log", "wireline")
+        >>> well.delete_renamed_sources("/path/to/project/well_36_7_5_B")
+        Renamed source: 36_7-5_B_log.las -> 36_7-5_B_wireline.las (old file deleted)
+        """
+        if not self._renamed_sources:
+            return
+
+        folder = Path(folder_path)
+        well_name_for_file = sanitize_well_name(self.name, keep_hyphens=True)
+
+        for old_name, new_name in self._renamed_sources.items():
+            # Build old filename (new file already exported by export_sources)
+            old_filename = f"{well_name_for_file}_{old_name}.las"
+            old_filepath = folder / old_filename
+
+            # Delete old file if it exists
+            if old_filepath.exists():
+                old_filepath.unlink()
+                print(f"Renamed source: {old_filename} -> {well_name_for_file}_{new_name}.las (old file deleted)")
+
+        # Clear the rename list after processing
+        self._renamed_sources.clear()
 
     def delete_marked_sources(self, folder_path: Union[str, Path]) -> None:
         """

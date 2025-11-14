@@ -255,9 +255,10 @@ class WellDataManager:
         Save all wells and their sources to a project folder structure.
 
         Creates a folder for each well (well_xxx format) and exports all sources
-        as LAS files with well name prefix. Also deletes LAS files for any sources
-        that were removed using remove_source(). If path is not provided, uses the
-        path from the last load() call.
+        as LAS files with well name prefix. Also renames LAS files for any sources
+        that were renamed using rename_source(), and deletes LAS files for any
+        sources that were removed using remove_source(). If path is not provided,
+        uses the path from the last load() call.
 
         Parameters
         ----------
@@ -288,9 +289,10 @@ class WellDataManager:
         >>> # ... make changes ...
         >>> manager.save()  # Saves to "my_project"
         >>>
-        >>> # Remove a source and save
-        >>> manager.well_36_7_5_A.remove_source("Log")
-        >>> manager.save()  # Deletes 36_7-5_A_Log.las from disk
+        >>> # Rename and remove sources, then save
+        >>> manager.well_36_7_5_A.rename_source("Log", "Wireline")
+        >>> manager.well_36_7_5_A.remove_source("CorePor")
+        >>> manager.save()  # Renames 36_7-5_A_Log.las to 36_7-5_A_Wireline.las and deletes 36_7-5_A_CorePor.las
         """
         # Determine path to use
         if path is None:
@@ -311,11 +313,14 @@ class WellDataManager:
             well_folder = save_path / well_key
             well_folder.mkdir(exist_ok=True)
 
+            # Export each source (creates files with current names)
+            well.export_sources(well_folder)
+
+            # Delete old files from renamed sources
+            well.delete_renamed_sources(well_folder)
+
             # Delete sources marked for deletion
             well.delete_marked_sources(well_folder)
-
-            # Export each source
-            well.export_sources(well_folder)
 
     def load(self, path: Union[str, Path]) -> 'WellDataManager':
         """
