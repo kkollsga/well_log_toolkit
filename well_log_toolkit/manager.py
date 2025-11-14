@@ -80,18 +80,20 @@ class WellDataManager:
             )
 
         sanitized_name = sanitize_well_name(well_name)
+        # Use well_ prefix for dictionary key (attribute access)
+        well_key = f"well_{sanitized_name}"
 
-        if sanitized_name not in self._wells:
+        if well_key not in self._wells:
             # Create new well
-            self._wells[sanitized_name] = Well(
+            self._wells[well_key] = Well(
                 name=well_name,
                 sanitized_name=sanitized_name,
                 parent_manager=self
             )
-            self._name_mapping[well_name] = sanitized_name
+            self._name_mapping[well_name] = well_key
 
         # Load into well
-        self._wells[sanitized_name].load_las(las)
+        self._wells[well_key].load_las(las)
 
         return self  # Enable chaining
 
@@ -172,15 +174,18 @@ class WellDataManager:
         for well_name, well_df in grouped:
             # Get or create well
             sanitized_name = sanitize_well_name(well_name)
-            if sanitized_name not in self._wells:
-                self._wells[sanitized_name] = Well(
+            # Use well_ prefix for dictionary key (attribute access)
+            well_key = f"well_{sanitized_name}"
+
+            if well_key not in self._wells:
+                self._wells[well_key] = Well(
                     name=well_name,
                     sanitized_name=sanitized_name,
                     parent_manager=self
                 )
-                self._name_mapping[well_name] = sanitized_name
+                self._name_mapping[well_name] = well_key
 
-            well = self._wells[sanitized_name]
+            well = self._wells[well_key]
 
             # Build DataFrame for this well
             well_data = {
@@ -267,10 +272,10 @@ class WellDataManager:
         # Creates:
         # my_project/
         #   well_36_7_5_A/
-        #     well_36_7_5_A_Log.las
-        #     well_36_7_5_A_CorePor.las
+        #     36_7_5_A_Log.las
+        #     36_7_5_A_CorePor.las
         #   well_36_7_5_B/
-        #     well_36_7_5_B_Log.las
+        #     36_7_5_B_Log.las
         >>>
         >>> # After load(), can save without path
         >>> manager = WellDataManager()
@@ -292,9 +297,9 @@ class WellDataManager:
 
         save_path.mkdir(parents=True, exist_ok=True)
 
-        for well_name, well in self._wells.items():
-            # Create well folder
-            well_folder = save_path / well_name
+        for well_key, well in self._wells.items():
+            # Create well folder (well_key already has well_ prefix)
+            well_folder = save_path / well_key
             well_folder.mkdir(exist_ok=True)
 
             # Export each source
@@ -357,33 +362,35 @@ class WellDataManager:
     def add_well(self, well_name: str) -> Well:
         """
         Create or get existing well.
-        
+
         Parameters
         ----------
         well_name : str
             Original well name
-        
+
         Returns
         -------
         Well
             New or existing well instance
-        
+
         Examples
         --------
         >>> well = manager.add_well("12/3-2 B")
         >>> well.load_las("log1.las")
         """
         sanitized_name = sanitize_well_name(well_name)
-        
-        if sanitized_name not in self._wells:
-            self._wells[sanitized_name] = Well(
+        # Use well_ prefix for dictionary key (attribute access)
+        well_key = f"well_{sanitized_name}"
+
+        if well_key not in self._wells:
+            self._wells[well_key] = Well(
                 name=well_name,
                 sanitized_name=sanitized_name,
                 parent_manager=self
             )
-            self._name_mapping[well_name] = sanitized_name
-        
-        return self._wells[sanitized_name]
+            self._name_mapping[well_name] = well_key
+
+        return self._wells[well_key]
     
     def __getattr__(self, name: str) -> Well:
         """
@@ -431,36 +438,45 @@ class WellDataManager:
     def get_well(self, name: str) -> Well:
         """
         Get well by original or sanitized name.
-        
+
         Parameters
         ----------
         name : str
-            Either original name ("12/3-2 B") or sanitized ("well_12_3_2_B")
-        
+            Either original name ("36/7-5 A"), sanitized ("36_7_5_A"),
+            or with well_ prefix ("well_36_7_5_A")
+
         Returns
         -------
         Well
             The requested well
-        
+
         Raises
         ------
         KeyError
             If well not found
-        
+
         Examples
         --------
-        >>> well = manager.get_well("12/3-2 B")
-        >>> well = manager.get_well("well_12_3_2_B")
+        >>> well = manager.get_well("36/7-5 A")
+        >>> well = manager.get_well("36_7_5_A")
+        >>> well = manager.get_well("well_36_7_5_A")
         """
-        # Try sanitized first
+        # Try as-is (might be well_xxx format)
         if name in self._wells:
             return self._wells[name]
-        
+
+        # Try adding well_ prefix
+        if not name.startswith('well_'):
+            well_key = f"well_{name}"
+            if well_key in self._wells:
+                return self._wells[well_key]
+
         # Try as original name
         sanitized = sanitize_well_name(name)
-        if sanitized in self._wells:
-            return self._wells[sanitized]
-        
+        well_key = f"well_{sanitized}"
+        if well_key in self._wells:
+            return self._wells[well_key]
+
         # Not found
         available = ', '.join(self._wells.keys())
         raise KeyError(
@@ -471,22 +487,23 @@ class WellDataManager:
     def remove_well(self, name: str) -> None:
         """
         Remove a well from the manager.
-        
+
         Parameters
         ----------
         name : str
-            Well name (original or sanitized)
-        
+            Well name (original, sanitized, or with well_ prefix)
+
         Examples
         --------
-        >>> manager.remove_well("12/3-2 B")
+        >>> manager.remove_well("36/7-5 A")
+        >>> manager.remove_well("well_36_7_5_A")
         """
         # Find the well
         well = self.get_well(name)
-        sanitized = well.sanitized_name
-        
+        well_key = f"well_{well.sanitized_name}"
+
         # Remove from mappings
-        del self._wells[sanitized]
+        del self._wells[well_key]
         if well.name in self._name_mapping:
             del self._name_mapping[well.name]
     

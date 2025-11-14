@@ -179,13 +179,10 @@ class Well:
             base_source_name = sanitize_property_name(base_source_name)
 
             # Remove well name prefix if present (e.g., "36_7_5_B_CorePor" -> "CorePor")
-            # Sanitize well name to match the format used in filenames
-            sanitized_well_name = sanitize_property_name(self.name)
-
             # Check if source name starts with sanitized well name
-            if base_source_name.startswith(sanitized_well_name):
+            if base_source_name.startswith(self.sanitized_name):
                 # Remove the well name prefix and any connecting underscores
-                suffix = base_source_name[len(sanitized_well_name):]
+                suffix = base_source_name[len(self.sanitized_name):]
                 # Remove leading underscores
                 suffix = suffix.lstrip('_')
                 # Only use suffix if it's not empty
@@ -1405,14 +1402,15 @@ class Well:
         >>> well = manager.well_36_7_5_B
         >>> well.export_sources("/path/to/output")
         # Creates:
-        # /path/to/output/well_36_7_5_B_Log.las
-        # /path/to/output/well_36_7_5_B_CorePor.las
+        # /path/to/output/36_7_5_B_Log.las
+        # /path/to/output/36_7_5_B_CorePor.las
         """
         folder = Path(folder_path)
         folder.mkdir(parents=True, exist_ok=True)
 
         for source_name, source_data in self._sources.items():
             # Build filename: well_name_source.las
+            # sanitized_name does not include 'well_' prefix
             filename = f"{self.sanitized_name}_{source_name}.las"
             filepath = folder / filename
 

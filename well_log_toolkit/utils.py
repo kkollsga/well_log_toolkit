@@ -6,8 +6,11 @@ import re
 
 def sanitize_well_name(name: str) -> str:
     """
-    Convert well name to valid Python attribute.
-    
+    Convert well name to valid Python identifier.
+
+    Does NOT add 'well_' prefix - that should be added explicitly where needed
+    (e.g., for folder names or dictionary keys for attribute access).
+
     Parameters
     ----------
     name : str
@@ -16,35 +19,29 @@ def sanitize_well_name(name: str) -> str:
     Returns
     -------
     str
-        Sanitized name usable as Python attribute (e.g., "well_12_3_2_B")
+        Sanitized name (e.g., "36_7_5_A")
 
     Examples
     --------
-    >>> sanitize_well_name("12/3-2 B")
-    'well_12_3_2_B'
+    >>> sanitize_well_name("36/7-5 A")
+    '36_7_5_A'
     >>> sanitize_well_name("Well-A")
-    'well_Well_A'
+    'Well_A'
     >>> sanitize_well_name("Test_Well_123")
-    'well_Test_Well_123'
+    'Test_Well_123'
     """
     if not name or not isinstance(name, str):
         raise ValueError(f"Well name must be a non-empty string, got: {name}")
-    
+
     # Replace invalid characters with underscore
     sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
-    
+
     # Remove consecutive underscores
     sanitized = re.sub(r'_+', '_', sanitized)
-    
-    # Ensure it doesn't start with a number
-    if sanitized and sanitized[0].isdigit():
-        sanitized = 'well_' + sanitized
-    elif not sanitized.startswith('well_'):
-        sanitized = 'well_' + sanitized
-    
+
     # Remove trailing underscores
     sanitized = sanitized.strip('_')
-    
+
     return sanitized
 
 
