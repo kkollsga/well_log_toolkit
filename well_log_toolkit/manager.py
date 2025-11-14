@@ -100,9 +100,10 @@ class WellDataManager:
     def load_tops(
         self,
         df: pd.DataFrame,
-        source_name: str = "Well_Tops",
+        property_name: str = "Well_Tops",
+        source_name: str = "Imported_Tops",
         well_col: str = "Well identifier (Well name)",
-        surface_col: str = "Surface",
+        discrete_col: str = "Surface",
         depth_col: str = "MD",
         x_col: Optional[str] = "X",
         y_col: Optional[str] = "Y",
@@ -112,19 +113,21 @@ class WellDataManager:
         """
         Load formation tops data from a DataFrame into wells.
 
-        Automatically creates wells if they don't exist, converts surface names
+        Automatically creates wells if they don't exist, converts discrete values
         to discrete integers with labels, and adds the data as a source to each well.
 
         Parameters
         ----------
         df : pd.DataFrame
-            DataFrame containing tops data with columns for well name, surface, and depth
-        source_name : str, default "Well_Tops"
-            Name for this tops source (will be sanitized)
+            DataFrame containing tops data with columns for well name, discrete values, and depth
+        property_name : str, default "Well_Tops"
+            Name for the discrete property (will be sanitized)
+        source_name : str, default "Imported_Tops"
+            Name for this source group (will be sanitized)
         well_col : str, default "Well identifier (Well name)"
             Column name containing well names
-        surface_col : str, default "Surface"
-            Column name containing formation/surface names
+        discrete_col : str, default "Surface"
+            Column name containing discrete values (e.g., formation/surface names)
         depth_col : str, default "MD"
             Column name containing measured depth values
         x_col : str, optional, default "X"
@@ -151,11 +154,12 @@ class WellDataManager:
         >>>
         >>> # Access tops
         >>> well = manager.well_36_7_5_A
-        >>> print(well.sources)  # ['Well_Tops']
-        >>> well.Well_Tops.Surface  # Discrete property with formation names
+        >>> print(well.sources)  # ['Imported_Tops']
+        >>> well.Imported_Tops.Well_Tops  # Discrete property with formation names
         """
+
         # Validate required columns exist
-        required_cols = [well_col, surface_col, depth_col]
+        required_cols = [well_col, discrete_col, depth_col]
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             raise ValueError(
@@ -163,10 +167,10 @@ class WellDataManager:
                 f"Available columns: {', '.join(df.columns)}"
             )
 
-        # Build global surface label mapping (consistent across all wells)
-        unique_surfaces = sorted(df[surface_col].unique())
-        surface_to_code = {surface: idx for idx, surface in enumerate(unique_surfaces)}
-        code_to_surface = {idx: surface for surface, idx in surface_to_code.items()}
+        # Build global discrete label mapping (consistent across all wells)
+        unique_values = sorted(df[discrete_col].unique())
+        value_to_code = {value: idx for idx, value in enumerate(unique_values)}
+        code_to_value = {idx: value for value, idx in value_to_code.items()}
 
         # Group by well
         grouped = df.groupby(well_col)
@@ -190,7 +194,7 @@ class WellDataManager:
             # Build DataFrame for this well
             well_data = {
                 'DEPT': well_df[depth_col].values,
-                surface_col: well_df[surface_col].map(surface_to_code).values
+                property_name: well_df[discrete_col].map(value_to_code).values
             }
 
             # Add coordinates if requested
@@ -205,7 +209,7 @@ class WellDataManager:
             tops_df = pd.DataFrame(well_data)
 
             # Build unit mappings
-            unit_mappings = {'DEPT': 'm', surface_col: ''}
+            unit_mappings = {'DEPT': 'm', property_name: ''}
             if include_coordinates:
                 if x_col and x_col in well_df.columns:
                     unit_mappings[x_col] = 'm'
@@ -214,8 +218,8 @@ class WellDataManager:
                 if z_col and z_col in well_df.columns:
                     unit_mappings[z_col] = 'm'
 
-            # Build type mappings (surface is discrete, coordinates are continuous)
-            type_mappings = {surface_col: 'discrete'}
+            # Build type mappings (discrete property, coordinates are continuous)
+            type_mappings = {property_name: 'discrete'}
             if include_coordinates:
                 if x_col and x_col in well_df.columns:
                     type_mappings[x_col] = 'continuous'
@@ -238,7 +242,7 @@ class WellDataManager:
                 source_name=base_source_name,
                 unit_mappings=unit_mappings,
                 type_mappings=type_mappings,
-                label_mappings={surface_col: code_to_surface}
+                label_mappings={property_name: code_to_value}
             )
 
             # Load it

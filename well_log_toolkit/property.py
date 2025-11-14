@@ -139,36 +139,42 @@ class Property:
     def filter(self, property_name: str) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
-        Returns new Property with aligned secondary property.
-        
+
+        Returns new Property with the discrete property values interpolated
+        to the current depth grid. The depth grid remains unchanged - only
+        the discrete values are added as a secondary property.
+
         Parameters
         ----------
         property_name : str
             Name of discrete property in parent well
-        
+
         Returns
         -------
         Property
-            New property instance with secondary property added
-        
+            New property instance with secondary property added (same depth grid)
+
         Raises
         ------
         PropertyNotFoundError
             If parent_well is None or property doesn't exist
         PropertyTypeError
             If property is not discrete type
-        
+
         Examples
         --------
         >>> filtered = well.phie.filter("Zone").filter("NTG_Flag")
         >>> stats = filtered.sums_avg()
+        >>> # Shape remains the same - only discrete values are added
+        >>> original.shape  # (29, 2)
+        >>> filtered.to_dataframe().shape  # (29, 3) - added Zone column
         """
         if self.parent_well is None:
             raise PropertyNotFoundError(
                 f"Cannot filter property '{self.name}': no parent well reference. "
                 "Property must be created from a Well to enable filtering."
             )
-        
+
         # Lookup in parent well
         try:
             discrete_prop = self.parent_well.get_property(property_name)
@@ -178,7 +184,7 @@ class Property:
                 f"Property '{property_name}' not found in well '{self.parent_well.name}'. "
                 f"Available properties: {available}"
             )
-        
+
         # Validate it's discrete
         if discrete_prop.type != 'discrete':
             raise PropertyTypeError(
@@ -186,45 +192,28 @@ class Property:
                 f"got '{discrete_prop.type}'. Set type with: "
                 f"well.get_property('{property_name}').type = 'discrete'"
             )
-        
-        # Align depth grids
-        aligned_depth, aligned_main, aligned_secondary = self._align_depths(discrete_prop)
-        
-        # Also resample existing secondary properties to new grid
-        aligned_secondaries = []
-        for sec_prop in self.secondary_properties:
-            resampled_values = self._resample_to_grid(
-                sec_prop.depth,
-                sec_prop.values,
-                aligned_depth,
-                method='nearest'  # Always nearest for discrete
-            )
-            
-            aligned_secondaries.append(Property(
-                name=sec_prop.name,
-                depth=aligned_depth,
-                values=resampled_values,
-                parent_well=self.parent_well,
-                unit=sec_prop.unit,
-                prop_type=sec_prop.type,
-                description=sec_prop.description,
-                null_value=-999.25,  # Already cleaned
-                labels=sec_prop.labels,
-                source_las=sec_prop.source_las,
-                source_name=sec_prop.source_name,
-                original_name=sec_prop.original_name
-            ))
+
+        # Interpolate discrete property to THIS property's depth grid (no resampling of main property)
+        interpolated_discrete = self._resample_to_grid(
+            discrete_prop.depth,
+            discrete_prop.values,
+            self.depth,  # Use current depth grid
+            method='nearest'  # Always nearest for discrete
+        )
+
+        # Copy existing secondary properties (they're already on the same depth grid)
+        new_secondaries = list(self.secondary_properties)
 
         # Add new secondary property
-        aligned_secondaries.append(Property(
+        new_secondaries.append(Property(
             name=discrete_prop.name,
-            depth=aligned_depth,
-            values=aligned_secondary,
+            depth=self.depth.copy(),  # Same depth grid
+            values=interpolated_discrete,
             parent_well=self.parent_well,
             unit=discrete_prop.unit,
             prop_type=discrete_prop.type,
             description=discrete_prop.description,
-            null_value=-999.25,  # Already cleaned
+            null_value=-999.25,
             labels=discrete_prop.labels,
             source_las=discrete_prop.source_las,
             source_name=discrete_prop.source_name,
@@ -234,8 +223,8 @@ class Property:
         # Create new Property instance with all secondaries
         new_prop = Property(
             name=self.name,
-            depth=aligned_depth,
-            values=aligned_main,
+            depth=self.depth.copy(),  # Keep same depth grid
+            values=self.values.copy(),  # Keep same values
             parent_well=self.parent_well,
             unit=self.unit,
             prop_type=self.type,
