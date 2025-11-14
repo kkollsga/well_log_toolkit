@@ -235,7 +235,7 @@ class Property:
             source_name=self.source_name,
             original_name=self.original_name
         )
-        new_prop.secondary_properties = aligned_secondaries
+        new_prop.secondary_properties = new_secondaries
 
         return new_prop
     
