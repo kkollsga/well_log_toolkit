@@ -417,17 +417,17 @@ class Well:
 
         return self
 
-    def remove_source(self, name: str) -> 'Well':
+    def remove_source(self, name: Union[str, list[str]]) -> 'Well':
         """
-        Remove a source and all its properties from the well.
+        Remove one or more sources and all their properties from the well.
 
-        The source is marked for deletion. When the project is saved,
-        the corresponding LAS file will be deleted from disk.
+        The sources are marked for deletion. When the project is saved,
+        the corresponding LAS files will be deleted from disk.
 
         Parameters
         ----------
-        name : str
-            Source name to remove
+        name : str or list[str]
+            Source name(s) to remove. Can be a single string or list of strings.
 
         Returns
         -------
@@ -437,29 +437,42 @@ class Well:
         Raises
         ------
         KeyError
-            If source doesn't exist
+            If any source doesn't exist
 
         Examples
         --------
+        >>> # Remove single source
         >>> well.load_las("log.las")
         >>> well.load_las("core.las")
         >>> well.sources  # ['log', 'core']
         >>> well.remove_source("log")
         >>> well.sources  # ['core']
         >>> manager.save()  # Will delete log.las from project folder
+        >>>
+        >>> # Remove multiple sources
+        >>> well.remove_source(["log", "core"])
+        >>> well.sources  # []
         """
-        if name not in self._sources:
-            available = ', '.join(self._sources.keys())
-            raise KeyError(
-                f"Source '{name}' not found. "
-                f"Available sources: {available or 'none'}"
-            )
+        # Convert to list if single string
+        names = [name] if isinstance(name, str) else name
 
-        # Mark source for deletion (to delete file on save)
-        self._deleted_sources.append(name)
+        # Validate all sources exist first
+        for source_name in names:
+            if source_name not in self._sources:
+                available = ', '.join(self._sources.keys())
+                raise KeyError(
+                    f"Source '{source_name}' not found. "
+                    f"Available sources: {available or 'none'}"
+                )
 
-        # Remove from active sources
-        del self._sources[name]
+        # Remove all sources
+        for source_name in names:
+            # Mark source for deletion (to delete file on save)
+            self._deleted_sources.append(source_name)
+
+            # Remove from active sources
+            del self._sources[source_name]
+
         return self
 
     def __getattr__(self, name: str) -> Union[SourceView, Property]:
