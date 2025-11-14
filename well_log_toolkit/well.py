@@ -148,7 +148,9 @@ class Well:
 
         Properties are grouped by source (LAS file). The source name is derived
         from the filename stem (without extension), sanitized for Python attribute
-        access. If a source with the same name already exists, a numeric suffix is added.
+        access. If the filename starts with the well name, that prefix is removed
+        to avoid redundancy (e.g., "36_7_5_B_CorePor.las" becomes "CorePor").
+        If a source with the same name already exists, a numeric suffix is added.
 
         Parameters
         ----------
@@ -169,12 +171,15 @@ class Well:
 
         Examples
         --------
-        >>> well = manager.well_12_3_2_B
-        >>> well.load_las("log1.las").load_las("log2.las")
+        >>> well = manager.well_36_7_5_B
+        >>> well.load_las("36_7-5_B_CorePor.las")  # Source name: "CorePor"
+        >>> well.load_las("36_7-5_B_Log.las")      # Source name: "Log"
+        >>> well.load_las("formation_tops.las")    # Source name: "formation_tops"
         >>> # Access by source
-        >>> well.log1.PHIE
+        >>> well.CorePor.PHIE
+        >>> well.Log.GR
         >>> # Access directly if unique
-        >>> well.PHIE  # Error if both log1 and log2 have PHIE
+        >>> well.PHIE  # Error if both CorePor and Log have PHIE
         """
         # Parse if path provided
         filepath = None
@@ -197,6 +202,21 @@ class Well:
             base_source_name = filepath.stem  # Filename without extension
             # Sanitize the source name
             base_source_name = sanitize_property_name(base_source_name)
+
+            # Remove well name prefix if present (e.g., "36_7_5_B_CorePor" -> "CorePor")
+            # Sanitize well name to match the format used in filenames
+            sanitized_well_name = sanitize_property_name(self.name)
+
+            # Check if source name starts with sanitized well name
+            if base_source_name.startswith(sanitized_well_name):
+                # Remove the well name prefix and any connecting underscores
+                suffix = base_source_name[len(sanitized_well_name):]
+                # Remove leading underscores
+                suffix = suffix.lstrip('_')
+                # Only use suffix if it's not empty
+                if suffix:
+                    base_source_name = suffix
+                # If suffix is empty, keep the original (entire name is the well name)
         else:
             # Fallback for LasFile objects without filepath
             base_source_name = 'unknown_source'
@@ -343,6 +363,109 @@ class Well:
         # Load it like any other LAS file
         return self.load_las(las)
 
+    def rename_source(self, old_name: str, new_name: str) -> 'Well':
+        """
+        Rename a source to resolve conflicts or improve clarity.
+
+        Parameters
+        ----------
+        old_name : str
+            Current source name
+        new_name : str
+            New source name (will be sanitized)
+
+        Returns
+        -------
+        Well
+            Self for method chaining
+
+        Raises
+        ------
+        KeyError
+            If old source doesn't exist
+        ValueError
+            If new name already exists or conflicts
+
+        Examples
+        --------
+        >>> well.load_las("log.las")  # Creates source named 'log'
+        >>> well.load_las("core.las")  # Creates source named 'core'
+        >>> # Both have PHIE - rename one for clarity
+        >>> well.rename_source("log", "wireline")
+        >>> well.wireline.PHIE  # Access renamed source
+        """
+        # Validate old source exists
+        if old_name not in self._sources:
+            available = ', '.join(self._sources.keys())
+            raise KeyError(
+                f"Source '{old_name}' not found. "
+                f"Available sources: {available or 'none'}"
+            )
+
+        # Sanitize new name
+        sanitized_new_name = sanitize_property_name(new_name)
+
+        # Validate new name doesn't already exist
+        if sanitized_new_name in self._sources and sanitized_new_name != old_name:
+            raise ValueError(
+                f"Source '{sanitized_new_name}' already exists. "
+                "Choose a different name or remove the existing source first."
+            )
+
+        # If old and new are the same after sanitization, nothing to do
+        if sanitized_new_name == old_name:
+            return self
+
+        # Get source data
+        source_data = self._sources[old_name]
+
+        # Update all properties in this source to have new source_name
+        for prop in source_data['properties'].values():
+            prop.source = sanitized_new_name
+
+        # Move source to new key
+        self._sources[sanitized_new_name] = source_data
+        del self._sources[old_name]
+
+        return self
+
+    def remove_source(self, name: str) -> 'Well':
+        """
+        Remove a source and all its properties from the well.
+
+        Parameters
+        ----------
+        name : str
+            Source name to remove
+
+        Returns
+        -------
+        Well
+            Self for method chaining
+
+        Raises
+        ------
+        KeyError
+            If source doesn't exist
+
+        Examples
+        --------
+        >>> well.load_las("log.las")
+        >>> well.load_las("core.las")
+        >>> well.sources  # ['log', 'core']
+        >>> well.remove_source("log")
+        >>> well.sources  # ['core']
+        """
+        if name not in self._sources:
+            available = ', '.join(self._sources.keys())
+            raise KeyError(
+                f"Source '{name}' not found. "
+                f"Available sources: {available or 'none'}"
+            )
+
+        del self._sources[name]
+        return self
+
     def __getattr__(self, name: str) -> Union[SourceView, Property]:
         """
         Enable source and property access via attributes.
@@ -366,7 +489,7 @@ class Well:
         if name.startswith('_') or name in [
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
             'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
-            'add_dataframe', 'to_las', 'export_to_las'
+            'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
