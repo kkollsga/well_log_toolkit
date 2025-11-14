@@ -10,7 +10,7 @@ import pandas as pd
 from .exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
 from .property import Property
 from .las_file import LasFile
-from .utils import sanitize_property_name
+from .utils import sanitize_property_name, sanitize_well_name
 
 if TYPE_CHECKING:
     from .manager import WellDataManager
@@ -175,20 +175,29 @@ class Well:
         # Generate source name from filename stem
         if filepath:
             base_source_name = filepath.stem  # Filename without extension
-            # Sanitize the source name
-            base_source_name = sanitize_property_name(base_source_name)
 
-            # Remove well name prefix if present (e.g., "36_7_5_B_CorePor" -> "CorePor")
-            # Check if source name starts with sanitized well name
-            if base_source_name.startswith(self.sanitized_name):
-                # Remove the well name prefix and any connecting underscores
-                suffix = base_source_name[len(self.sanitized_name):]
-                # Remove leading underscores
-                suffix = suffix.lstrip('_')
-                # Only use suffix if it's not empty
-                if suffix:
-                    base_source_name = suffix
-                # If suffix is empty, keep the original (entire name is the well name)
+            # Remove well name prefix BEFORE sanitizing to avoid prop_ prefix issue
+            # Try multiple formats of well name (with hyphens and without)
+            well_name_variants = [
+                sanitize_well_name(self.name, keep_hyphens=True),  # "36_7-5_ST2"
+                self.sanitized_name  # "36_7_5_ST2"
+            ]
+
+            # Check each variant
+            suffix_found = False
+            for well_variant in well_name_variants:
+                # Check if filename starts with this variant (case-insensitive for robustness)
+                if base_source_name.lower().startswith(well_variant.lower()):
+                    # Remove the well name prefix and any connecting underscores or hyphens
+                    suffix = base_source_name[len(well_variant):]
+                    suffix = suffix.lstrip('_-')
+                    if suffix:
+                        base_source_name = suffix
+                        suffix_found = True
+                        break
+
+            # Now sanitize for Python attribute access
+            base_source_name = sanitize_property_name(base_source_name)
         else:
             # Fallback for LasFile objects without filepath
             base_source_name = 'unknown_source'
@@ -1401,17 +1410,18 @@ class Well:
         --------
         >>> well = manager.well_36_7_5_B
         >>> well.export_sources("/path/to/output")
-        # Creates:
-        # /path/to/output/36_7_5_B_Log.las
-        # /path/to/output/36_7_5_B_CorePor.las
+        # Creates (hyphens preserved in filenames):
+        # /path/to/output/36_7-5_B_Log.las
+        # /path/to/output/36_7-5_B_CorePor.las
         """
         folder = Path(folder_path)
         folder.mkdir(parents=True, exist_ok=True)
 
         for source_name, source_data in self._sources.items():
             # Build filename: well_name_source.las
-            # sanitized_name does not include 'well_' prefix
-            filename = f"{self.sanitized_name}_{source_name}.las"
+            # Use sanitized name with hyphens preserved for better readability
+            well_name_for_file = sanitize_well_name(self.name, keep_hyphens=True)
+            filename = f"{well_name_for_file}_{source_name}.las"
             filepath = folder / filename
 
             # Get properties from this source

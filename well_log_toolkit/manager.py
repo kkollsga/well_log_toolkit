@@ -269,13 +269,13 @@ class WellDataManager:
         >>> manager = WellDataManager()
         >>> manager.load_las(["well1.las", "well2.las"])
         >>> manager.save("my_project")
-        # Creates:
+        # Creates (hyphens preserved in filenames):
         # my_project/
         #   well_36_7_5_A/
-        #     36_7_5_A_Log.las
-        #     36_7_5_A_CorePor.las
+        #     36_7-5_A_Log.las
+        #     36_7-5_A_CorePor.las
         #   well_36_7_5_B/
-        #     36_7_5_B_Log.las
+        #     36_7-5_B_Log.las
         >>>
         >>> # After load(), can save without path
         >>> manager = WellDataManager()

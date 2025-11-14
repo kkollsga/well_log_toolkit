@@ -4,7 +4,7 @@ Utility functions for well log toolkit.
 import re
 
 
-def sanitize_well_name(name: str) -> str:
+def sanitize_well_name(name: str, keep_hyphens: bool = False) -> str:
     """
     Convert well name to valid Python identifier.
 
@@ -14,27 +14,36 @@ def sanitize_well_name(name: str) -> str:
     Parameters
     ----------
     name : str
-        Original well name (e.g., "12/3-2 B")
+        Original well name (e.g., "36/7-5 A")
+    keep_hyphens : bool, default False
+        If True, keeps hyphens in the result (useful for filenames).
+        If False, replaces hyphens with underscores (for Python identifiers).
 
     Returns
     -------
     str
-        Sanitized name (e.g., "36_7_5_A")
+        Sanitized name (e.g., "36_7_5_A" or "36_7-5_A" with keep_hyphens=True)
 
     Examples
     --------
     >>> sanitize_well_name("36/7-5 A")
     '36_7_5_A'
+    >>> sanitize_well_name("36/7-5 A", keep_hyphens=True)
+    '36_7-5_A'
     >>> sanitize_well_name("Well-A")
     'Well_A'
-    >>> sanitize_well_name("Test_Well_123")
-    'Test_Well_123'
+    >>> sanitize_well_name("Well-A", keep_hyphens=True)
+    'Well-A'
     """
     if not name or not isinstance(name, str):
         raise ValueError(f"Well name must be a non-empty string, got: {name}")
 
-    # Replace invalid characters with underscore
-    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    if keep_hyphens:
+        # Replace invalid characters except hyphens with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    else:
+        # Replace all invalid characters with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
 
     # Remove consecutive underscores
     sanitized = re.sub(r'_+', '_', sanitized)
