@@ -116,31 +116,6 @@ class Well:
         self.parent_manager = parent_manager
         # New source-aware storage structure
         self._sources: dict[str, dict] = {}  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
-        self._external_df_count: int = 0  # Counter for external DataFrame sources
-
-    def _generate_unique_source_name(self, base_name: str) -> str:
-        """
-        Generate a unique source name by appending _# if needed.
-
-        Parameters
-        ----------
-        base_name : str
-            Base source name (sanitized)
-
-        Returns
-        -------
-        str
-            Unique source name not already in self._sources
-        """
-        if base_name not in self._sources:
-            return base_name
-
-        # Handle collision with numbering
-        counter = 1
-        while f"{base_name}_{counter}" in self._sources:
-            counter += 1
-
-        return f"{base_name}_{counter}"
 
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
@@ -221,8 +196,10 @@ class Well:
             # Fallback for LasFile objects without filepath
             base_source_name = 'unknown_source'
 
-        # Handle source name collisions
-        source_name = self._generate_unique_source_name(base_source_name)
+        # Check if source already exists and notify user of overwrite
+        source_name = base_source_name
+        if source_name in self._sources:
+            print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
 
         # Load data
         data = las.data
@@ -347,8 +324,11 @@ class Well:
         """
         # Generate base source name
         base_source_name = 'external_df'
-        # Handle collisions
-        source_name = self._generate_unique_source_name(base_source_name)
+
+        # Check if source already exists and notify user of overwrite
+        source_name = base_source_name
+        if source_name in self._sources:
+            print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
 
         # Create LasFile from DataFrame
         las = LasFile.from_dataframe(
@@ -489,7 +469,8 @@ class Well:
         if name.startswith('_') or name in [
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
             'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
-            'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source'
+            'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
+            'export_sources'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
@@ -1406,6 +1387,81 @@ class Well:
             use_template=use_template
         )
         las.export(filepath, null_value=null_value)
+
+    def export_sources(self, folder_path: Union[str, Path]) -> None:
+        """
+        Export all sources as individual LAS files to a folder.
+
+        Each source is exported as a separate LAS file with the well name prefix.
+        Filename format: {well_sanitized_name}_{source_name}.las
+
+        Parameters
+        ----------
+        folder_path : Union[str, Path]
+            Folder path to export LAS files to. Will be created if it doesn't exist.
+
+        Examples
+        --------
+        >>> well = manager.well_36_7_5_B
+        >>> well.export_sources("/path/to/output")
+        # Creates:
+        # /path/to/output/well_36_7_5_B_Log.las
+        # /path/to/output/well_36_7_5_B_CorePor.las
+        """
+        folder = Path(folder_path)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        for source_name, source_data in self._sources.items():
+            # Build filename: well_name_source.las
+            filename = f"{self.sanitized_name}_{source_name}.las"
+            filepath = folder / filename
+
+            # Get properties from this source
+            properties = list(source_data['properties'].keys())
+
+            # Export this source's properties to LAS
+            # Use the source's original LAS file as template if available
+            template_las = source_data.get('las_file')
+
+            # Build DataFrame directly from this source's properties
+            if properties:
+                ref_prop = next(iter(source_data['properties'].values()))
+                depth = ref_prop.depth
+
+                data = {'DEPT': depth}
+                unit_mappings = {'DEPT': 'm'}
+                type_mappings = {}
+                label_mappings = {}
+
+                for prop_name, prop in source_data['properties'].items():
+                    data[prop.original_name] = prop.values
+                    unit_mappings[prop.original_name] = prop.unit
+                    type_mappings[prop.original_name] = prop.type
+                    if prop.labels:
+                        label_mappings[prop.original_name] = prop.labels
+
+                df = pd.DataFrame(data)
+
+                # Create LasFile from DataFrame
+                las = LasFile.from_dataframe(
+                    df=df,
+                    well_name=self.name,
+                    source_name=source_name,
+                    unit_mappings=unit_mappings,
+                    type_mappings=type_mappings,
+                    label_mappings=label_mappings if label_mappings else None
+                )
+
+                # If template LAS available, copy metadata
+                if template_las:
+                    las.version_info = template_las.version_info.copy()
+                    # Copy well parameters except computed ones
+                    for key, value in template_las.well_info.items():
+                        if key not in ['STRT', 'STOP', 'STEP', 'NULL']:
+                            las.well_info[key] = value
+
+                # Export to file
+                las.export(filepath)
 
     def __repr__(self) -> str:
         """String representation."""
