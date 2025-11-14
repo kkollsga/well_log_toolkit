@@ -839,7 +839,7 @@ class Well:
                     prop.depth,
                     prop.values,
                     depth_grid,
-                    method='linear' if prop.type == 'continuous' else 'nearest'
+                    method='linear' if prop.type == 'continuous' else 'previous'
                 )
 
                 # Create new property with merged source

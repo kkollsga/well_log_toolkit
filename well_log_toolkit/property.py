@@ -194,11 +194,12 @@ class Property:
             )
 
         # Interpolate discrete property to THIS property's depth grid (no resampling of main property)
+        # Use 'previous' (forward fill) for discrete: value at MD applies from that depth downward
         interpolated_discrete = self._resample_to_grid(
             discrete_prop.depth,
             discrete_prop.values,
             self.depth,  # Use current depth grid
-            method='nearest'  # Always nearest for discrete
+            method='previous'  # Forward fill: value applies from depth downward until next marker
         )
 
         # Copy existing secondary properties (they're already on the same depth grid)
@@ -272,14 +273,14 @@ class Property:
             self.depth,
             self.values,
             common_depth,
-            method='linear' if self.type == 'continuous' else 'nearest'
+            method='linear' if self.type == 'continuous' else 'previous'
         )
-        
+
         resampled_other = self._resample_to_grid(
             other.depth,
             other.values,
             common_depth,
-            method='nearest'  # Always nearest for discrete
+            method='linear' if other.type == 'continuous' else 'previous'
         )
         
         return common_depth, resampled_self, resampled_other
@@ -293,7 +294,7 @@ class Property:
     ) -> np.ndarray:
         """
         Resample values from old depth grid to new depth grid.
-        
+
         Parameters
         ----------
         old_depth : np.ndarray
@@ -303,8 +304,12 @@ class Property:
         new_depth : np.ndarray
             Target depth grid
         method : str, default 'linear'
-            Interpolation method: 'linear', 'nearest', 'cubic'
-        
+            Interpolation method:
+            - 'linear': Linear interpolation (default for continuous)
+            - 'previous': Forward fill - value applies from depth downward (use for discrete/tops)
+            - 'nearest': Nearest neighbor
+            - 'cubic': Cubic spline interpolation
+
         Returns
         -------
         np.ndarray
