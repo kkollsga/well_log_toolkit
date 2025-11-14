@@ -35,6 +35,7 @@ class WellDataManager:
     def __init__(self):
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
+        self._project_path: Optional[Path] = None  # Track project path for save()
     
     def load_las(self, filepath: Union[str, Path, list[Union[str, Path]]]) -> 'WellDataManager':
         """
@@ -240,23 +241,29 @@ class WellDataManager:
 
         return self
 
-    def export_project(self, path: Union[str, Path]) -> None:
+    def save(self, path: Optional[Union[str, Path]] = None) -> None:
         """
-        Export all wells and their sources to a project folder structure.
+        Save all wells and their sources to a project folder structure.
 
         Creates a folder for each well (well_xxx format) and exports all sources
-        as LAS files with well name prefix.
+        as LAS files with well name prefix. If path is not provided, uses the path
+        from the last load() call.
 
         Parameters
         ----------
-        path : Union[str, Path]
-            Root directory path for the project
+        path : Union[str, Path], optional
+            Root directory path for the project. If None, uses path from last load().
+
+        Raises
+        ------
+        ValueError
+            If path is None and no project has been loaded
 
         Examples
         --------
         >>> manager = WellDataManager()
         >>> manager.load_las(["well1.las", "well2.las"])
-        >>> manager.export_project("my_project")
+        >>> manager.save("my_project")
         # Creates:
         # my_project/
         #   well_36_7_5_A/
@@ -264,24 +271,41 @@ class WellDataManager:
         #     well_36_7_5_A_CorePor.las
         #   well_36_7_5_B/
         #     well_36_7_5_B_Log.las
+        >>>
+        >>> # After load(), can save without path
+        >>> manager = WellDataManager()
+        >>> manager.load("my_project")
+        >>> # ... make changes ...
+        >>> manager.save()  # Saves to "my_project"
         """
-        base_path = Path(path)
-        base_path.mkdir(parents=True, exist_ok=True)
+        # Determine path to use
+        if path is None:
+            if self._project_path is None:
+                raise ValueError(
+                    "No path provided and no project has been loaded. "
+                    "Either provide a path: save('path/to/project') or "
+                    "load a project first: load('path/to/project')"
+                )
+            save_path = self._project_path
+        else:
+            save_path = Path(path)
+
+        save_path.mkdir(parents=True, exist_ok=True)
 
         for well_name, well in self._wells.items():
             # Create well folder
-            well_folder = base_path / well_name
+            well_folder = save_path / well_name
             well_folder.mkdir(exist_ok=True)
 
             # Export each source
             well.export_sources(well_folder)
 
-    def import_project(self, path: Union[str, Path]) -> 'WellDataManager':
+    def load(self, path: Union[str, Path]) -> 'WellDataManager':
         """
-        Import all wells from a project folder structure.
+        Load all wells from a project folder structure.
 
         Automatically discovers and loads all LAS files from well folders
-        (well_* format).
+        (well_* format). Stores the project path for subsequent save() calls.
 
         Parameters
         ----------
@@ -296,13 +320,18 @@ class WellDataManager:
         Examples
         --------
         >>> manager = WellDataManager()
-        >>> manager.import_project("my_project")
+        >>> manager.load("my_project")
         >>> print(manager.wells)  # All wells from project
+        >>> # ... make changes ...
+        >>> manager.save()  # Saves back to "my_project"
         """
         base_path = Path(path)
 
         if not base_path.exists():
             raise FileNotFoundError(f"Project path does not exist: {path}")
+
+        # Store project path for save()
+        self._project_path = base_path
 
         # Find all well folders (well_*)
         well_folders = sorted(base_path.glob("well_*"))
@@ -364,7 +393,8 @@ class WellDataManager:
         """
         # Don't intercept private attributes or methods
         if name.startswith('_') or name in [
-            'wells', 'load_las', 'load_tops', 'add_well', 'get_well', 'remove_well'
+            'wells', 'load_las', 'load_tops', 'add_well', 'get_well', 'remove_well',
+            'save', 'load'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
