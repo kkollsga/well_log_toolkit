@@ -34,42 +34,50 @@ class WellDataManager:
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
     
-    def load_las(self, filepath: Union[str, Path]) -> 'WellDataManager':
+    def load_las(self, filepath: Union[str, Path, list[Union[str, Path]]]) -> 'WellDataManager':
         """
-        Load LAS file, auto-create well if needed.
+        Load LAS file(s), auto-create well if needed.
 
         Parameters
         ----------
-        filepath : Union[str, Path]
-            Path to LAS file
-        
+        filepath : Union[str, Path, list[Union[str, Path]]]
+            Path to LAS file or list of paths to LAS files
+
         Returns
         -------
         WellDataManager
             Self for method chaining
-        
+
         Raises
         ------
         LasFileError
             If LAS file has no well name
-        
+
         Examples
         --------
         >>> manager = WellDataManager()
-        >>> manager.load_las("well1.las").load_las("well2.las")
+        >>> manager.load_las("well1.las")
+        >>> manager.load_las(["well2.las", "well3.las"])
         >>> well = manager.well_12_3_2_B
         """
+        # Handle list of files
+        if isinstance(filepath, list):
+            for file in filepath:
+                self.load_las(file)
+            return self
+
+        # Handle single file
         las = LasFile(filepath)
         well_name = las.well_name
-        
+
         if well_name is None:
             raise LasFileError(
                 f"LAS file {filepath} has no WELL name in header. "
                 "Cannot determine which well to load into."
             )
-        
+
         sanitized_name = sanitize_well_name(well_name)
-        
+
         if sanitized_name not in self._wells:
             # Create new well
             self._wells[sanitized_name] = Well(
@@ -78,10 +86,10 @@ class WellDataManager:
                 parent_manager=self
             )
             self._name_mapping[well_name] = sanitized_name
-        
+
         # Load into well
         self._wells[sanitized_name].load_las(las)
-        
+
         return self  # Enable chaining
     
     def add_well(self, well_name: str) -> Well:

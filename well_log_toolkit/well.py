@@ -16,6 +16,51 @@ if TYPE_CHECKING:
     from .manager import WellDataManager
 
 
+class SourceView:
+    """
+    View into a specific source's properties within a well.
+
+    Enables access pattern: well.log.PHIE
+
+    Parameters
+    ----------
+    source_name : str
+        Name of the source
+    properties : dict[str, Property]
+        Dictionary of properties from this source
+    """
+
+    def __init__(self, source_name: str, properties: dict[str, Property]):
+        self._source_name = source_name
+        self._properties = properties
+
+    def __getattr__(self, name: str) -> Property:
+        """Enable property access: source.PHIE"""
+        if name.startswith('_'):
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
+        # Try as-is (sanitized name)
+        if name in self._properties:
+            return self._properties[name]
+
+        # Try sanitizing the name
+        sanitized_name = sanitize_property_name(name)
+        if sanitized_name in self._properties:
+            return self._properties[sanitized_name]
+
+        # Not found
+        available = ', '.join(self._properties.keys())
+        raise AttributeError(
+            f"Source '{self._source_name}' has no property '{name}'. "
+            f"Available properties: {available or 'none'}"
+        )
+
+    def __repr__(self) -> str:
+        return f"SourceView('{self._source_name}', properties={len(self._properties)})"
+
+
 class Well:
     """
     Single well containing multiple log properties.
@@ -38,9 +83,9 @@ class Well:
     parent_manager : Optional[WellDataManager]
         Parent manager
     properties : list[str]
-        List of property names
+        List of unique property names across all sources
     sources : list[str]
-        List of source LAS file paths loaded into this well
+        List of source names (sanitized from LAS file names)
     original_las : LasFile | None
         First LAS file loaded (for template-based export)
     
@@ -69,40 +114,75 @@ class Well:
         self.name = name
         self.sanitized_name = sanitized_name
         self.parent_manager = parent_manager
-        self._properties: dict[str, Property] = {}  # {sanitized_name: Property}
-        self._property_name_mapping: dict[str, str] = {}  # {sanitized_name: original_name}
-        self._depth_grid: Optional[np.ndarray] = None
-        self._source_las_files: list[LasFile] = []  # Track original LAS files for metadata preservation
+        # New source-aware storage structure
+        self._sources: dict[str, dict] = {}  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
         self._external_df_count: int = 0  # Counter for external DataFrame sources
-    
+
+    def _generate_unique_source_name(self, base_name: str) -> str:
+        """
+        Generate a unique source name by appending _# if needed.
+
+        Parameters
+        ----------
+        base_name : str
+            Base source name (sanitized)
+
+        Returns
+        -------
+        str
+            Unique source name not already in self._sources
+        """
+        if base_name not in self._sources:
+            return base_name
+
+        # Handle collision with numbering
+        counter = 1
+        while f"{base_name}_{counter}" in self._sources:
+            counter += 1
+
+        return f"{base_name}_{counter}"
+
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
-        Load LAS file into this well.
-        Validates well name matches.
+        Load LAS file into this well, organized by source.
+
+        Properties are grouped by source (LAS file). The source name is derived
+        from the filename stem (without extension), sanitized for Python attribute
+        access. If a source with the same name already exists, a numeric suffix is added.
 
         Parameters
         ----------
         las : Union[LasFile, str, Path]
             Either a LasFile instance or path to LAS file
-        
+
         Returns
         -------
         Well
             Self for method chaining
-        
+
         Raises
         ------
         WellNameMismatchError
             If LAS well name doesn't match this well
-        
+        WellError
+            If no depth column found in LAS file
+
         Examples
         --------
         >>> well = manager.well_12_3_2_B
         >>> well.load_las("log1.las").load_las("log2.las")
+        >>> # Access by source
+        >>> well.log1.PHIE
+        >>> # Access directly if unique
+        >>> well.PHIE  # Error if both log1 and log2 have PHIE
         """
         # Parse if path provided
+        filepath = None
         if isinstance(las, (str, Path)):
+            filepath = Path(las)
             las = LasFile(las)
+        elif hasattr(las, 'filepath') and las.filepath:
+            filepath = Path(las.filepath)
 
         # Validate well name
         if las.well_name != self.name:
@@ -112,20 +192,32 @@ class Well:
                 f"manager.load_las() for automatic well creation."
             )
 
-        # Store reference to source LAS file for metadata preservation
-        self._source_las_files.append(las)
+        # Generate source name from filename stem
+        if filepath:
+            base_source_name = filepath.stem  # Filename without extension
+            # Sanitize the source name
+            base_source_name = sanitize_property_name(base_source_name)
+        else:
+            # Fallback for LasFile objects without filepath
+            base_source_name = 'unknown_source'
+
+        # Handle source name collisions
+        source_name = self._generate_unique_source_name(base_source_name)
 
         # Load data
         data = las.data
         depth_col = las.depth_column
-        
+
         if depth_col is None:
             raise WellError(f"No depth column found in LAS file")
-        
+
         depth_values = data[depth_col].values
-        
+
         # Get discrete property information from LAS file
         discrete_props = las.discrete_properties
+
+        # Create source entry
+        source_properties = {}
 
         # Load each curve as a property
         for curve_name in las.curves.keys():
@@ -164,17 +256,18 @@ class Well:
                 null_value=las.null_value,
                 labels=labels,
                 source_las=las,
-                source_name=str(las.filepath),
+                source_name=source_name,
                 original_name=prop_name
             )
 
-            if sanitized_prop_name in self._properties:
-                # Merge with existing property
-                self._merge_property(sanitized_prop_name, prop)
-            else:
-                # Store with sanitized name as key
-                self._properties[sanitized_prop_name] = prop
-                self._property_name_mapping[sanitized_prop_name] = prop_name
+            source_properties[sanitized_prop_name] = prop
+
+        # Store source with its properties
+        self._sources[source_name] = {
+            'path': filepath,
+            'las_file': las,
+            'properties': source_properties
+        }
 
         return self  # Enable chaining
 
@@ -186,11 +279,10 @@ class Well:
         label_mappings: Optional[dict[str, dict[int, str]]] = None
     ) -> 'Well':
         """
-        Add properties from a DataFrame to this well.
+        Add properties from a DataFrame to this well as a new source.
 
         The DataFrame must contain a DEPT column. All other columns will be
-        added as properties. The DataFrame is converted to a LasFile object
-        with source name 'external_df', 'external_df1', etc.
+        added as properties grouped under a source named 'external_df', 'external_df_1', etc.
 
         Parameters
         ----------
@@ -229,15 +321,14 @@ class Well:
         ... )
         >>>
         >>> # Check sources
-        >>> print(well.sources)  # ['original.las', 'external_df']
-        >>> print(well.Zone.source)  # 'external_df'
+        >>> print(well.sources)  # ['log', 'external_df']
+        >>> # Access properties
+        >>> well.external_df.Zone
         """
-        # Generate source name
-        if self._external_df_count == 0:
-            source_name = 'external_df'
-        else:
-            source_name = f'external_df{self._external_df_count}'
-        self._external_df_count += 1
+        # Generate base source name
+        base_source_name = 'external_df'
+        # Handle collisions
+        source_name = self._generate_unique_source_name(base_source_name)
 
         # Create LasFile from DataFrame
         las = LasFile.from_dataframe(
@@ -252,118 +343,163 @@ class Well:
         # Load it like any other LAS file
         return self.load_las(las)
 
-    def _merge_property(self, name: str, new_prop: Property) -> None:
+    def __getattr__(self, name: str) -> Union[SourceView, Property]:
         """
-        Merge new property data with existing property.
-        
-        For now, this concatenates depth/value arrays.
-        Future: implement smart merging with interpolation.
-        """
-        existing = self._properties[name]
-        
-        # Simple concatenation for now
-        combined_depth = np.concatenate([existing.depth, new_prop.depth])
-        combined_values = np.concatenate([existing.values, new_prop.values])
-        
-        # Sort by depth
-        sort_idx = np.argsort(combined_depth)
-        combined_depth = combined_depth[sort_idx]
-        combined_values = combined_values[sort_idx]
-        
-        # Remove duplicates (keep first occurrence)
-        unique_mask = np.concatenate([[True], np.diff(combined_depth) > 1e-6])
-        combined_depth = combined_depth[unique_mask]
-        combined_values = combined_values[unique_mask]
-        
-        # Update existing property
-        existing.depth = combined_depth
-        existing.values = combined_values
-    
-    def __getattr__(self, name: str) -> Property:
-        """
-        Enable property access via attributes: well.phie
+        Enable source and property access via attributes.
+
+        Priority order:
+        1. Check if name is a source name: well.log -> SourceView
+        2. Check if property is unique across all sources: well.PHIE -> Property
+        3. If property exists in multiple sources, raise error
 
         This is called when normal attribute lookup fails.
         Supports both original and sanitized property names.
+
+        Examples
+        --------
+        >>> well.log  # Returns SourceView for 'log' source
+        >>> well.log.PHIE  # Returns PHIE property from log source
+        >>> well.SW  # Returns SW if unique across all sources
+        >>> well.PHIE  # Error if PHIE exists in multiple sources
         """
         # Don't intercept private attributes, methods, or class attributes
         if name.startswith('_') or name in [
-            'name', 'sanitized_name', 'parent_manager', 'properties',
-            'load_las', 'get_property', 'resample', 'to_dataframe'
+            'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
+            'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
+            'add_dataframe', 'to_las', 'export_to_las'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
             )
 
-        # Try as-is (sanitized name)
-        if name in self._properties:
-            return self._properties[name]
+        # Priority 1: Check if name is a source name
+        if name in self._sources:
+            return SourceView(name, self._sources[name]['properties'])
 
-        # Try sanitizing the name (in case original name was somehow used)
-        sanitized_name = sanitize_property_name(name)
-        if sanitized_name in self._properties:
-            return self._properties[sanitized_name]
+        # Priority 2: Check if property exists across sources
+        # Collect all properties with this name (try both as-is and sanitized)
+        matching_sources = []
+        matching_property = None
 
-        # Not found - provide helpful error with available names
-        available = ', '.join(self._properties.keys())
+        for source_name, source_data in self._sources.items():
+            properties = source_data['properties']
+
+            # Try as-is (sanitized name)
+            if name in properties:
+                matching_sources.append(source_name)
+                matching_property = properties[name]
+
+            # Try sanitizing the name (in case original name was somehow used)
+            elif not matching_sources:  # Only try sanitizing if we haven't found anything yet
+                sanitized_name = sanitize_property_name(name)
+                if sanitized_name in properties:
+                    matching_sources.append(source_name)
+                    matching_property = properties[sanitized_name]
+
+        # If property found in exactly one source, return it
+        if len(matching_sources) == 1:
+            return matching_property
+
+        # If property found in multiple sources, raise error
+        if len(matching_sources) > 1:
+            sources_str = ', '.join(matching_sources)
+            raise AttributeError(
+                f"Property '{name}' is ambiguous - exists in multiple sources: {sources_str}. "
+                f"Use explicit source access: well.{matching_sources[0]}.{name}"
+            )
+
+        # Not found - provide helpful error with available sources and properties
+        available_sources = ', '.join(self._sources.keys())
+        all_properties = set()
+        for source_data in self._sources.values():
+            all_properties.update(source_data['properties'].keys())
+        available_properties = ', '.join(sorted(all_properties))
+
         raise AttributeError(
-            f"Well '{self.name}' has no property '{name}'. "
-            f"Available properties: {available or 'none'}"
+            f"Well '{self.name}' has no source or property named '{name}'. "
+            f"Available sources: {available_sources or 'none'}. "
+            f"Available properties: {available_properties or 'none'}"
         )
     
     @property
     def properties(self) -> list[str]:
-        """List of property names in this well."""
-        return list(self._properties.keys())
-
-    @property
-    def sources(self) -> list[str]:
         """
-        List of all data sources loaded into this well.
+        List of all accessible property names with their access patterns.
 
-        Includes both LAS file paths and external DataFrame sources
-        (labeled as 'external_df', 'external_df1', etc.)
+        If a property is unique across all sources, it's listed as-is.
+        If a property exists in multiple sources, each is listed with source prefix.
+        If a source name conflicts with a property name, the property needs source prefix.
 
         Returns
         -------
         list[str]
-            List of source names in the order they were loaded
+            Sorted list of property access patterns
+
+        Examples
+        --------
+        >>> well.properties
+        ['PHIE', 'SW', 'log.PERM', 'core.PERM']  # PERM exists in both sources
+        >>> # If source named 'PHIE' exists with property 'PHIE':
+        >>> well.properties
+        ['PHIE.PHIE', 'SW', 'PERM']  # PHIE property needs prefix due to source conflict
+        """
+        # Count occurrences of each property across sources
+        property_sources = {}  # {prop_name: [source_name1, source_name2, ...]}
+        for source_name, source_data in self._sources.items():
+            for prop_name in source_data['properties'].keys():
+                if prop_name not in property_sources:
+                    property_sources[prop_name] = []
+                property_sources[prop_name].append(source_name)
+
+        # Build access patterns
+        access_patterns = []
+        for prop_name, sources in property_sources.items():
+            if len(sources) == 1:
+                # Property exists in only one source
+                # Check if there's a source with the same name as the property
+                if prop_name in self._sources:
+                    # Source name conflicts - need to use source.property syntax
+                    access_patterns.append(f"{sources[0]}.{prop_name}")
+                else:
+                    # No conflict - can access directly
+                    access_patterns.append(prop_name)
+            else:
+                # Property exists in multiple sources - list each with source prefix
+                for source_name in sources:
+                    access_patterns.append(f"{source_name}.{prop_name}")
+
+        return sorted(access_patterns)
+
+    @property
+    def sources(self) -> list[str]:
+        """
+        List of all source names loaded into this well.
+
+        Source names are sanitized from LAS file names (without extension)
+        or 'external_df' for DataFrames.
+
+        Returns
+        -------
+        list[str]
+            List of source names (sanitized, usable as attributes)
 
         Examples
         --------
         >>> well.load_las("log1.las")
         >>> well.add_dataframe(df)
-        >>> print(well.sources)  # ['log1.las', 'external_df']
+        >>> print(well.sources)  # ['log1', 'external_df']
+        >>> # Access sources
+        >>> well.log1.PHIE
+        >>> well.external_df.Zone
         """
-        # Collect all unique sources from properties in order
-        seen_sources = set()
-        sources_list = []
-
-        # Add LAS file sources first (in order they were loaded)
-        for las in self._source_las_files:
-            source = str(las.filepath)
-            if source not in seen_sources:
-                sources_list.append(source)
-                seen_sources.add(source)
-
-        # Then add any external DataFrame sources found in properties
-        for i in range(self._external_df_count):
-            if i == 0:
-                source = 'external_df'
-            else:
-                source = f'external_df{i}'
-            if source not in seen_sources:
-                sources_list.append(source)
-                seen_sources.add(source)
-
-        return sources_list
+        return list(self._sources.keys())
 
     @property
     def original_las(self) -> Optional[LasFile]:
         """
         Get the first (original) LAS file loaded into this well.
 
-        Returns None if no LAS files have been loaded yet.
+        Returns None if no sources have been loaded yet.
 
         Returns
         -------
@@ -376,18 +512,26 @@ class Well:
         >>> original = well.original_las
         >>> well.export_to_las("output.las", use_template=original)
         """
-        return self._source_las_files[0] if self._source_las_files else None
+        if not self._sources:
+            return None
+        # Return the first source's LAS file
+        first_source = next(iter(self._sources.values()))
+        return first_source['las_file']
     
-    def get_property(self, name: str) -> Property:
+    def get_property(self, name: str, source: Optional[str] = None) -> Property:
         """
         Explicit property getter.
 
-        Supports both original and sanitized property names.
+        If source is specified, gets property from that source only.
+        If source is None, gets property if it's unique across all sources,
+        raises error if ambiguous.
 
         Parameters
         ----------
         name : str
             Property name (original or sanitized)
+        source : str, optional
+            Source name to get property from. If None, property must be unique.
 
         Returns
         -------
@@ -397,91 +541,343 @@ class Well:
         Raises
         ------
         PropertyNotFoundError
-            If property not found
+            If property not found or is ambiguous (exists in multiple sources)
 
         Examples
         --------
-        >>> prop = well.get_property("Zoneloglinkedto'CerisaTops'")  # Original
-        >>> prop = well.get_property("Zoneloglinkedto_CerisaTops_")  # Sanitized
+        >>> prop = well.get_property("PHIE")  # Gets PHIE if unique
+        >>> prop = well.get_property("PHIE", source="log")  # Gets PHIE from log source
         """
-        # Try as-is (sanitized name)
-        if name in self._properties:
-            return self._properties[name]
+        # If source specified, get from that source only
+        if source is not None:
+            if source not in self._sources:
+                available_sources = ', '.join(self._sources.keys())
+                raise PropertyNotFoundError(
+                    f"Source '{source}' not found. Available sources: {available_sources or 'none'}"
+                )
 
-        # Try sanitizing the name (in case original name was passed)
-        sanitized_name = sanitize_property_name(name)
-        if sanitized_name in self._properties:
-            return self._properties[sanitized_name]
+            properties = self._sources[source]['properties']
+
+            # Try as-is
+            if name in properties:
+                return properties[name]
+
+            # Try sanitizing
+            sanitized_name = sanitize_property_name(name)
+            if sanitized_name in properties:
+                return properties[sanitized_name]
+
+            # Not found in this source
+            available = ', '.join(properties.keys())
+            raise PropertyNotFoundError(
+                f"Property '{name}' not found in source '{source}'. "
+                f"Available properties: {available or 'none'}"
+            )
+
+        # No source specified - find property across all sources
+        matching_sources = []
+        matching_property = None
+
+        for source_name, source_data in self._sources.items():
+            properties = source_data['properties']
+
+            # Try as-is
+            if name in properties:
+                matching_sources.append(source_name)
+                matching_property = properties[name]
+            else:
+                # Try sanitizing
+                sanitized_name = sanitize_property_name(name)
+                if sanitized_name in properties:
+                    matching_sources.append(source_name)
+                    matching_property = properties[sanitized_name]
+
+        # If found in exactly one source, return it
+        if len(matching_sources) == 1:
+            return matching_property
+
+        # If found in multiple sources, raise error
+        if len(matching_sources) > 1:
+            sources_str = ', '.join(matching_sources)
+            raise PropertyNotFoundError(
+                f"Property '{name}' is ambiguous - exists in multiple sources: {sources_str}. "
+                f"Use source parameter: well.get_property('{name}', source='{matching_sources[0]}')"
+            )
 
         # Not found
-        available = ', '.join(self._properties.keys())
+        all_properties = set()
+        for source_data in self._sources.values():
+            all_properties.update(source_data['properties'].keys())
+        available = ', '.join(sorted(all_properties))
+
         raise PropertyNotFoundError(
             f"Property '{name}' not found in well '{self.name}'. "
-            f"Available: {available or 'none'}"
+            f"Available properties: {available or 'none'}"
         )
     
-    def resample(
+    def _merge_properties(
         self,
-        depth_grid: Optional[np.ndarray] = None,
+        method: str = 'resample',
+        sources: Optional[list[str]] = None,
+        properties: Optional[list[str]] = None,
         depth_step: Optional[float] = None,
-        depth_range: Optional[tuple[float, float]] = None
-    ) -> 'Well':
+        depth_range: Optional[tuple[float, float]] = None,
+        depth_grid: Optional[np.ndarray] = None,
+        source_name: Optional[str] = None
+    ) -> dict[str, Property]:
         """
-        Resample all properties to common depth grid.
-        
+        Internal method to merge properties without modifying originals.
+
+        Returns a dictionary of new merged Property objects.
+
         Parameters
         ----------
-        depth_grid : np.ndarray, optional
-            Explicit depth grid to use
+        method : {'resample', 'concat'}, default 'resample'
+            Merge method
+        sources : list[str], optional
+            List of source names to include
+        properties : list[str], optional
+            List of property names to include
         depth_step : float, optional
-            Step size for regular grid (default 0.1)
+            For 'resample' method: step size for regular grid (default 0.1)
         depth_range : tuple[float, float], optional
-            (min_depth, max_depth) for grid
-        
+            For 'resample' method: (min_depth, max_depth) for grid
+        depth_grid : np.ndarray, optional
+            For 'resample' method: explicit depth grid to use
+        source_name : str, optional
+            Source name for merged properties. If None, generates 'merged_{method}'
+
+        Returns
+        -------
+        dict[str, Property]
+            Dictionary of merged properties {name: Property}
+
+        Raises
+        ------
+        ValueError
+            If invalid method specified
+        WellError
+            If no properties match the filters
+        """
+        if method not in {'resample', 'concat'}:
+            raise ValueError(
+                f"method must be 'resample' or 'concat', got '{method}'"
+            )
+
+        # Filter properties by sources and/or names
+        props_to_merge = {}
+
+        # Iterate through all sources
+        for source_name, source_data in self._sources.items():
+            # Check source filter
+            if sources is not None and source_name not in sources:
+                continue
+
+            # Add properties from this source
+            for prop_name, prop in source_data['properties'].items():
+                # Check property name filter
+                if properties is not None and prop_name not in properties:
+                    continue
+
+                # If property already exists (from another source), we need to handle it
+                # For now, we keep the first one encountered
+                if prop_name not in props_to_merge:
+                    props_to_merge[prop_name] = prop
+
+        if not props_to_merge:
+            available_sources = ', '.join(self._sources.keys())
+            all_properties = set()
+            for source_data in self._sources.values():
+                all_properties.update(source_data['properties'].keys())
+            available_properties = ', '.join(sorted(all_properties))
+
+            raise WellError(
+                "No properties match the specified filters. "
+                f"Available sources: {available_sources or 'none'}. "
+                f"Available properties: {available_properties or 'none'}"
+            )
+
+        # Generate source name for merged properties
+        if source_name is None:
+            source_name = f'merged_{method}'
+
+        merged_properties = {}
+
+        if method == 'resample':
+            # Create or use provided depth grid
+            if depth_grid is None:
+                if depth_step is None:
+                    depth_step = 0.1
+
+                if depth_range is None:
+                    # Use min/max across selected properties
+                    all_depths = [p.depth for p in props_to_merge.values()]
+                    depth_range = (
+                        min(d.min() for d in all_depths),
+                        max(d.max() for d in all_depths)
+                    )
+
+                depth_grid = np.arange(
+                    depth_range[0],
+                    depth_range[1] + depth_step/2,
+                    depth_step
+                )
+
+            # Create new resampled properties
+            for name, prop in props_to_merge.items():
+                resampled_values = Property._resample_to_grid(
+                    prop.depth,
+                    prop.values,
+                    depth_grid,
+                    method='linear' if prop.type == 'continuous' else 'nearest'
+                )
+
+                # Create new property with merged source
+                merged_prop = Property(
+                    name=name,
+                    depth=depth_grid.copy(),
+                    values=resampled_values,
+                    parent_well=self,
+                    unit=prop.unit,
+                    prop_type=prop.type,
+                    description=prop.description,
+                    null_value=-999.25,
+                    labels=prop.labels,
+                    source_las=None,
+                    source_name=source_name,
+                    original_name=prop.original_name
+                )
+
+                merged_properties[name] = merged_prop
+
+        else:  # method == 'concat'
+            # Collect all unique depths from selected properties
+            all_depths = []
+            for prop in props_to_merge.values():
+                all_depths.extend(prop.depth)
+
+            # Get unique sorted depths
+            unique_depths = np.unique(np.array(all_depths))
+
+            # Create new concatenated properties
+            for name, prop in props_to_merge.items():
+                # Create a mapping from original depth to values
+                depth_to_value = dict(zip(prop.depth, prop.values))
+
+                # Fill values for unique depths (NaN where depth doesn't exist)
+                concat_values = np.array([
+                    depth_to_value.get(d, np.nan) for d in unique_depths
+                ])
+
+                # Create new property with merged source
+                merged_prop = Property(
+                    name=name,
+                    depth=unique_depths.copy(),
+                    values=concat_values,
+                    parent_well=self,
+                    unit=prop.unit,
+                    prop_type=prop.type,
+                    description=prop.description,
+                    null_value=-999.25,
+                    labels=prop.labels,
+                    source_las=None,
+                    source_name=source_name,
+                    original_name=prop.original_name
+                )
+
+                merged_properties[name] = merged_prop
+
+        return merged_properties
+
+    def merge(
+        self,
+        method: str = 'resample',
+        sources: Optional[list[str]] = None,
+        properties: Optional[list[str]] = None,
+        depth_step: Optional[float] = None,
+        depth_range: Optional[tuple[float, float]] = None,
+        depth_grid: Optional[np.ndarray] = None,
+        source_name: Optional[str] = None
+    ) -> 'Well':
+        """
+        Merge properties from multiple sources into a new "merged" source.
+
+        This operation replaces the selected properties with new merged versions.
+        The original LAS files are not modified, but the in-memory properties
+        will be replaced with the merged versions.
+
+        Parameters
+        ----------
+        method : {'resample', 'concat'}, default 'resample'
+            Merge method:
+            - 'resample': Interpolate all properties to a common regular depth grid
+            - 'concat': Merge all unique depths, fill NaN where depth doesn't exist
+        sources : list[str], optional
+            List of source names to include (e.g., ['log1.las', 'core.las'])
+            If None, includes properties from all sources
+        properties : list[str], optional
+            List of property names to include. If None, includes all properties
+        depth_step : float, optional
+            For 'resample' method: step size for regular grid (default 0.1)
+        depth_range : tuple[float, float], optional
+            For 'resample' method: (min_depth, max_depth) for grid
+        depth_grid : np.ndarray, optional
+            For 'resample' method: explicit depth grid to use
+        source_name : str, optional
+            Custom source name for merged properties. If None, uses 'merged_{method}'
+
         Returns
         -------
         Well
             Self for method chaining
-        
+
+        Raises
+        ------
+        ValueError
+            If invalid method specified
+        WellError
+            If no properties match the filters
+
         Examples
         --------
-        >>> well.resample(depth_step=0.1, depth_range=(2800, 3000))
-        >>> well.resample(depth_grid=np.arange(2800, 3000, 0.05))
+        >>> # Resample log and core data to common 0.1m grid
+        >>> well.merge(method='resample', depth_step=0.1)
+
+        >>> # Concatenate specific sources with custom name
+        >>> well.merge(
+        ...     method='concat',
+        ...     sources=['log1.las', 'log2.las'],
+        ...     source_name='combined_logs'
+        ... )
+
+        >>> # Resample only specific properties
+        >>> well.merge(
+        ...     method='resample',
+        ...     properties=['PHIE', 'CorePor'],
+        ...     depth_step=0.05
+        ... )
         """
-        if depth_grid is None:
-            # Create regular grid
-            if depth_step is None:
-                depth_step = 0.1
-            
-            if depth_range is None:
-                # Use min/max across all properties
-                all_depths = [p.depth for p in self._properties.values()]
-                if not all_depths:
-                    raise WellError("No properties to resample")
-                depth_range = (
-                    min(d.min() for d in all_depths),
-                    max(d.max() for d in all_depths)
-                )
-            
-            depth_grid = np.arange(
-                depth_range[0],
-                depth_range[1] + depth_step/2,
-                depth_step
-            )
-        
-        self._depth_grid = depth_grid
-        
-        # Resample each property
-        for prop in self._properties.values():
-            resampled_values = Property._resample_to_grid(
-                prop.depth,
-                prop.values,
-                depth_grid,
-                method='linear' if prop.type == 'continuous' else 'nearest'
-            )
-            prop.depth = depth_grid
-            prop.values = resampled_values
-        
+        # Get merged properties using internal method
+        merged_properties = self._merge_properties(
+            method=method,
+            sources=sources,
+            properties=properties,
+            depth_step=depth_step,
+            depth_range=depth_range,
+            depth_grid=depth_grid,
+            source_name=source_name
+        )
+
+        # Determine the merge source name
+        merge_source_name = source_name if source_name else f'merged_{method}'
+
+        # Create a new source with merged properties
+        self._sources[merge_source_name] = {
+            'path': None,  # Merged sources don't have a file path
+            'las_file': None,  # No LAS file for merged source
+            'properties': merged_properties
+        }
+
         return self
     
     def to_dataframe(
@@ -490,16 +886,21 @@ class Well:
         include: Optional[list[str]] = None,
         exclude: Optional[list[str]] = None,
         auto_resample: bool = True,
+        merge_method: str = 'resample',
         discrete_labels: bool = True
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional resampling and filtering.
 
+        This method does NOT modify the original property depth grids. If auto_resample
+        is True, properties are temporarily merged for the DataFrame output only using
+        the specified merge method.
+
         Parameters
         ----------
         reference_property : str, optional
             Property to use as depth reference for resampling. If auto_resample
-            is True, all properties will be resampled to this property's depth
+            is True, all properties will be merged to this property's depth
             grid. If not specified, defaults to the first property that was added
             (typically the first property from the first LAS file loaded).
         include : list[str], optional
@@ -509,9 +910,13 @@ class Well:
             List of property names to exclude. If None, no properties are excluded.
             Cannot be used with include. Useful when you want all properties except a few.
         auto_resample : bool, default True
-            If True, automatically resample all properties to the reference
+            If True, automatically merge all properties to the reference
             property's depth grid (uses first property if not specified).
             Set to False only if properties are already aligned.
+        merge_method : {'resample', 'concat'}, default 'resample'
+            Merge method to use when auto_resample is True:
+            - 'resample': Interpolate properties to reference depth grid
+            - 'concat': Merge unique depths, fill NaN where missing
         discrete_labels : bool, default True
             If True, apply label mappings to discrete properties with labels defined.
 
@@ -543,13 +948,23 @@ class Well:
         >>> # Exclude specific properties
         >>> df = well.to_dataframe(exclude=['QC_Flag', 'Temp_Data'])
 
-        >>> # Combine reference and filtering
-        >>> df = well.to_dataframe(reference_property='PHIE', exclude=['Zone'])
+        >>> # Use concat merge method instead of resample
+        >>> df = well.to_dataframe(merge_method='concat')
 
         >>> # Disable label mapping for discrete properties
         >>> df = well.to_dataframe(discrete_labels=False)
         """
-        if not self._properties:
+        if not self._sources:
+            return pd.DataFrame()
+
+        # Collect all properties across all sources for validation
+        all_properties = {}  # {prop_name: (source_name, property)}
+        for source_name, source_data in self._sources.items():
+            for prop_name, prop in source_data['properties'].items():
+                if prop_name not in all_properties:
+                    all_properties[prop_name] = (source_name, prop)
+
+        if not all_properties:
             return pd.DataFrame()
 
         # Validate include/exclude
@@ -560,60 +975,66 @@ class Well:
                 "or exclude to specify properties to skip."
             )
 
-        # Determine reference property
-        if reference_property is None:
-            # Default: use first property added (first from first LAS file)
-            ref_prop = next(iter(self._properties.values()))
-        else:
-            # Get specified reference property
-            if reference_property not in self._properties:
-                available = ', '.join(self._properties.keys())
-                raise PropertyNotFoundError(
-                    f"Reference property '{reference_property}' not found. "
-                    f"Available: {available}"
-                )
-            ref_prop = self._properties[reference_property]
-
-        depth = ref_prop.depth
-
-        # Auto-resample if requested
-        if auto_resample:
-            # Resample all properties to reference property's depth grid
-            self.resample(depth_grid=depth)
-
-        # Determine which properties to include
+        # Determine which properties to include/exclude
         if include is not None:
-            # Only include specified properties
-            props_to_export = {
-                name: prop for name, prop in self._properties.items()
-                if name in include
-            }
-            # Warn if some requested properties are missing
-            missing = set(include) - set(props_to_export.keys())
+            properties_filter = include
+            # Validate all requested properties exist
+            missing = set(include) - set(all_properties.keys())
             if missing:
-                available = ', '.join(self._properties.keys())
+                available = ', '.join(all_properties.keys())
                 raise PropertyNotFoundError(
                     f"Properties not found: {', '.join(missing)}. "
                     f"Available: {available}"
                 )
         elif exclude is not None:
-            # Include all except excluded properties
-            props_to_export = {
-                name: prop for name, prop in self._properties.items()
-                if name not in exclude
-            }
+            properties_filter = [name for name in all_properties.keys() if name not in exclude]
         else:
-            # Include all properties
-            props_to_export = self._properties
+            properties_filter = None  # Include all
 
-        # Verify all properties on same grid if auto_resample is False
-        if not auto_resample:
+        # Determine reference property
+        if reference_property is None:
+            # Default: use first property added (first from first source)
+            ref_prop_name = next(iter(all_properties.keys()))
+            _, ref_prop = all_properties[ref_prop_name]
+        else:
+            # Get specified reference property
+            if reference_property not in all_properties:
+                available = ', '.join(all_properties.keys())
+                raise PropertyNotFoundError(
+                    f"Reference property '{reference_property}' not found. "
+                    f"Available: {available}"
+                )
+            ref_prop_name = reference_property
+            _, ref_prop = all_properties[reference_property]
+
+        depth = ref_prop.depth
+
+        # Get properties to export (either merged or original)
+        if auto_resample:
+            # Use merge method to get temporary merged properties
+            props_to_export = self._merge_properties(
+                method=merge_method,
+                properties=properties_filter,
+                depth_grid=depth,
+                source_name='temp_dataframe'
+            )
+        else:
+            # Use original properties (only unique ones)
+            if properties_filter is not None:
+                props_to_export = {
+                    name: prop for name, (_, prop) in all_properties.items()
+                    if name in properties_filter
+                }
+            else:
+                props_to_export = {name: prop for name, (_, prop) in all_properties.items()}
+
+            # Verify all properties on same grid
             for name, prop in props_to_export.items():
                 if not np.array_equal(prop.depth, depth):
                     raise WellError(
                         f"Cannot export to DataFrame: property '{name}' has different "
-                        f"depth grid than reference. Either set auto_resample=True or "
-                        f"call well.resample() first to align all properties."
+                        f"depth grid than reference '{ref_prop_name}'. Either set auto_resample=True or "
+                        f"call well.merge() first to align all properties."
                     )
 
         # Build DataFrame
@@ -627,6 +1048,171 @@ class Well:
 
         return pd.DataFrame(data)
 
+    def to_las(
+        self,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None,
+        store_labels: bool = True,
+        use_template: Union[bool, LasFile, None] = None
+    ) -> LasFile:
+        """
+        Convert well properties to a LasFile object.
+
+        This creates a LasFile object from the well's properties. If properties have
+        different depth grids, they will be automatically merged using the resample method.
+
+        Parameters
+        ----------
+        include : list[str], optional
+            List of property names to include. If None, includes all properties.
+        exclude : list[str], optional
+            List of property names to exclude. If None, no properties are excluded.
+        store_labels : bool, default True
+            If True, store discrete property label mappings in the ~Parameter section.
+        use_template : Union[bool, LasFile, None], optional
+            If True, uses the primary (first) LAS file as template to preserve original
+            metadata. If a LasFile object is provided, uses that specific file as template.
+
+        Returns
+        -------
+        LasFile
+            LasFile object ready for export or further manipulation
+
+        Raises
+        ------
+        WellError
+            If no properties to export or if use_template=True but no source LAS files exist
+        ValueError
+            If both include and exclude are specified
+        PropertyNotFoundError
+            If requested properties are not found
+
+        Examples
+        --------
+        >>> # Create LasFile and export
+        >>> las = well.to_las(include=['PHIE', 'SW', 'PERM'])
+        >>> las.export('output.las')
+
+        >>> # Create LasFile with template metadata preserved
+        >>> las = well.to_las(use_template=True)
+        >>> las.export('updated.las')
+
+        >>> # Create LasFile, modify, then export
+        >>> las = well.to_las()
+        >>> # ... modify las.data if needed ...
+        >>> las.export('output.las')
+        """
+        if not self._sources:
+            raise WellError("No properties to export")
+
+        # Collect all properties across all sources
+        all_properties = {}  # {prop_name: property}
+        for source_name, source_data in self._sources.items():
+            for prop_name, prop in source_data['properties'].items():
+                if prop_name not in all_properties:
+                    all_properties[prop_name] = prop
+
+        if not all_properties:
+            raise WellError("No properties to export")
+
+        # Validate include/exclude
+        if include is not None and exclude is not None:
+            raise ValueError(
+                "Cannot specify both 'include' and 'exclude'. "
+                "Use either include to specify properties to include, "
+                "or exclude to specify properties to skip."
+            )
+
+        # Determine template LAS file if requested
+        template_las = None
+        if use_template is True:
+            if not self.original_las:
+                raise WellError(
+                    "Cannot use template: no source LAS files have been loaded. "
+                    "Either load a LAS file first or set use_template=False."
+                )
+            template_las = self.original_las
+        elif isinstance(use_template, LasFile):
+            template_las = use_template
+
+        # Determine which properties to export
+        if include is not None:
+            properties_to_export = include
+            missing = set(include) - set(all_properties.keys())
+            if missing:
+                available = ', '.join(all_properties.keys())
+                raise PropertyNotFoundError(
+                    f"Properties not found: {', '.join(missing)}. "
+                    f"Available: {available}"
+                )
+        elif exclude is not None:
+            properties_to_export = [name for name in all_properties.keys() if name not in exclude]
+        else:
+            properties_to_export = list(all_properties.keys())
+
+        # Get properties dict
+        props_dict = {name: all_properties[name] for name in properties_to_export}
+
+        # Check if merge needed
+        if len(props_dict) > 1:
+            ref_depth = next(iter(props_dict.values())).depth
+            needs_merge = any(
+                not np.array_equal(prop.depth, ref_depth)
+                for prop in props_dict.values()
+            )
+
+            if needs_merge:
+                props_dict = self._merge_properties(
+                    method='resample',
+                    properties=properties_to_export,
+                    depth_grid=ref_depth,
+                    source_name='to_las_merged'
+                )
+
+        # Build DataFrame directly with original names
+        ref_prop = next(iter(props_dict.values()))
+        data = {'DEPT': ref_prop.depth}
+
+        for name, prop in props_dict.items():
+            data[prop.original_name] = prop.values
+
+        df = pd.DataFrame(data)
+
+        # Build unit mappings and type mappings
+        unit_mappings = {'DEPT': 'm'}
+        type_mappings = {}
+        for prop in props_dict.values():
+            unit_mappings[prop.original_name] = prop.unit
+            type_mappings[prop.original_name] = prop.type
+
+        # Collect discrete labels if requested
+        label_mappings = None
+        if store_labels:
+            label_mappings = {}
+            for prop in props_dict.values():
+                if prop.labels:
+                    label_mappings[prop.original_name] = prop.labels
+
+        # Create LasFile from DataFrame
+        las = LasFile.from_dataframe(
+            df=df,
+            well_name=self.name,
+            source_name='from_well',
+            unit_mappings=unit_mappings,
+            type_mappings=type_mappings,
+            label_mappings=label_mappings
+        )
+
+        # If template provided, copy over metadata
+        if template_las:
+            las.version_info = template_las.version_info.copy()
+            # Copy well parameters except the ones we computed
+            for key, value in template_las.well_info.items():
+                if key not in ['STRT', 'STOP', 'STEP', 'NULL']:
+                    las.well_info[key] = value
+
+        return las
+
     def export_to_las(
         self,
         filepath: Union[str, Path],
@@ -638,6 +1224,9 @@ class Well:
     ) -> None:
         """
         Export well data to LAS 2.0 format file.
+
+        This is a convenience method that calls to_las() and then exports.
+        For more control, use to_las() to get a LasFile object first.
 
         Parameters
         ----------
@@ -662,7 +1251,7 @@ class Well:
         Raises
         ------
         WellError
-            If properties have different depth grids (call resample() first)
+            If properties have different depth grids (call merge() first)
             If use_template=True but no source LAS files exist
         ValueError
             If both include and exclude are specified
@@ -681,69 +1270,29 @@ class Well:
         >>> # Export using original LAS as template (preserves metadata)
         >>> well.export_to_las('updated.las', use_template=True)
 
-        >>> # Export using specific LAS file as template
-        >>> template = well.original_las
-        >>> well.export_to_las('output.las', use_template=template)
+        >>> # For more control, use to_las() then export()
+        >>> las = well.to_las(include=['PHIE', 'SW'])
+        >>> # ... modify las if needed ...
+        >>> las.export('output.las')
         """
-        # Determine template LAS file if requested
-        template_las = None
-        if use_template is True:
-            # Use original (first) LAS file as template
-            if not self.original_las:
-                raise WellError(
-                    "Cannot use template: no source LAS files have been loaded. "
-                    "Either load a LAS file first or set use_template=False."
-                )
-            template_las = self.original_las
-        elif isinstance(use_template, LasFile):
-            # Use specific LAS file as template
-            template_las = use_template
-
-        # Get DataFrame with properties (always numeric values for LAS)
-        df = self.to_dataframe(
+        # Create LasFile object and export it
+        las = self.to_las(
             include=include,
             exclude=exclude,
-            auto_resample=True,
-            discrete_labels=False  # Always export numeric values
+            store_labels=store_labels,
+            use_template=use_template
         )
-
-        # Build column name mapping: sanitized -> original
-        column_rename_map = {}
-        for prop_name, prop in self._properties.items():
-            if prop_name in df.columns:
-                column_rename_map[prop_name] = prop.original_name
-
-        # Rename DataFrame columns to use original names for LAS export
-        df = df.rename(columns=column_rename_map)
-
-        # Build unit mappings from properties (use original names for export)
-        unit_mappings = {'DEPT': 'm'}  # Default depth unit
-        for prop_name, prop in self._properties.items():
-            if prop_name in column_rename_map:
-                unit_mappings[prop.original_name] = prop.unit
-
-        # Collect discrete labels if store_labels is True (use original names)
-        label_mappings = None
-        if store_labels:
-            label_mappings = {}
-            for prop_name, prop in self._properties.items():
-                if prop_name in column_rename_map and prop.labels:
-                    label_mappings[prop.original_name] = prop.labels
-
-        # Export using LasFile static method
-        LasFile.export_las(
-            filepath=filepath,
-            well_name=self.name,
-            df=df,
-            unit_mappings=unit_mappings,
-            null_value=null_value,
-            discrete_labels=label_mappings if label_mappings else None,
-            template_las=template_las
-        )
+        las.export(filepath, null_value=null_value)
 
     def __repr__(self) -> str:
         """String representation."""
+        # Count total unique properties across all sources
+        all_properties = set()
+        for source_data in self._sources.values():
+            all_properties.update(source_data['properties'].keys())
+
         return (
             f"Well('{self.name}', "
-            f"properties={len(self._properties)})"
+            f"sources={len(self._sources)}, "
+            f"properties={len(all_properties)})"
         )

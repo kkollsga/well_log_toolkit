@@ -692,6 +692,64 @@ class LasFile:
         except Exception as e:
             raise LasFileError(f"Failed to write LAS file to {filepath}: {e}")
 
+    def export(
+        self,
+        filepath: Union[str, Path],
+        null_value: float = -999.25
+    ) -> None:
+        """
+        Export this LasFile instance to a LAS 2.0 format file.
+
+        This is an instance method that exports the LasFile's own data,
+        including all metadata from the ~Version, ~Well, ~Parameter, and ~Curve sections.
+
+        Parameters
+        ----------
+        filepath : Union[str, Path]
+            Output LAS file path
+        null_value : float, default -999.25
+            Value to use for missing data
+
+        Examples
+        --------
+        >>> # Load, modify, and re-export a LAS file
+        >>> las = LasFile('input.las')
+        >>> # ... modify las.data if needed ...
+        >>> las.export('output.las')
+
+        >>> # Create LasFile from Well and export
+        >>> las = well.to_las(include=['PHIE', 'SW'])
+        >>> las.export('output.las')
+        """
+        if self._data is None:
+            raise LasFileError("No data loaded. Call .data property first to load data.")
+
+        # Collect curve units and discrete labels
+        unit_mappings = {}
+        for curve_name, curve_meta in self.curves.items():
+            unit_mappings[curve_name] = curve_meta.get('unit', '')
+
+        # Collect discrete labels from parameter section
+        discrete_labels = None
+        discrete_props = self.discrete_properties
+        if discrete_props:
+            discrete_labels = {}
+            for prop_name in discrete_props:
+                labels = self.get_discrete_labels(prop_name)
+                if labels:
+                    discrete_labels[prop_name] = labels
+
+        # Use static method to do the actual export, passing self as template
+        LasFile.export_las(
+            filepath=filepath,
+            well_name=self.well_name or 'UNKNOWN',
+            df=self._data,
+            unit_mappings=unit_mappings,
+            null_value=null_value,
+            discrete_labels=discrete_labels,
+            template_las=self
+        )
+
     def __repr__(self) -> str:
         """String representation."""
         return (
