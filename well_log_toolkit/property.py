@@ -82,8 +82,8 @@ class Property:
     def __init__(
         self,
         name: str,
-        depth: np.ndarray,
-        values: np.ndarray,
+        depth: Optional[np.ndarray] = None,
+        values: Optional[np.ndarray] = None,
         parent_well: Optional['Well'] = None,
         unit: str = '',
         prop_type: str = 'continuous',
@@ -92,12 +92,11 @@ class Property:
         labels: Optional[dict[int, str]] = None,
         source_las: Optional['LasFile'] = None,
         source_name: Optional[str] = None,
-        original_name: Optional[str] = None
+        original_name: Optional[str] = None,
+        lazy: bool = False
     ):
         self.name = name  # Sanitized name for Python attribute access
         self.original_name = original_name or name  # Original name with special characters
-        self.depth = np.asarray(depth, dtype=np.float64)
-        self.values = np.asarray(values, dtype=np.float64)
         self.parent_well = parent_well
         self.unit = unit
         self.type = prop_type
@@ -105,16 +104,28 @@ class Property:
         self.labels = labels  # Mapping for discrete property values {0: 'NonNet', 1: 'Net'}
         self.source_las = source_las  # Source LAS file this property came from
         self.source_name = source_name  # Source name (file path or external_df)
+        self._null_value = null_value
 
         # Secondary properties (filters) aligned on same depth grid
         self.secondary_properties: list[Property] = []
 
-        # Replace null values with np.nan
-        self.values = np.where(
-            np.abs(self.values - null_value) < 1e-6,
-            np.nan,
-            self.values
-        )
+        # Lazy loading support
+        self._lazy = lazy
+        self._depth_cache: Optional[np.ndarray] = None
+        self._values_cache: Optional[np.ndarray] = None
+
+        # For derived properties (not lazy), store data directly
+        if not lazy:
+            if depth is not None and values is not None:
+                self._depth_cache = np.asarray(depth, dtype=np.float64)
+                self._values_cache = np.asarray(values, dtype=np.float64)
+
+                # Replace null values with np.nan
+                self._values_cache = np.where(
+                    np.abs(self._values_cache - null_value) < 1e-6,
+                    np.nan,
+                    self._values_cache
+                )
 
     @property
     def source(self) -> Optional[str]:
@@ -135,6 +146,92 @@ class Property:
         if self.source_name:
             return self.source_name
         return str(self.source_las.filepath) if self.source_las else None
+
+    @property
+    def depth(self) -> np.ndarray:
+        """
+        Get depth array with lazy loading support.
+
+        For lazy properties, data is loaded from source_las on first access.
+        For derived properties, data is stored directly.
+
+        Returns
+        -------
+        np.ndarray
+            Depth values
+        """
+        # Check if we have cached data
+        if self._depth_cache is not None:
+            return self._depth_cache
+
+        # If lazy and not cached, load from source LAS
+        if self._lazy and self.source_las is not None:
+            # Load data from LAS file
+            las_data = self.source_las.data
+
+            # Get depth column
+            depth_col = self.source_las.depth_column
+            if depth_col not in las_data.columns:
+                raise PropertyError(
+                    f"Depth column '{depth_col}' not found in LAS data. "
+                    f"Available columns: {', '.join(las_data.columns)}"
+                )
+
+            self._depth_cache = las_data[depth_col].values.astype(np.float64)
+            return self._depth_cache
+
+        # No data available
+        raise PropertyError(
+            f"Property '{self.name}' has no depth data. "
+            "Either provide depth during initialization or set source_las for lazy loading."
+        )
+
+    @property
+    def values(self) -> np.ndarray:
+        """
+        Get values array with lazy loading support.
+
+        For lazy properties, data is loaded from source_las on first access.
+        For derived properties, data is stored directly.
+
+        Returns
+        -------
+        np.ndarray
+            Property values (nulls converted to np.nan)
+        """
+        # Check if we have cached data
+        if self._values_cache is not None:
+            return self._values_cache
+
+        # If lazy and not cached, load from source LAS
+        if self._lazy and self.source_las is not None:
+            # Load data from LAS file
+            las_data = self.source_las.data
+
+            # Get property column using original name
+            if self.original_name not in las_data.columns:
+                raise PropertyError(
+                    f"Property '{self.original_name}' not found in LAS data. "
+                    f"Available columns: {', '.join(las_data.columns)}"
+                )
+
+            values = las_data[self.original_name].values.astype(np.float64)
+
+            # Replace null values with np.nan
+            values = np.where(
+                np.abs(values - self._null_value) < 1e-6,
+                np.nan,
+                values
+            )
+
+            self._values_cache = values
+            return self._values_cache
+
+        # No data available
+        raise PropertyError(
+            f"Property '{self.name}' has no values data. "
+            "Either provide values during initialization or set source_las for lazy loading."
+        )
 
     def filter(self, property_name: str) -> 'Property':
         """

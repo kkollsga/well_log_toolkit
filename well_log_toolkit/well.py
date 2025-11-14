@@ -211,33 +211,26 @@ class Well:
         if source_name in self._sources:
             print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
 
-        # Load data
-        data = las.data
+        # OPTIMIZATION: Don't load data yet - use lazy loading
+        # Data will be loaded from las.data when property.depth or property.values is first accessed
         depth_col = las.depth_column
 
         if depth_col is None:
             raise WellError(f"No depth column found in LAS file")
 
-        depth_values = data[depth_col].values
-
-        # Get discrete property information from LAS file
+        # Get discrete property information from LAS file (from header, no data loading)
         discrete_props = las.discrete_properties
 
         # Create source entry
         source_properties = {}
 
-        # Load each curve as a property
+        # Create lazy property shells for each curve
         for curve_name in las.curves.keys():
             if curve_name == depth_col:
                 continue  # Skip depth itself
 
             curve_meta = las.curves[curve_name]
             prop_name = curve_meta.get('alias') or curve_name
-
-            # Get values
-            values = data.get(curve_meta.get('alias') or curve_name, data.get(curve_name))
-            if values is None:
-                continue
 
             # Check if this property is marked as discrete
             is_discrete = prop_name in discrete_props
@@ -251,11 +244,10 @@ class Well:
             # Sanitize property name for Python attribute access
             sanitized_prop_name = sanitize_property_name(prop_name)
 
-            # Create property with sanitized name
+            # Create LAZY property shell - no data loaded yet
+            # Data will be loaded from source_las when first accessed
             prop = Property(
                 name=sanitized_prop_name,
-                depth=depth_values,
-                values=values.values,
                 parent_well=self,
                 unit=curve_meta['unit'],
                 prop_type=prop_type,
@@ -264,16 +256,19 @@ class Well:
                 labels=labels,
                 source_las=las,
                 source_name=source_name,
-                original_name=prop_name
+                original_name=prop_name,
+                lazy=True  # Enable lazy loading
             )
 
             source_properties[sanitized_prop_name] = prop
 
         # Store source with its properties
+        # Mark as unmodified if loaded from file, modified if synthetic (no filepath)
         self._sources[source_name] = {
             'path': filepath,
             'las_file': las,
-            'properties': source_properties
+            'properties': source_properties,
+            'modified': filepath is None  # True if synthetic (no file), False if from disk
         }
 
         return self  # Enable chaining
@@ -420,10 +415,52 @@ class Well:
         for prop in source_data['properties'].values():
             prop.source_name = sanitized_new_name
 
+        # Mark source as modified so it gets exported with new name
+        source_data['modified'] = True
+
         # Move source to new key
         self._sources[sanitized_new_name] = source_data
         del self._sources[old_name]
 
+        return self
+
+    def mark_source_modified(self, name: str) -> 'Well':
+        """
+        Mark a source as modified so it will be re-exported on save.
+
+        This is useful if you manually modify property values and want
+        to ensure the source is saved to disk.
+
+        Parameters
+        ----------
+        name : str
+            Source name to mark as modified
+
+        Returns
+        -------
+        Well
+            Self for method chaining
+
+        Raises
+        ------
+        KeyError
+            If source doesn't exist
+
+        Examples
+        --------
+        >>> # Modify property values directly
+        >>> well.log.PHIE.values *= 1.1  # Scale up by 10%
+        >>> well.mark_source_modified("log")
+        >>> manager.save()  # Will re-export the modified source
+        """
+        if name not in self._sources:
+            available = ', '.join(self._sources.keys())
+            raise KeyError(
+                f"Source '{name}' not found. "
+                f"Available sources: {available or 'none'}"
+            )
+
+        self._sources[name]['modified'] = True
         return self
 
     def remove_source(self, name: Union[str, list[str]]) -> 'Well':
@@ -508,7 +545,7 @@ class Well:
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
             'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
             'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
-            'export_sources', 'delete_renamed_sources', 'delete_marked_sources'
+            'export_sources', 'delete_renamed_sources', 'delete_marked_sources', 'mark_source_modified'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
@@ -1532,13 +1569,40 @@ class Well:
 
             # Get properties from this source
             properties = list(source_data['properties'].keys())
+            if not properties:
+                continue
 
-            # Export this source's properties to LAS
-            # Use the source's original LAS file as template if available
-            template_las = source_data.get('las_file')
+            # OPTIMIZATION: Skip export if source hasn't been modified and file exists
+            is_modified = source_data.get('modified', True)  # Default to True for safety
+            if not is_modified and filepath.exists():
+                # Source unchanged, skip export
+                continue
 
-            # Build DataFrame directly from this source's properties
-            if properties:
+            # Check if we have the original LAS file
+            original_las = source_data.get('las_file')
+
+            if original_las:
+                # FAST PATH: Update existing LAS file and export directly
+                # This preserves all metadata and is much faster than rebuilding from scratch
+
+                # Update the data in the original LAS file
+                ref_prop = next(iter(source_data['properties'].values()))
+                depth_data = ref_prop.depth
+
+                # Build data dictionary with original property names
+                las_data = {original_las.depth_column: depth_data}
+                for prop_name, prop in source_data['properties'].items():
+                    las_data[prop.original_name] = prop.values
+
+                # Update the LAS data
+                original_las.data = pd.DataFrame(las_data)
+
+                # Export directly
+                original_las.export(filepath)
+
+            else:
+                # SLOW PATH: Create new LAS file from scratch
+                # Used for sources created with add_dataframe() or load_tops()
                 ref_prop = next(iter(source_data['properties'].values()))
                 depth = ref_prop.depth
 
@@ -1565,14 +1629,6 @@ class Well:
                     type_mappings=type_mappings,
                     label_mappings=label_mappings if label_mappings else None
                 )
-
-                # If template LAS available, copy metadata
-                if template_las:
-                    las.version_info = template_las.version_info.copy()
-                    # Copy well parameters except computed ones
-                    for key, value in template_las.well_info.items():
-                        if key not in ['STRT', 'STOP', 'STEP', 'NULL']:
-                            las.well_info[key] = value
 
                 # Export to file
                 las.export(filepath)
