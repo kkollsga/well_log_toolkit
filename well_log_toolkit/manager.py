@@ -255,8 +255,9 @@ class WellDataManager:
         Save all wells and their sources to a project folder structure.
 
         Creates a folder for each well (well_xxx format) and exports all sources
-        as LAS files with well name prefix. If path is not provided, uses the path
-        from the last load() call.
+        as LAS files with well name prefix. Also deletes LAS files for any sources
+        that were removed using remove_source(). If path is not provided, uses the
+        path from the last load() call.
 
         Parameters
         ----------
@@ -286,6 +287,10 @@ class WellDataManager:
         >>> manager.load("my_project")
         >>> # ... make changes ...
         >>> manager.save()  # Saves to "my_project"
+        >>>
+        >>> # Remove a source and save
+        >>> manager.well_36_7_5_A.remove_source("Log")
+        >>> manager.save()  # Deletes 36_7-5_A_Log.las from disk
         """
         # Determine path to use
         if path is None:
@@ -305,6 +310,9 @@ class WellDataManager:
             # Create well folder (well_key already has well_ prefix)
             well_folder = save_path / well_key
             well_folder.mkdir(exist_ok=True)
+
+            # Delete sources marked for deletion
+            well.delete_marked_sources(well_folder)
 
             # Export each source
             well.export_sources(well_folder)

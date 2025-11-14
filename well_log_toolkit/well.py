@@ -116,6 +116,8 @@ class Well:
         self.parent_manager = parent_manager
         # New source-aware storage structure
         self._sources: dict[str, dict] = {}  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
+        # Track sources marked for deletion (to delete files on save)
+        self._deleted_sources: list[str] = []  # List of source names to delete
 
     def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
         """
@@ -419,6 +421,9 @@ class Well:
         """
         Remove a source and all its properties from the well.
 
+        The source is marked for deletion. When the project is saved,
+        the corresponding LAS file will be deleted from disk.
+
         Parameters
         ----------
         name : str
@@ -441,6 +446,7 @@ class Well:
         >>> well.sources  # ['log', 'core']
         >>> well.remove_source("log")
         >>> well.sources  # ['core']
+        >>> manager.save()  # Will delete log.las from project folder
         """
         if name not in self._sources:
             available = ', '.join(self._sources.keys())
@@ -449,6 +455,10 @@ class Well:
                 f"Available sources: {available or 'none'}"
             )
 
+        # Mark source for deletion (to delete file on save)
+        self._deleted_sources.append(name)
+
+        # Remove from active sources
         del self._sources[name]
         return self
 
@@ -476,7 +486,7 @@ class Well:
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
             'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
             'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
-            'export_sources'
+            'export_sources', 'delete_marked_sources'
         ]:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}'"
@@ -1393,6 +1403,43 @@ class Well:
             use_template=use_template
         )
         las.export(filepath, null_value=null_value)
+
+    def delete_marked_sources(self, folder_path: Union[str, Path]) -> None:
+        """
+        Delete LAS files for sources marked for deletion.
+
+        This method is called automatically by WellDataManager.save() to remove
+        source files that were deleted using remove_source().
+
+        Parameters
+        ----------
+        folder_path : Union[str, Path]
+            Folder path containing the source LAS files
+
+        Examples
+        --------
+        >>> well.remove_source("log")
+        >>> well.delete_marked_sources("/path/to/project/well_36_7_5_B")
+        Deleted source file: /path/to/project/well_36_7_5_B/36_7-5_B_log.las
+        """
+        if not self._deleted_sources:
+            return
+
+        folder = Path(folder_path)
+        well_name_for_file = sanitize_well_name(self.name, keep_hyphens=True)
+
+        for source_name in self._deleted_sources:
+            # Build expected filename
+            filename = f"{well_name_for_file}_{source_name}.las"
+            filepath = folder / filename
+
+            # Delete if exists
+            if filepath.exists():
+                filepath.unlink()
+                print(f"Deleted source file: {filepath}")
+
+        # Clear the deletion list after processing
+        self._deleted_sources.clear()
 
     def export_sources(self, folder_path: Union[str, Path]) -> None:
         """
