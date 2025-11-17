@@ -889,7 +889,12 @@ class Property:
 
         return result
 
-    def data(self, discrete_labels: bool = True, clip_edges: bool = True) -> pd.DataFrame:
+    def data(
+        self,
+        discrete_labels: bool = True,
+        clip_edges: bool = True,
+        clip_to_property: Optional[str] = None
+    ) -> pd.DataFrame:
         """
         Export property and secondary properties as DataFrame.
 
@@ -901,6 +906,9 @@ class Property:
             If True, remove rows at the start and end where all data columns
             (excluding DEPT) contain NaN values. This trims the DataFrame to the
             range where actual data exists.
+        clip_to_property : str, optional
+            Clip output to the defined range of this specific property. If specified,
+            overrides clip_edges behavior.
 
         Returns
         -------
@@ -912,6 +920,7 @@ class Property:
         >>> filtered = well.phie.filter('Zone').filter('NTG_Flag')
         >>> df = filtered.data()
         >>> print(df.head())
+        >>> df = filtered.data(clip_to_property='Zone')
         """
         data = {
             'DEPT': self.depth,
@@ -926,8 +935,15 @@ class Property:
 
         df = pd.DataFrame(data)
 
-        # Clip edges to remove leading/trailing NaN rows
-        if clip_edges and len(df) > 0:
+        # Clip to specific property's defined range
+        if clip_to_property and clip_to_property in df.columns:
+            not_nan = df[clip_to_property].notna()
+            if not_nan.any():
+                first_valid = not_nan.idxmax()
+                last_valid = not_nan[::-1].idxmax()
+                df = df.loc[first_valid:last_valid].reset_index(drop=True)
+        elif clip_edges and len(df) > 0:
+            # Clip edges to remove leading/trailing NaN rows
             # Get data columns (exclude DEPT)
             data_cols = [col for col in df.columns if col != 'DEPT']
             if data_cols:

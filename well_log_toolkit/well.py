@@ -63,7 +63,9 @@ class SourceView:
     def data(
         self,
         include: Optional[list[str]] = None,
-        discrete_labels: bool = False
+        discrete_labels: bool = False,
+        clip_edges: bool = True,
+        clip_to_property: Optional[str] = None
     ) -> pd.DataFrame:
         """
         Export properties from this source to DataFrame.
@@ -74,6 +76,10 @@ class SourceView:
             List of property names to include. If None, includes all properties.
         discrete_labels : bool, default False
             If True, apply label mappings to discrete properties
+        clip_edges : bool, default True
+            If True, remove rows at start/end where all data columns contain NaN
+        clip_to_property : str, optional
+            Clip output to the defined range of this specific property
 
         Returns
         -------
@@ -84,6 +90,7 @@ class SourceView:
         --------
         >>> df = well.CompLogs.data()
         >>> df = well.CompLogs.data(include=['PHIE', 'SW'])
+        >>> df = well.CompLogs.data(clip_to_property='PHIE')
         """
         if not self._properties:
             return pd.DataFrame()
@@ -110,7 +117,26 @@ class SourceView:
             else:
                 result[name] = prop.values.copy()
 
-        return pd.DataFrame(result)
+        df = pd.DataFrame(result)
+
+        # Clip to specific property's defined range
+        if clip_to_property and clip_to_property in df.columns:
+            not_nan = df[clip_to_property].notna()
+            if not_nan.any():
+                first_valid = not_nan.idxmax()
+                last_valid = not_nan[::-1].idxmax()
+                df = df.loc[first_valid:last_valid].reset_index(drop=True)
+        elif clip_edges and len(df) > 0:
+            # Clip edges to remove leading/trailing NaN rows
+            data_cols = [col for col in df.columns if col != 'DEPT']
+            if data_cols:
+                not_all_nan = df[data_cols].notna().any(axis=1)
+                if not_all_nan.any():
+                    first_valid = not_all_nan.idxmax()
+                    last_valid = not_all_nan[::-1].idxmax()
+                    df = df.loc[first_valid:last_valid].reset_index(drop=True)
+
+        return df
 
     def head(self, n: int = 5) -> pd.DataFrame:
         """
@@ -1140,7 +1166,8 @@ class Well:
         auto_resample: bool = True,
         merge_method: str = 'resample',
         discrete_labels: bool = True,
-        clip_edges: bool = True
+        clip_edges: bool = True,
+        clip_to_property: Optional[str] = None
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional resampling and filtering.
@@ -1176,6 +1203,9 @@ class Well:
             If True, remove rows at the start and end where all data columns
             (excluding DEPT) contain NaN values. This trims the DataFrame to the
             range where actual data exists.
+        clip_to_property : str, optional
+            Clip output to the defined range of this specific property. If specified,
+            overrides clip_edges behavior and clips to where this property has valid data.
 
         Returns
         -------
@@ -1213,6 +1243,9 @@ class Well:
 
         >>> # Disable edge clipping to keep all NaN rows
         >>> df = well.data(clip_edges=False)
+
+        >>> # Clip to specific property's defined range
+        >>> df = well.data(clip_to_property='PHIE')
         """
         if not self._sources:
             return pd.DataFrame()
@@ -1308,8 +1341,15 @@ class Well:
 
         df = pd.DataFrame(data)
 
-        # Clip edges to remove leading/trailing NaN rows
-        if clip_edges and len(df) > 0:
+        # Clip to specific property's defined range
+        if clip_to_property and clip_to_property in df.columns:
+            not_nan = df[clip_to_property].notna()
+            if not_nan.any():
+                first_valid = not_nan.idxmax()
+                last_valid = not_nan[::-1].idxmax()
+                df = df.loc[first_valid:last_valid].reset_index(drop=True)
+        elif clip_edges and len(df) > 0:
+            # Clip edges to remove leading/trailing NaN rows
             # Get data columns (exclude DEPT)
             data_cols = [col for col in df.columns if col != 'DEPT']
             if data_cols:
