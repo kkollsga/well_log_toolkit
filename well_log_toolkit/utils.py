@@ -101,17 +101,17 @@ def sanitize_property_name(name: str) -> str:
 def parse_las_line(line: str) -> tuple[str, str, str]:
     """
     Parse a LAS header line into mnemonic, unit/value, and description.
-    
+
     Parameters
     ----------
     line : str
         LAS header line (e.g., "DEPT .m : DEPTH")
-    
+
     Returns
     -------
     tuple[str, str, str]
         (mnemonic, unit_or_value, description)
-    
+
     Examples
     --------
     >>> parse_las_line("DEPT .m : DEPTH")
@@ -120,24 +120,41 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
     ('WELL', '12/3-2 B', 'WELL')
     >>> parse_las_line("NULL .  -999.25 : NULL VALUE")
     ('NULL', '-999.25', 'NULL VALUE')
+    >>> parse_las_line("PhiTLam_2025.m3/m3 : Porosity")
+    ('PhiTLam_2025', 'm3/m3', 'Porosity')
     """
     # Split by colon to separate description
     parts = line.split(':', 1)
     left = parts[0].strip()
     description = parts[1].strip() if len(parts) > 1 else ''
-    
+
     # Split left side by whitespace
     tokens = left.split()
     if not tokens:
         return '', '', description
-    
-    mnemonic = tokens[0].rstrip('.')  # Remove trailing dot from mnemonic
-    
-    # Everything after mnemonic (and optional dot) is unit/value
-    # Handle unit format: ".m" or ". m3/m3" or value: "12/3-2 B"
-    rest = left[len(tokens[0]):].strip()
-    
-    if rest.startswith('.'):
-        rest = rest[1:].strip()  # Remove leading dot
-    
+
+    first_token = tokens[0]
+
+    # Check if first token contains a dot (mnemonic.unit format)
+    # Handle cases like "DEPT.m", "PhiTLam_2025.m3/m3", "WELL."
+    if '.' in first_token:
+        # Split on first dot to separate mnemonic from unit
+        dot_pos = first_token.index('.')
+        mnemonic = first_token[:dot_pos]
+        unit_part = first_token[dot_pos + 1:]
+
+        # Rest of tokens (if any) are additional unit/value parts
+        if len(tokens) > 1:
+            rest = unit_part + ' ' + ' '.join(tokens[1:]) if unit_part else ' '.join(tokens[1:])
+        else:
+            rest = unit_part
+        rest = rest.strip()
+    else:
+        # No dot in first token, old behavior
+        mnemonic = first_token
+        rest = left[len(first_token):].strip()
+
+        if rest.startswith('.'):
+            rest = rest[1:].strip()  # Remove leading dot
+
     return mnemonic, rest, description
