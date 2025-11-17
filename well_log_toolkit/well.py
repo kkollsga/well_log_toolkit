@@ -60,6 +60,79 @@ class SourceView:
     def __repr__(self) -> str:
         return f"SourceView('{self._source_name}', properties={len(self._properties)})"
 
+    def data(
+        self,
+        include: Optional[list[str]] = None,
+        discrete_labels: bool = False
+    ) -> pd.DataFrame:
+        """
+        Export properties from this source to DataFrame.
+
+        Parameters
+        ----------
+        include : list[str], optional
+            List of property names to include. If None, includes all properties.
+        discrete_labels : bool, default False
+            If True, apply label mappings to discrete properties
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with DEPT column and property values
+
+        Examples
+        --------
+        >>> df = well.CompLogs.data()
+        >>> df = well.CompLogs.data(include=['PHIE', 'SW'])
+        """
+        if not self._properties:
+            return pd.DataFrame()
+
+        # Filter properties if requested
+        if include:
+            props = {k: v for k, v in self._properties.items() if k in include}
+        else:
+            props = self._properties
+
+        if not props:
+            return pd.DataFrame()
+
+        # Get first property for depth reference
+        first_prop = next(iter(props.values()))
+        result = {'DEPT': first_prop.depth.copy()}
+
+        # Add each property
+        for name, prop in props.items():
+            if discrete_labels and prop.type == 'discrete' and prop.labels:
+                # Apply labels
+                labeled_values = prop._apply_labels(prop.values)
+                result[name] = labeled_values
+            else:
+                result[name] = prop.values.copy()
+
+        return pd.DataFrame(result)
+
+    def head(self, n: int = 5) -> pd.DataFrame:
+        """
+        Return first n rows of data from this source.
+
+        Parameters
+        ----------
+        n : int, default 5
+            Number of rows to return
+
+        Returns
+        -------
+        pd.DataFrame
+            First n rows of data
+
+        Examples
+        --------
+        >>> well.CompLogs.head()
+        >>> well.CompLogs.head(10)
+        """
+        return self.data().head(n)
+
 
 class Well:
     """
@@ -1248,6 +1321,29 @@ class Well:
                     df = df.loc[first_valid:last_valid].reset_index(drop=True)
 
         return df
+
+    def head(self, n: int = 5) -> pd.DataFrame:
+        """
+        Return first n rows of well data.
+
+        Convenience method equivalent to `well.data().head(n)`.
+
+        Parameters
+        ----------
+        n : int, default 5
+            Number of rows to return
+
+        Returns
+        -------
+        pd.DataFrame
+            First n rows of well data
+
+        Examples
+        --------
+        >>> well.head()
+        >>> well.head(10)
+        """
+        return self.data().head(n)
 
     def to_las(
         self,

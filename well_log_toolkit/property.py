@@ -940,6 +940,29 @@ class Property:
 
         return df
 
+    def head(self, n: int = 5) -> pd.DataFrame:
+        """
+        Return first n rows of property data.
+
+        Convenience method equivalent to `property.data().head(n)`.
+
+        Parameters
+        ----------
+        n : int, default 5
+            Number of rows to return
+
+        Returns
+        -------
+        pd.DataFrame
+            First n rows of property data
+
+        Examples
+        --------
+        >>> well.PHIE.head()
+        >>> well.PHIE.filter('Zone').head(10)
+        """
+        return self.data().head(n)
+
     def export_to_las(
         self,
         filepath: Union[str, Path],
