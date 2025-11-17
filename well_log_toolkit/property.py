@@ -100,9 +100,9 @@ class Property:
         self.original_name = original_name or name  # Original name with special characters
         self.parent_well = parent_well
         self.unit = unit
-        self.type = prop_type
+        self._type = prop_type  # Internal storage for type
         self.description = description
-        self.labels = labels  # Mapping for discrete property values {0: 'NonNet', 1: 'Net'}
+        self._labels = labels  # Internal storage for labels
         self.source_las = source_las  # Source LAS file this property came from
         self.source_name = source_name  # Source name (file path or external_df)
         self._null_value = null_value
@@ -152,6 +152,69 @@ class Property:
         if self.source_name:
             return self.source_name
         return str(self.source_las.filepath) if self.source_las else None
+
+    @property
+    def type(self) -> str:
+        """
+        Get the property type ('continuous' or 'discrete').
+
+        Returns
+        -------
+        str
+            Property type
+        """
+        return self._type
+
+    @type.setter
+    def type(self, value: str) -> None:
+        """
+        Set the property type and mark source as modified.
+
+        Parameters
+        ----------
+        value : str
+            Property type ('continuous' or 'discrete')
+        """
+        if value not in ('continuous', 'discrete'):
+            raise ValueError(f"type must be 'continuous' or 'discrete', got '{value}'")
+        if value != self._type:
+            self._type = value
+            self._mark_source_modified()
+
+    @property
+    def labels(self) -> Optional[dict[int, str]]:
+        """
+        Get the label mapping for discrete property values.
+
+        Returns
+        -------
+        Optional[dict[int, str]]
+            Mapping of numeric values to label strings, or None if not discrete
+        """
+        return self._labels
+
+    @labels.setter
+    def labels(self, value: Optional[dict[int, str]]) -> None:
+        """
+        Set the label mapping and mark source as modified.
+
+        Parameters
+        ----------
+        value : Optional[dict[int, str]]
+            Mapping of numeric values to label strings
+        """
+        if value != self._labels:
+            self._labels = value
+            self._mark_source_modified()
+
+    def _mark_source_modified(self) -> None:
+        """Mark the parent well's source as modified so it gets re-exported on save."""
+        if self.parent_well is not None and self.source_name is not None:
+            try:
+                self.parent_well.mark_source_modified(self.source_name)
+            except (KeyError, AttributeError):
+                # Source may not exist in well (e.g., filtered copy) - ignore
+                pass
 
     @property
     def depth(self) -> np.ndarray:
