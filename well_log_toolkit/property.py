@@ -701,6 +701,7 @@ class Property:
             - std_dev: weighted and/or arithmetic standard deviation
             - percentile: {p10, p50, p90} values
             - range: {min, max} value range
+            - depth_range: {min, max} depth range within the zone
             - samples: number of valid samples
             - thickness: depth interval for this group
             - gross_thickness: total depth interval (all groups)
@@ -839,7 +840,9 @@ class Property:
             Statistics dictionary with organized structure:
             - mean, sum, std: single value or {weighted, arithmetic} dict
             - percentile: {p10, p50, p90} with single or nested values
-            - samples, thickness, fraction, min, max
+            - range: {min, max} value range
+            - depth_range: {min, max} depth range within the zone
+            - samples, thickness, fraction
             - calculation: method indicator
         """
         values = self.values[mask]
@@ -910,12 +913,21 @@ class Property:
             'max': float(np.max(valid)) if len(valid) > 0 else np.nan,
         }
 
+        # Build depth_range dict (min and max depth within the zone)
+        masked_depths = self.depth[mask]
+        valid_depths = masked_depths[valid_mask_local]
+        depth_range_dict = {
+            'min': float(np.min(valid_depths)) if len(valid_depths) > 0 else np.nan,
+            'max': float(np.max(valid_depths)) if len(valid_depths) > 0 else np.nan,
+        }
+
         return {
             'mean': format_value(w_mean, a_mean),
             'sum': format_value(w_sum, a_sum),
             'std_dev': format_value(w_std, a_std),
             'percentile': percentile_dict,
             'range': range_dict,
+            'depth_range': depth_range_dict,
             'samples': int(len(valid)),
             'thickness': thickness,
             'gross_thickness': gross_thickness,
