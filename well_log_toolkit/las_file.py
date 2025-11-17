@@ -555,7 +555,7 @@ class LasFile:
 
         Examples
         --------
-        >>> df = well.to_dataframe()
+        >>> df = well.data()
         >>> LasFile.export_las(
         ...     'output.las',
         ...     well_name='12/3-2 B',

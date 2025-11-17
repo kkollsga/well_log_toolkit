@@ -264,7 +264,7 @@ class Property:
         >>> stats = filtered.sums_avg()
         >>> # Shape remains the same - only discrete values are added
         >>> original.shape  # (29, 2)
-        >>> filtered.to_dataframe().shape  # (29, 3) - added Zone column
+        >>> filtered.data().shape  # (29, 3) - added Zone column
         """
         if self.parent_well is None:
             raise PropertyNotFoundError(
@@ -578,7 +578,7 @@ class Property:
 
         return result
 
-    def to_dataframe(self, discrete_labels: bool = True) -> pd.DataFrame:
+    def data(self, discrete_labels: bool = True, clip_edges: bool = True) -> pd.DataFrame:
         """
         Export property and secondary properties as DataFrame.
 
@@ -586,6 +586,10 @@ class Property:
         ----------
         discrete_labels : bool, default True
             If True, apply label mappings to discrete properties
+        clip_edges : bool, default True
+            If True, remove rows at the start and end where all data columns
+            (excluding DEPT) contain NaN values. This trims the DataFrame to the
+            range where actual data exists.
 
         Returns
         -------
@@ -595,7 +599,7 @@ class Property:
         Examples
         --------
         >>> filtered = well.phie.filter('Zone').filter('NTG_Flag')
-        >>> df = filtered.to_dataframe()
+        >>> df = filtered.data()
         >>> print(df.head())
         """
         data = {
@@ -609,7 +613,21 @@ class Property:
             else:
                 data[sec_prop.name] = sec_prop.values
 
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+
+        # Clip edges to remove leading/trailing NaN rows
+        if clip_edges and len(df) > 0:
+            # Get data columns (exclude DEPT)
+            data_cols = [col for col in df.columns if col != 'DEPT']
+            if data_cols:
+                # Find first row where at least one data column is not NaN
+                not_all_nan = df[data_cols].notna().any(axis=1)
+                if not_all_nan.any():
+                    first_valid = not_all_nan.idxmax()
+                    last_valid = not_all_nan[::-1].idxmax()
+                    df = df.loc[first_valid:last_valid].reset_index(drop=True)
+
+        return df
 
     def export_to_las(
         self,
@@ -654,7 +672,7 @@ class Property:
                 well_name = 'UNKNOWN'
 
         # Get DataFrame with property and secondary properties (numeric values)
-        df = self.to_dataframe(discrete_labels=False)
+        df = self.data(discrete_labels=False, clip_edges=False)
 
         # Build column name mapping: sanitized -> original
         column_rename_map = {self.name: self.original_name}

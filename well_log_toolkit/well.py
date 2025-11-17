@@ -543,7 +543,7 @@ class Well:
         # Don't intercept private attributes, methods, or class attributes
         if name.startswith('_') or name in [
             'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
-            'load_las', 'get_property', 'merge', 'to_dataframe', 'original_las',
+            'load_las', 'get_property', 'merge', 'data', 'original_las',
             'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
             'export_sources', 'delete_renamed_sources', 'delete_marked_sources', 'mark_source_modified'
         ]:
@@ -1059,14 +1059,15 @@ class Well:
 
         return self
     
-    def to_dataframe(
+    def data(
         self,
         reference_property: Optional[str] = None,
         include: Optional[list[str]] = None,
         exclude: Optional[list[str]] = None,
         auto_resample: bool = True,
         merge_method: str = 'resample',
-        discrete_labels: bool = True
+        discrete_labels: bool = True,
+        clip_edges: bool = True
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional resampling and filtering.
@@ -1098,6 +1099,10 @@ class Well:
             - 'concat': Merge unique depths, fill NaN where missing
         discrete_labels : bool, default True
             If True, apply label mappings to discrete properties with labels defined.
+        clip_edges : bool, default True
+            If True, remove rows at the start and end where all data columns
+            (excluding DEPT) contain NaN values. This trims the DataFrame to the
+            range where actual data exists.
 
         Returns
         -------
@@ -1116,22 +1121,25 @@ class Well:
         Examples
         --------
         >>> # Export all properties (auto-resamples to first property's grid)
-        >>> df = well.to_dataframe()
+        >>> df = well.data()
 
         >>> # Export with specific reference property
-        >>> df = well.to_dataframe(reference_property='DEPT')
+        >>> df = well.data(reference_property='DEPT')
 
         >>> # Include only specific properties
-        >>> df = well.to_dataframe(include=['PHIE', 'SW', 'PERM'])
+        >>> df = well.data(include=['PHIE', 'SW', 'PERM'])
 
         >>> # Exclude specific properties
-        >>> df = well.to_dataframe(exclude=['QC_Flag', 'Temp_Data'])
+        >>> df = well.data(exclude=['QC_Flag', 'Temp_Data'])
 
         >>> # Use concat merge method instead of resample
-        >>> df = well.to_dataframe(merge_method='concat')
+        >>> df = well.data(merge_method='concat')
 
         >>> # Disable label mapping for discrete properties
-        >>> df = well.to_dataframe(discrete_labels=False)
+        >>> df = well.data(discrete_labels=False)
+
+        >>> # Disable edge clipping to keep all NaN rows
+        >>> df = well.data(clip_edges=False)
         """
         if not self._sources:
             return pd.DataFrame()
@@ -1225,7 +1233,21 @@ class Well:
             else:
                 data[name] = prop.values
 
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+
+        # Clip edges to remove leading/trailing NaN rows
+        if clip_edges and len(df) > 0:
+            # Get data columns (exclude DEPT)
+            data_cols = [col for col in df.columns if col != 'DEPT']
+            if data_cols:
+                # Find first row where at least one data column is not NaN
+                not_all_nan = df[data_cols].notna().any(axis=1)
+                if not_all_nan.any():
+                    first_valid = not_all_nan.idxmax()
+                    last_valid = not_all_nan[::-1].idxmax()
+                    df = df.loc[first_valid:last_valid].reset_index(drop=True)
+
+        return df
 
     def to_las(
         self,
