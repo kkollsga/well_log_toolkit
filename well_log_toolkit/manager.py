@@ -59,7 +59,11 @@ class WellDataManager:
         if project is not None:
             self.load(project)
     
-    def load_las(self, filepath: Union[str, Path, list[Union[str, Path]]]) -> 'WellDataManager':
+    def load_las(
+        self,
+        filepath: Union[str, Path, list[Union[str, Path]]],
+        sampled: bool = False
+    ) -> 'WellDataManager':
         """
         Load LAS file(s), auto-create well if needed.
 
@@ -67,6 +71,9 @@ class WellDataManager:
         ----------
         filepath : Union[str, Path, list[Union[str, Path]]]
             Path to LAS file or list of paths to LAS files
+        sampled : bool, default False
+            If True, mark all properties from the LAS file(s) as 'sampled' type.
+            Use this for core plug data or other point measurements.
 
         Returns
         -------
@@ -83,12 +90,14 @@ class WellDataManager:
         >>> manager = WellDataManager()
         >>> manager.load_las("well1.las")
         >>> manager.load_las(["well2.las", "well3.las"])
+        >>> # Load core plug data
+        >>> manager.load_las("core_data.las", sampled=True)
         >>> well = manager.well_12_3_2_B
         """
         # Handle list of files
         if isinstance(filepath, list):
             for file in filepath:
-                self.load_las(file)
+                self.load_las(file, sampled=sampled)
             return self
 
         # Handle single file
@@ -115,7 +124,7 @@ class WellDataManager:
             self._name_mapping[well_name] = well_key
 
         # Load into well
-        self._wells[well_key].load_las(las)
+        self._wells[well_key].load_las(las, sampled=sampled)
 
         return self  # Enable chaining
 

@@ -220,7 +220,7 @@ class Well:
         # Track sources marked for rename (to rename files on save)
         self._renamed_sources: dict[str, str] = {}  # {old_name: new_name}
 
-    def load_las(self, las: Union[LasFile, str, Path]) -> 'Well':
+    def load_las(self, las: Union[LasFile, str, Path], sampled: bool = False) -> 'Well':
         """
         Load LAS file into this well, organized by source.
 
@@ -234,6 +234,10 @@ class Well:
         ----------
         las : Union[LasFile, str, Path]
             Either a LasFile instance or path to LAS file
+        sampled : bool, default False
+            If True, mark all properties from this source as 'sampled' type.
+            Use this for core plug data or other point measurements where
+            boundary insertion during filtering should be disabled.
 
         Returns
         -------
@@ -253,6 +257,8 @@ class Well:
         >>> well.load_las("36_7-5_B_CorePor.las")  # Source name: "CorePor"
         >>> well.load_las("36_7-5_B_Log.las")      # Source name: "Log"
         >>> well.load_las("formation_tops.las")    # Source name: "formation_tops"
+        >>> # Load core plug data as sampled
+        >>> well.load_las("36_7-5_B_Core.las", sampled=True)
         >>> # Access by source
         >>> well.CorePor.PHIE
         >>> well.Log.GR
@@ -333,7 +339,15 @@ class Well:
 
             # Check if this property is marked as discrete
             is_discrete = prop_name in discrete_props
-            prop_type = 'discrete' if is_discrete else curve_meta['type']
+
+            # Determine property type
+            if sampled:
+                # Override to sampled for all properties if loading sampled data
+                prop_type = 'sampled'
+            elif is_discrete:
+                prop_type = 'discrete'
+            else:
+                prop_type = curve_meta['type']
 
             # Get labels if property is discrete
             labels = None

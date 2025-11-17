@@ -45,13 +45,10 @@ from .las_file import LasFile
 from .utils import sanitize_well_name, sanitize_property_name
 from .statistics import (
     compute_intervals,
-    weighted_mean,
-    weighted_sum,
-    weighted_std,
-    weighted_percentile,
-    arithmetic_mean,
-    arithmetic_sum,
-    arithmetic_std,
+    mean,
+    sum,
+    std,
+    percentile,
     compute_all_statistics,
 )
 from .exceptions import (
@@ -77,13 +74,10 @@ __all__ = [
     "sanitize_property_name",
     # Statistics
     "compute_intervals",
-    "weighted_mean",
-    "weighted_sum",
-    "weighted_std",
-    "weighted_percentile",
-    "arithmetic_mean",
-    "arithmetic_sum",
-    "arithmetic_std",
+    "mean",
+    "sum",
+    "std",
+    "percentile",
     "compute_all_statistics",
     # Exceptions
     "WellLogError",

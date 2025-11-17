@@ -9,7 +9,10 @@ import pandas as pd
 from scipy.interpolate import interp1d
 
 from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
-from .statistics import compute_intervals, weighted_mean, weighted_sum, weighted_std, weighted_percentile, arithmetic_mean, arithmetic_sum, arithmetic_std
+from .statistics import (
+    compute_intervals,
+    mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
+)
 
 if TYPE_CHECKING:
     from .well import Well
@@ -173,10 +176,10 @@ class Property:
         Parameters
         ----------
         value : str
-            Property type ('continuous' or 'discrete')
+            Property type ('continuous', 'discrete', or 'sampled')
         """
-        if value not in ('continuous', 'discrete'):
-            raise ValueError(f"type must be 'continuous' or 'discrete', got '{value}'")
+        if value not in ('continuous', 'discrete', 'sampled'):
+            raise ValueError(f"type must be 'continuous', 'discrete', or 'sampled', got '{value}'")
         if value != self._type:
             self._type = value
             self._mark_source_modified()
@@ -336,7 +339,7 @@ class Property:
             'boundary_samples_inserted': self._boundary_samples_inserted,
         }
 
-    def filter(self, property_name: str) -> 'Property':
+    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
 
@@ -348,6 +351,10 @@ class Property:
         ----------
         property_name : str
             Name of discrete property in parent well
+        insert_boundaries : bool, optional
+            If True, insert synthetic samples at discrete property boundaries.
+            Default is True for continuous properties, False for sampled properties.
+            Set to False for sampled data (core plugs) to preserve original measurements.
 
         Returns
         -------
@@ -368,6 +375,10 @@ class Property:
         >>> # Shape remains the same - only discrete values are added
         >>> original.shape  # (29, 2)
         >>> filtered.data().shape  # (29, 3) - added Zone column
+
+        >>> # For sampled data (core plugs), boundaries are not inserted by default
+        >>> core_phie.type = 'sampled'
+        >>> filtered = core_phie.filter("Zone")  # No boundary insertion
         """
         if self.parent_well is None:
             raise PropertyNotFoundError(
@@ -393,9 +404,21 @@ class Property:
                 f"well.get_property('{property_name}').type = 'discrete'"
             )
 
+        # Determine if we should insert boundaries
+        # Default: True for continuous, False for sampled
+        if insert_boundaries is None:
+            insert_boundaries = self.type != 'sampled'
+
         # Insert synthetic samples at discrete property boundaries
         # This ensures accurate interval weighting when zone boundaries don't align with samples
-        new_depth, new_values, new_secondaries = self._insert_boundary_samples(discrete_prop)
+        # Skip for sampled data (core plugs) to preserve original measurements
+        if insert_boundaries:
+            new_depth, new_values, new_secondaries = self._insert_boundary_samples(discrete_prop)
+        else:
+            # No boundary insertion - just copy existing data
+            new_depth = self.depth.copy()
+            new_values = self.values.copy()
+            new_secondaries = [sp for sp in self.secondary_properties]
 
         # Interpolate discrete property to the NEW depth grid (with boundary samples)
         # Use 'previous' (forward fill) for discrete: value at MD applies from that depth downward
@@ -680,16 +703,18 @@ class Property:
                 f"Failed to resample data: {e}"
             )
     
-    def sums_avg(self, weighted: bool = True, arithmetic: bool = False) -> dict:
+    def sums_avg(self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None) -> dict:
         """
         Compute hierarchical statistics grouped by all secondary properties.
 
         Parameters
         ----------
-        weighted : bool, default True
-            Include depth-weighted statistics
-        arithmetic : bool, default False
-            Include arithmetic (unweighted) statistics
+        weighted : bool, optional
+            Include depth-weighted statistics.
+            Default: True for continuous/discrete, False for sampled
+        arithmetic : bool, optional
+            Include arithmetic (unweighted) statistics.
+            Default: False for continuous/discrete, True for sampled
 
         Returns
         -------
@@ -723,7 +748,25 @@ class Property:
         >>> filtered = phie.filter('Zone').filter('NTG_Flag')
         >>> stats = filtered.sums_avg()
         >>> # {'Zone_1': {'NTG_Flag_0': {...}, 'NTG_Flag_1': {...}}, ...}
+
+        >>> # Sampled data uses arithmetic by default
+        >>> core_phie.type = 'sampled'
+        >>> stats = core_phie.sums_avg()  # arithmetic=True, weighted=False
         """
+        # Set defaults based on property type
+        # Sampled data: use arithmetic (each sample has equal weight)
+        # Continuous/discrete: use weighted (depth-weighted)
+        if self.type == 'sampled':
+            if weighted is None:
+                weighted = False
+            if arithmetic is None:
+                arithmetic = True
+        else:
+            if weighted is None:
+                weighted = True
+            if arithmetic is None:
+                arithmetic = False
+
         # Calculate gross thickness for fraction calculation
         full_intervals = compute_intervals(self.depth)
         valid_mask = ~np.isnan(self.values)
@@ -866,45 +909,27 @@ class Property:
         # Determine calculation method for output
         if weighted and arithmetic:
             calc_method = 'both'
+            stat_method = None  # Returns dict with both
         elif weighted:
             calc_method = 'weighted'
+            stat_method = 'weighted'
         else:
             calc_method = 'arithmetic'
+            stat_method = 'arithmetic'
 
-        # Helper to format single or dual values
-        def format_value(w_val, a_val):
-            if weighted and arithmetic:
-                return {'weighted': w_val, 'arithmetic': a_val}
-            elif weighted:
-                return w_val
-            else:
-                return a_val
-
-        # Compute weighted stats
-        w_mean = weighted_mean(values, intervals)
-        w_sum = weighted_sum(values, intervals)
-        w_std = weighted_std(values, intervals)
-        w_p10 = weighted_percentile(values, intervals, 10)
-        w_p50 = weighted_percentile(values, intervals, 50)
-        w_p90 = weighted_percentile(values, intervals, 90)
-
-        # Compute arithmetic stats
-        a_mean = arithmetic_mean(values)
-        a_sum = arithmetic_sum(values)
-        a_std = arithmetic_std(values)
-        # Arithmetic percentiles using numpy
-        if len(valid) > 0:
-            a_p10 = float(np.percentile(valid, 10))
-            a_p50 = float(np.percentile(valid, 50))
-            a_p90 = float(np.percentile(valid, 90))
-        else:
-            a_p10 = a_p50 = a_p90 = np.nan
+        # Compute stats using unified functions
+        mean_result = stat_mean(values, intervals, method=stat_method)
+        sum_result = stat_sum(values, intervals, method=stat_method)
+        std_result = stat_std(values, intervals, method=stat_method)
+        p10_result = stat_percentile(values, 10, intervals, method=stat_method)
+        p50_result = stat_percentile(values, 50, intervals, method=stat_method)
+        p90_result = stat_percentile(values, 90, intervals, method=stat_method)
 
         # Build percentile dict
         percentile_dict = {
-            'p10': format_value(w_p10, a_p10),
-            'p50': format_value(w_p50, a_p50),
-            'p90': format_value(w_p90, a_p90),
+            'p10': p10_result,
+            'p50': p50_result,
+            'p90': p90_result,
         }
 
         # Build range dict
@@ -922,9 +947,9 @@ class Property:
         }
 
         return {
-            'mean': format_value(w_mean, a_mean),
-            'sum': format_value(w_sum, a_sum),
-            'std_dev': format_value(w_std, a_std),
+            'mean': mean_result,
+            'sum': sum_result,
+            'std_dev': std_result,
             'percentile': percentile_dict,
             'range': range_dict,
             'depth_range': depth_range_dict,

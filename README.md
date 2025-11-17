@@ -41,7 +41,8 @@ tops_df = pd.DataFrame({
 
 manager.load_tops(
     tops_df,
-    property_name='Zone',
+    property_name='Zone',         # Custom name for the discrete property (default: 'Well_Tops')
+    source_name='Formation_Tops', # Custom name for the source (default: 'Imported_Tops')
     well_col='Well',
     discrete_col='Surface',
     depth_col='MD'
@@ -65,6 +66,10 @@ print(stats)
 #     'range': {
 #       'min': 0.05,               # Minimum value
 #       'max': 0.28                # Maximum value
+#     },
+#     'depth_range': {
+#       'min': 2850.0,             # Minimum depth in zone
+#       'max': 3100.0              # Maximum depth in zone
 #     },
 #     'samples': 250,              # Number of valid samples
 #     'thickness': 250.0,          # Interval thickness for this zone (m)
@@ -276,6 +281,7 @@ Each statistics dictionary contains:
 - `thickness` - Depth interval for this group (sum of intervals)
 - `gross_thickness` - Total depth interval across all groups
 - `thickness_fraction` - Fraction of gross thickness (thickness / gross_thickness)
+- `depth_range` - Dictionary with `min`, `max` depth within the zone
 - `calculation` - Method used: 'weighted', 'arithmetic', or 'both'
 
 **Multi-method output** (when `arithmetic=True`):
@@ -437,6 +443,60 @@ well.add_dataframe(
 print(well.CoreData.CorePHIE.values)
 ```
 
+### 11. Sampled Data (Core Plugs)
+
+Core plug measurements are point samples, not continuous logs. They require different statistical treatment:
+
+```python
+# Load core plug data as sampled
+manager.load_las('core_plugs.las', sampled=True)
+
+# Or mark individual properties as sampled
+well.CorePHIE.type = 'sampled'
+
+# Sampled data behavior:
+# - Uses arithmetic mean by default (each plug counts equally)
+# - No boundary insertion when filtering (preserves original measurements)
+# - Weighted statistics not appropriate for point measurements
+```
+
+**Filtering sampled data**:
+
+```python
+# Filtering core plugs by zone
+core_phie = well.CorePHIE
+core_phie.type = 'sampled'
+
+# No synthetic samples inserted at zone boundaries (preserves plug locations)
+stats = core_phie.filter('Zone').sums_avg()
+# {
+#   'Top_Brent': {
+#     'mean': 0.205,           # Arithmetic mean (each plug equally weighted)
+#     'samples': 12,           # Number of core plugs in zone
+#     'calculation': 'arithmetic'
+#   },
+#   'Top_Statfjord': {...}
+# }
+
+# Can override boundary insertion if needed
+filtered = core_phie.filter('Zone', insert_boundaries=True)
+
+# Can force weighted statistics if desired
+stats = core_phie.filter('Zone').sums_avg(weighted=True)
+```
+
+**Why sampled matters**:
+
+```python
+# Continuous log: zone boundary at 2850m
+# Log samples at: 2848, 2849, 2850, 2851, 2852
+# → Synthetic sample inserted at 2850m for accurate zone attribution
+
+# Core plugs at: 2848, 2851, 2855
+# → No synthetic samples - these are discrete physical measurements
+# → Each plug is assigned to zone based on its actual depth
+```
+
 ---
 
 ## Advanced Usage
@@ -448,12 +508,10 @@ Use the statistics functions directly for custom analysis:
 ```python
 from well_log_toolkit import (
     compute_intervals,
-    weighted_mean,
-    weighted_sum,
-    weighted_std,
-    weighted_percentile,
-    arithmetic_mean,
-    arithmetic_std,
+    mean,
+    sum,
+    std,
+    percentile,
     compute_all_statistics
 )
 import numpy as np
@@ -463,15 +521,24 @@ depth = np.array([1500.0, 1501.0, 1505.0])
 intervals = compute_intervals(depth)
 # [0.5, 2.5, 2.0] - midpoint method
 
-# Weighted statistics
+# Unified statistics functions with method parameter
 values = np.array([0.15, 0.22, 0.18])
-w_mean = weighted_mean(values, intervals)
-w_std = weighted_std(values, intervals)
-p50 = weighted_percentile(values, intervals, 50)
 
-# For NTG flags, weighted_sum gives net thickness
+# Returns dict with both methods when no method specified
+result = mean(values, intervals)
+# {'weighted': 0.196, 'arithmetic': 0.183}
+
+# Returns single value when method specified
+w_mean = mean(values, intervals, method='weighted')
+a_mean = mean(values, intervals, method='arithmetic')
+
+# Same pattern for sum, std, percentile
+w_std = std(values, intervals, method='weighted')
+p50 = percentile(values, 50, intervals, method='weighted')
+
+# For NTG flags, weighted sum gives net thickness
 ntg = np.array([0, 1, 0])
-net_thickness = weighted_sum(ntg, intervals)  # 2.5m
+net_thickness = sum(ntg, intervals, method='weighted')  # 2.5m
 
 # Get all statistics at once
 all_stats = compute_all_statistics(values, depth)
