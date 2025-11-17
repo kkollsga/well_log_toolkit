@@ -36,7 +36,7 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.32"
+__version__ = "0.1.33"
 
 from .manager import WellDataManager
 from .well import Well

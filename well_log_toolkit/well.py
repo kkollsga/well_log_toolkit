@@ -63,7 +63,7 @@ class SourceView:
     def data(
         self,
         include: Optional[list[str]] = None,
-        discrete_labels: bool = False,
+        discrete_labels: bool = True,
         clip_edges: bool = True,
         clip_to_property: Optional[str] = None
     ) -> pd.DataFrame:
@@ -74,7 +74,7 @@ class SourceView:
         ----------
         include : list[str], optional
             List of property names to include. If None, includes all properties.
-        discrete_labels : bool, default False
+        discrete_labels : bool, default True
             If True, apply label mappings to discrete properties
         clip_edges : bool, default True
             If True, remove rows at start/end where all data columns contain NaN
