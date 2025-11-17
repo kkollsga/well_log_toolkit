@@ -304,6 +304,10 @@ class Property:
             method='previous'  # Forward fill: value applies from depth downward until next marker
         )
 
+        # Mask out discrete values where main property is undefined (NaN)
+        # This prevents filtering at depths where the main log doesn't have valid data
+        interpolated_discrete = np.where(np.isnan(new_values), np.nan, interpolated_discrete)
+
         # Add new secondary property (already on same grid as other secondaries)
         new_secondaries.append(Property(
             name=discrete_prop.name,
@@ -350,6 +354,9 @@ class Property:
         doesn't align with the log sample grid, this creates synthetic samples
         at those boundary depths to properly partition the intervals.
 
+        Only inserts boundaries within the valid data range of the main property
+        (where values are not NaN).
+
         Parameters
         ----------
         discrete_prop : Property
@@ -363,11 +370,25 @@ class Property:
         # Get unique boundary depths from discrete property
         boundary_depths = discrete_prop.depth[~np.isnan(discrete_prop.values)]
 
-        # Find boundaries that fall between our sample points
+        # Determine valid depth range of main property (where data exists)
+        valid_mask = ~np.isnan(self.values)
+        if not np.any(valid_mask):
+            # No valid data, return copies
+            return (
+                self.depth.copy(),
+                self.values.copy(),
+                [sp for sp in self.secondary_properties]
+            )
+
+        valid_depths = self.depth[valid_mask]
+        min_valid_depth = valid_depths.min()
+        max_valid_depth = valid_depths.max()
+
+        # Find boundaries that fall within the valid data range
         boundaries_to_insert = []
         for bd in boundary_depths:
-            # Check if boundary falls strictly between samples
-            if self.depth.min() < bd < self.depth.max():
+            # Check if boundary falls strictly within valid data range
+            if min_valid_depth < bd < max_valid_depth:
                 # Check it's not already a sample point
                 if not np.any(np.isclose(self.depth, bd, atol=1e-6)):
                     boundaries_to_insert.append(bd)
