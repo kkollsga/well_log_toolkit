@@ -389,8 +389,9 @@ class Property:
         for bd in boundary_depths:
             # Check if boundary falls strictly within valid data range
             if min_valid_depth < bd < max_valid_depth:
-                # Check it's not already a sample point
-                if not np.any(np.isclose(self.depth, bd, atol=1e-6)):
+                # Check it's not already a sample point (within 1cm tolerance)
+                # Use rtol=0 to only use absolute tolerance (avoid relative tolerance scaling with depth)
+                if not np.any(np.isclose(self.depth, bd, atol=0.01, rtol=0)):
                     boundaries_to_insert.append(bd)
 
         if not boundaries_to_insert:
