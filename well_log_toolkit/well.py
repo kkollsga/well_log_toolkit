@@ -1755,6 +1755,32 @@ class Well:
                 # Update the LAS data
                 original_las.data = pd.DataFrame(las_data)
 
+                # Sync discrete labels from Property objects to LAS parameter_info
+                # This ensures user-modified labels are persisted to the LAS file
+                discrete_props = []
+                for prop_name, prop in source_data['properties'].items():
+                    if prop.type == 'discrete' and prop.labels:
+                        discrete_props.append(prop.original_name)
+                        # Add label mappings to parameter_info
+                        for value, label in prop.labels.items():
+                            param_name = f"{prop.original_name}_{value}"
+                            original_las.parameter_info[param_name] = label
+                    else:
+                        # Remove any old discrete label entries for non-discrete properties
+                        # First check if this property was previously discrete
+                        keys_to_remove = [
+                            key for key in list(original_las.parameter_info.keys())
+                            if key.startswith(f"{prop.original_name}_") and key[len(prop.original_name)+1:].isdigit()
+                        ]
+                        for key in keys_to_remove:
+                            del original_las.parameter_info[key]
+
+                # Update DISCRETE_PROPS list
+                if discrete_props:
+                    original_las.parameter_info['DISCRETE_PROPS'] = ','.join(sorted(discrete_props))
+                elif 'DISCRETE_PROPS' in original_las.parameter_info:
+                    del original_las.parameter_info['DISCRETE_PROPS']
+
                 # Export directly
                 original_las.export(filepath)
 
