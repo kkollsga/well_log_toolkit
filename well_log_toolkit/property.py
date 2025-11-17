@@ -9,6 +9,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 
 from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
+from .statistics import compute_intervals, weighted_mean, weighted_sum, weighted_std, weighted_percentile, arithmetic_mean, arithmetic_std
 
 if TYPE_CHECKING:
     from .well import Well
@@ -290,22 +291,23 @@ class Property:
                 f"well.get_property('{property_name}').type = 'discrete'"
             )
 
-        # Interpolate discrete property to THIS property's depth grid (no resampling of main property)
+        # Insert synthetic samples at discrete property boundaries
+        # This ensures accurate interval weighting when zone boundaries don't align with samples
+        new_depth, new_values, new_secondaries = self._insert_boundary_samples(discrete_prop)
+
+        # Interpolate discrete property to the NEW depth grid (with boundary samples)
         # Use 'previous' (forward fill) for discrete: value at MD applies from that depth downward
         interpolated_discrete = self._resample_to_grid(
             discrete_prop.depth,
             discrete_prop.values,
-            self.depth,  # Use current depth grid
+            new_depth,  # Use expanded depth grid with boundary samples
             method='previous'  # Forward fill: value applies from depth downward until next marker
         )
 
-        # Copy existing secondary properties (they're already on the same depth grid)
-        new_secondaries = list(self.secondary_properties)
-
-        # Add new secondary property
+        # Add new secondary property (already on same grid as other secondaries)
         new_secondaries.append(Property(
             name=discrete_prop.name,
-            depth=self.depth.copy(),  # Same depth grid
+            depth=new_depth.copy(),  # Same depth grid with boundaries
             values=interpolated_discrete,
             parent_well=self.parent_well,
             unit=discrete_prop.unit,
@@ -321,8 +323,8 @@ class Property:
         # Create new Property instance with all secondaries
         new_prop = Property(
             name=self.name,
-            depth=self.depth.copy(),  # Keep same depth grid
-            values=self.values.copy(),  # Keep same values
+            depth=new_depth,  # Expanded depth grid with boundary samples
+            values=new_values,  # Interpolated values at new depths
             parent_well=self.parent_well,
             unit=self.unit,
             prop_type=self.type,
@@ -336,7 +338,87 @@ class Property:
         new_prop.secondary_properties = new_secondaries
 
         return new_prop
-    
+
+    def _insert_boundary_samples(
+        self,
+        discrete_prop: 'Property'
+    ) -> tuple[np.ndarray, np.ndarray, list['Property']]:
+        """
+        Insert synthetic samples at discrete property boundaries.
+
+        When a discrete property (e.g., zone top) changes value at a depth that
+        doesn't align with the log sample grid, this creates synthetic samples
+        at those boundary depths to properly partition the intervals.
+
+        Parameters
+        ----------
+        discrete_prop : Property
+            Discrete property with boundary depths (e.g., zone tops)
+
+        Returns
+        -------
+        tuple
+            (new_depth, new_values, new_secondaries) with boundary samples inserted
+        """
+        # Get unique boundary depths from discrete property
+        boundary_depths = discrete_prop.depth[~np.isnan(discrete_prop.values)]
+
+        # Find boundaries that fall between our sample points
+        boundaries_to_insert = []
+        for bd in boundary_depths:
+            # Check if boundary falls strictly between samples
+            if self.depth.min() < bd < self.depth.max():
+                # Check it's not already a sample point
+                if not np.any(np.isclose(self.depth, bd, atol=1e-6)):
+                    boundaries_to_insert.append(bd)
+
+        if not boundaries_to_insert:
+            # No boundaries to insert, return copies
+            return (
+                self.depth.copy(),
+                self.values.copy(),
+                [sp for sp in self.secondary_properties]
+            )
+
+        boundaries_to_insert = np.array(sorted(boundaries_to_insert))
+
+        # Create new depth grid with boundary samples
+        new_depth = np.sort(np.concatenate([self.depth, boundaries_to_insert]))
+
+        # Interpolate main property values at new depths
+        new_values = self._resample_to_grid(
+            self.depth,
+            self.values,
+            new_depth,
+            method='linear' if self.type == 'continuous' else 'previous'
+        )
+
+        # Interpolate all existing secondary properties
+        new_secondaries = []
+        for sp in self.secondary_properties:
+            new_sp_values = self._resample_to_grid(
+                sp.depth,
+                sp.values,
+                new_depth,
+                method='previous'  # Secondary properties are discrete
+            )
+            new_secondaries.append(Property(
+                name=sp.name,
+                depth=new_depth.copy(),
+                values=new_sp_values,
+                parent_well=sp.parent_well,
+                unit=sp.unit,
+                prop_type=sp.type,
+                description=sp.description,
+                null_value=-999.25,
+                labels=sp.labels,
+                source_las=sp.source_las,
+                source_name=sp.source_name,
+                original_name=sp.original_name
+            ))
+
+        return new_depth, new_values, new_secondaries
+
     def _align_depths(self, other: 'Property') -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Align this property with another on a common depth grid.
@@ -427,13 +509,24 @@ class Property:
         
         # Interpolate
         try:
-            f = interp1d(
-                valid_depth,
-                valid_values,
-                kind=method,
-                bounds_error=False,
-                fill_value=np.nan
-            )
+            # Special handling for 'previous' to forward-fill beyond last point
+            if method == 'previous':
+                # Use 'previous' for interpolation but forward-fill beyond range
+                f = interp1d(
+                    valid_depth,
+                    valid_values,
+                    kind=method,
+                    bounds_error=False,
+                    fill_value=(np.nan, valid_values[-1])  # NaN before, last value after
+                )
+            else:
+                f = interp1d(
+                    valid_depth,
+                    valid_values,
+                    kind=method,
+                    bounds_error=False,
+                    fill_value=np.nan
+                )
             return f(new_depth)
         except Exception as e:
             raise DepthAlignmentError(
@@ -519,34 +612,53 @@ class Property:
     def _compute_stats(self, mask: np.ndarray) -> dict:
         """
         Compute statistics for values selected by mask.
-        
+
+        Uses depth-weighted statistics by default, which properly accounts for
+        varying sample spacing. Also includes arithmetic (unweighted) statistics
+        for comparison.
+
         Parameters
         ----------
         mask : np.ndarray
             Boolean mask selecting subset of data
-        
+
         Returns
         -------
         dict
-            Statistics dictionary with mean, sum, count, etc.
+            Statistics dictionary with weighted (depth-interval weighted) and
+            arithmetic (sample-based) statistics.
         """
         values = self.values[mask]
+        depth_subset = self.depth[mask]
         valid = values[~np.isnan(values)]
-        
-        depth_interval = self.depth[mask]
-        depth_thickness = 0.0
-        if len(depth_interval) > 1:
-            depth_thickness = depth_interval[-1] - depth_interval[0]
-        
+
+        # Compute depth intervals for weighting
+        intervals = compute_intervals(depth_subset)
+        valid_mask = ~np.isnan(values)
+        valid_intervals = intervals[valid_mask]
+
+        # Total depth thickness (sum of intervals, not just first to last)
+        depth_thickness = float(np.sum(valid_intervals)) if len(valid_intervals) > 0 else 0.0
+
         return {
-            'mean': float(np.mean(valid)) if len(valid) > 0 else np.nan,
-            'sum': float(np.sum(valid)) if len(valid) > 0 else np.nan,
+            # Depth-weighted statistics (preferred for well log analysis)
+            'weighted_mean': weighted_mean(values, intervals),
+            'weighted_sum': weighted_sum(values, intervals),
+            'weighted_std': weighted_std(values, intervals),
+            'weighted_p10': weighted_percentile(values, intervals, 10),
+            'weighted_p50': weighted_percentile(values, intervals, 50),
+            'weighted_p90': weighted_percentile(values, intervals, 90),
+
+            # Arithmetic statistics (sample-based, for reference)
+            'arithmetic_mean': arithmetic_mean(values),
+            'arithmetic_std': arithmetic_std(values),
+
+            # Counts and ranges
             'count': int(len(valid)),
             'depth_samples': int(np.sum(mask)),
-            'depth_thickness': float(depth_thickness),
+            'depth_thickness': depth_thickness,
             'min': float(np.min(valid)) if len(valid) > 0 else np.nan,
             'max': float(np.max(valid)) if len(valid) > 0 else np.nan,
-            'std': float(np.std(valid)) if len(valid) > 0 else np.nan,
         }
     
     def _apply_labels(self, values: np.ndarray) -> np.ndarray:

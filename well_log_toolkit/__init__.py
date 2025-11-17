@@ -36,13 +36,24 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.24"
+__version__ = "0.1.25"
 
 from .manager import WellDataManager
 from .well import Well
 from .property import Property
 from .las_file import LasFile
 from .utils import sanitize_well_name, sanitize_property_name
+from .statistics import (
+    compute_intervals,
+    weighted_mean,
+    weighted_sum,
+    weighted_std,
+    weighted_percentile,
+    arithmetic_mean,
+    arithmetic_sum,
+    arithmetic_std,
+    compute_all_statistics,
+)
 from .exceptions import (
     WellLogError,
     LasFileError,
@@ -64,6 +75,16 @@ __all__ = [
     # Utilities
     "sanitize_well_name",
     "sanitize_property_name",
+    # Statistics
+    "compute_intervals",
+    "weighted_mean",
+    "weighted_sum",
+    "weighted_std",
+    "weighted_percentile",
+    "arithmetic_mean",
+    "arithmetic_sum",
+    "arithmetic_std",
+    "compute_all_statistics",
     # Exceptions
     "WellLogError",
     "LasFileError",

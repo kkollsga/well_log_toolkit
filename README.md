@@ -7,6 +7,8 @@ A Python library for petrophysical well log analysis with lazy loading, multi-we
 - **Lazy Loading** - Headers parsed immediately, data loaded only when accessed
 - **Multi-Well Management** - Intuitive attribute-based access to wells and properties
 - **Hierarchical Filtering** - Chain discrete filters and compute grouped statistics
+- **Depth-Weighted Statistics** - Proper averaging that accounts for depth intervals
+- **Accurate Zone Boundaries** - Synthetic samples inserted at zone tops for precise interval partitioning
 - **Source Tracking** - Know which LAS file each property came from
 - **Project Persistence** - Save and load entire analysis projects
 - **Metadata Preservation** - Round-trip LAS files without data loss
@@ -52,13 +54,18 @@ stats = well.PHIE.filter('Zone').sums_avg()
 print(stats)
 # {
 #   'Top_Brent': {
-#     'mean': 0.182,
-#     'sum': 45.5,
-#     'count': 250,
-#     'depth_thickness': 250.0,
+#     'weighted_mean': 0.182,      # Depth-weighted average (preferred)
+#     'weighted_sum': 45.5,        # Useful for net thickness calculations
+#     'weighted_std': 0.044,       # Depth-weighted standard deviation
+#     'weighted_p10': 0.09,        # 10th percentile
+#     'weighted_p50': 0.18,        # Median (50th percentile)
+#     'weighted_p90': 0.24,        # 90th percentile
+#     'arithmetic_mean': 0.179,    # Simple average (for comparison)
+#     'arithmetic_std': 0.045,     # Simple standard deviation
+#     'count': 250,                # Number of samples
+#     'depth_thickness': 250.0,    # Total interval thickness (m)
 #     'min': 0.05,
-#     'max': 0.28,
-#     'std': 0.045
+#     'max': 0.28
 #   },
 #   'Top_Statfjord': {...}
 # }
@@ -228,8 +235,8 @@ stats = well.PHIE.filter('Zone').sums_avg()
 stats = well.PHIE.filter('Zone').filter('NTG_Flag').sums_avg()
 # {
 #   'Top_Brent': {
-#     'Net': {'mean': 0.21, 'count': 150, 'depth_thickness': 150.0, ...},
-#     'NonNet': {'mean': 0.08, 'count': 100, 'depth_thickness': 100.0, ...}
+#     'Net': {'weighted_mean': 0.21, 'count': 150, 'depth_thickness': 150.0, ...},
+#     'NonNet': {'weighted_mean': 0.08, 'count': 100, 'depth_thickness': 100.0, ...}
 #   },
 #   'Top_Statfjord': {
 #     'Net': {...},
@@ -242,13 +249,58 @@ stats = well.PHIE.filter('Zone').filter('Facies').filter('NTG_Flag').sums_avg()
 ```
 
 Each statistics dictionary contains:
-- `mean` - Average value
-- `sum` - Sum of values
-- `count` - Number of samples
-- `depth_thickness` - Total depth interval (count × depth step)
+
+**Depth-Weighted Statistics** (recommended for well log analysis):
+- `weighted_mean` - Depth-interval weighted average
+- `weighted_sum` - Weighted sum (e.g., for net thickness from NTG flags)
+- `weighted_std` - Depth-weighted standard deviation
+- `weighted_p10`, `weighted_p50`, `weighted_p90` - Depth-weighted percentiles
+
+**Arithmetic Statistics** (sample-based, for comparison):
+- `arithmetic_mean` - Simple unweighted average
+- `arithmetic_std` - Simple standard deviation
+
+**Counts and Ranges**:
+- `count` - Number of non-NaN samples
+- `depth_samples` - Total number of samples in mask
+- `depth_thickness` - Total thickness of interval (sum of depth intervals)
 - `min` - Minimum value
 - `max` - Maximum value
-- `std` - Standard deviation
+
+#### Why Weighted Statistics Matter
+
+Standard arithmetic averaging treats all samples equally, which is incorrect when sample spacing is irregular:
+
+```python
+# Example: NTG flag with irregular sampling
+# NTG=0 @ 1500m, NTG=1 @ 1501m, NTG=0 @ 1505m
+#
+# Arithmetic mean: (0 + 1 + 0) / 3 = 0.33 ❌
+# This incorrectly suggests only 33% net
+#
+# Weighted mean: considers that the middle sample represents 2.5m
+# (0×0.5 + 1×2.5 + 0×2.0) / 5.0 = 0.50 ✓
+# This correctly reflects that 50% of the interval is net
+```
+
+#### Accurate Zone Boundary Handling
+
+When filtering by zones, the toolkit automatically inserts synthetic samples at zone boundaries to properly partition intervals:
+
+```python
+# Log samples: NTG=0 @ 1500m, NTG=1 @ 1501m, NTG=0 @ 1505m
+# Zone boundary at 1503m
+
+# Without boundary insertion:
+# Zone 1 would incorrectly get the full NTG=1 sample
+
+# With boundary insertion:
+# A synthetic sample is inserted at 1503m
+# Zone 1 (1500-1503): 1.5m net out of 2.0m total
+# Zone 2 (1503-1505): 2.0m net out of 3.0m total
+```
+
+This ensures statistics accurately reflect the true distribution of properties within each zone.
 
 ### 7. Exporting Data
 
@@ -374,6 +426,45 @@ print(well.CoreData.CorePHIE.values)
 ---
 
 ## Advanced Usage
+
+### Standalone Statistics Functions
+
+Use the statistics functions directly for custom analysis:
+
+```python
+from well_log_toolkit import (
+    compute_intervals,
+    weighted_mean,
+    weighted_sum,
+    weighted_std,
+    weighted_percentile,
+    arithmetic_mean,
+    arithmetic_std,
+    compute_all_statistics
+)
+import numpy as np
+
+# Compute depth intervals
+depth = np.array([1500.0, 1501.0, 1505.0])
+intervals = compute_intervals(depth)
+# [0.5, 2.5, 2.0] - midpoint method
+
+# Weighted statistics
+values = np.array([0.15, 0.22, 0.18])
+w_mean = weighted_mean(values, intervals)
+w_std = weighted_std(values, intervals)
+p50 = weighted_percentile(values, intervals, 50)
+
+# For NTG flags, weighted_sum gives net thickness
+ntg = np.array([0, 1, 0])
+net_thickness = weighted_sum(ntg, intervals)  # 2.5m
+
+# Get all statistics at once
+all_stats = compute_all_statistics(values, depth)
+# Returns dict with weighted_mean, weighted_sum, weighted_std,
+# weighted_p10/p50/p90, arithmetic_mean, arithmetic_std,
+# count, depth_thickness, min, max
+```
 
 ### Merging Properties
 

@@ -4,16 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "well-log-toolkit"
-version = "0.1.24"
+version = "0.1.25"
 description = "Fast LAS file processing with lazy loading and filtering for well log analysis"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
-]
-maintainers = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Kristian dF Kollsgård", email = "kkollsg@gmail.com"}
 ]
 keywords = [
     "well-log",
@@ -55,11 +52,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/well_log_toolkit"
-Documentation = "https://github.com/yourusername/well_log_toolkit#readme"
-Repository = "https://github.com/yourusername/well_log_toolkit"
-Issues = "https://github.com/yourusername/well_log_toolkit/issues"
-Changelog = "https://github.com/yourusername/well_log_toolkit/releases"
+Homepage = "https://github.com/kkollsga/well_log_toolkit"
+Documentation = "https://github.com/kkollsga/well_log_toolkit#readme"
+Repository = "https://github.com/kkollsga/well_log_toolkit"
+Issues = "https://github.com/kkollsga/well_log_toolkit/issues"
+Changelog = "https://github.com/kkollsga/well_log_toolkit/releases"
 
 [tool.setuptools]
 packages = ["well_log_toolkit"]
