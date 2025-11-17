@@ -30,12 +30,34 @@ class WellDataManager:
     >>> manager.load_las("well1.las").load_las("well2.las")
     >>> well = manager.well_12_3_2_B
     >>> stats = well.phie.filter('Zone').sums_avg()
+
+    >>> # Load project directly on initialization
+    >>> manager = WellDataManager("Cerisa Project")
+    >>> print(manager.wells)  # All wells from project
     """
-    
-    def __init__(self):
+
+    def __init__(self, project: Optional[Union[str, Path]] = None):
+        """
+        Initialize WellDataManager, optionally loading a project.
+
+        Parameters
+        ----------
+        project : Union[str, Path], optional
+            Path to project folder to load. If provided, the project will be
+            loaded immediately during initialization.
+
+        Examples
+        --------
+        >>> manager = WellDataManager()  # Empty manager
+        >>> manager = WellDataManager("my_project")  # Load project on init
+        """
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
         self._project_path: Optional[Path] = None  # Track project path for save()
+
+        # Load project if provided
+        if project is not None:
+            self.load(project)
     
     def load_las(self, filepath: Union[str, Path, list[Union[str, Path]]]) -> 'WellDataManager':
         """
@@ -328,6 +350,7 @@ class WellDataManager:
 
         Automatically discovers and loads all LAS files from well folders
         (well_* format). Stores the project path for subsequent save() calls.
+        Clears any existing wells before loading.
 
         Parameters
         ----------
@@ -346,11 +369,18 @@ class WellDataManager:
         >>> print(manager.wells)  # All wells from project
         >>> # ... make changes ...
         >>> manager.save()  # Saves back to "my_project"
+
+        >>> # Load clears existing data
+        >>> manager.load("other_project")  # Replaces current wells
         """
         base_path = Path(path)
 
         if not base_path.exists():
             raise FileNotFoundError(f"Project path does not exist: {path}")
+
+        # Clear existing wells before loading new project
+        self._wells.clear()
+        self._name_mapping.clear()
 
         # Store project path for save()
         self._project_path = base_path
