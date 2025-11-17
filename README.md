@@ -54,21 +54,31 @@ stats = well.PHIE.filter('Zone').sums_avg()
 print(stats)
 # {
 #   'Top_Brent': {
-#     'weighted_mean': 0.182,      # Depth-weighted average (preferred)
-#     'weighted_sum': 45.5,        # Useful for net thickness calculations
-#     'weighted_std': 0.044,       # Depth-weighted standard deviation
-#     'weighted_p10': 0.09,        # 10th percentile
-#     'weighted_p50': 0.18,        # Median (50th percentile)
-#     'weighted_p90': 0.24,        # 90th percentile
-#     'arithmetic_mean': 0.179,    # Simple average (for comparison)
-#     'arithmetic_std': 0.045,     # Simple standard deviation
-#     'count': 250,                # Number of samples
-#     'depth_thickness': 250.0,    # Total interval thickness (m)
-#     'min': 0.05,
-#     'max': 0.28
+#     'mean': 0.182,               # Depth-weighted average (default)
+#     'sum': 45.5,                 # Useful for net thickness calculations
+#     'std_dev': 0.044,            # Depth-weighted standard deviation
+#     'percentile': {
+#       'p10': 0.09,               # 10th percentile
+#       'p50': 0.18,               # Median (50th percentile)
+#       'p90': 0.24                # 90th percentile
+#     },
+#     'range': {
+#       'min': 0.05,               # Minimum value
+#       'max': 0.28                # Maximum value
+#     },
+#     'samples': 250,              # Number of valid samples
+#     'thickness': 250.0,          # Interval thickness for this zone (m)
+#     'gross_thickness': 555.0,    # Total gross thickness (m)
+#     'thickness_fraction': 0.45,  # Fraction of gross thickness
+#     'calculation': 'weighted'    # Method used
 #   },
 #   'Top_Statfjord': {...}
 # }
+
+# Include both weighted and arithmetic statistics
+stats = well.PHIE.filter('Zone').sums_avg(arithmetic=True)
+# 'mean': {'weighted': 0.182, 'arithmetic': 0.179}
+# 'calculation': 'both'
 ```
 
 ---
@@ -235,8 +245,8 @@ stats = well.PHIE.filter('Zone').sums_avg()
 stats = well.PHIE.filter('Zone').filter('NTG_Flag').sums_avg()
 # {
 #   'Top_Brent': {
-#     'Net': {'weighted_mean': 0.21, 'count': 150, 'depth_thickness': 150.0, ...},
-#     'NonNet': {'weighted_mean': 0.08, 'count': 100, 'depth_thickness': 100.0, ...}
+#     'Net': {'mean': 0.21, 'samples': 150, 'thickness': 150.0, ...},
+#     'NonNet': {'mean': 0.08, 'samples': 100, 'thickness': 100.0, ...}
 #   },
 #   'Top_Statfjord': {
 #     'Net': {...},
@@ -246,26 +256,30 @@ stats = well.PHIE.filter('Zone').filter('NTG_Flag').sums_avg()
 
 # Add more filters as needed
 stats = well.PHIE.filter('Zone').filter('Facies').filter('NTG_Flag').sums_avg()
+
+# Include arithmetic statistics for comparison
+stats = well.PHIE.filter('Zone').sums_avg(arithmetic=True)
+# Returns both: {'mean': {'weighted': 0.21, 'arithmetic': 0.19}, ...}
 ```
 
 Each statistics dictionary contains:
 
-**Depth-Weighted Statistics** (recommended for well log analysis):
-- `weighted_mean` - Depth-interval weighted average
-- `weighted_sum` - Weighted sum (e.g., for net thickness from NTG flags)
-- `weighted_std` - Depth-weighted standard deviation
-- `weighted_p10`, `weighted_p50`, `weighted_p90` - Depth-weighted percentiles
+**Core Statistics** (depth-weighted by default):
+- `mean` - Average value (weighted or arithmetic based on parameters)
+- `sum` - Sum of values (weighted or arithmetic)
+- `std_dev` - Standard deviation
+- `percentile` - Dictionary with `p10`, `p50`, `p90` values
+- `range` - Dictionary with `min`, `max` values
 
-**Arithmetic Statistics** (sample-based, for comparison):
-- `arithmetic_mean` - Simple unweighted average
-- `arithmetic_std` - Simple standard deviation
+**Metadata**:
+- `samples` - Number of non-NaN samples
+- `thickness` - Depth interval for this group (sum of intervals)
+- `gross_thickness` - Total depth interval across all groups
+- `thickness_fraction` - Fraction of gross thickness (thickness / gross_thickness)
+- `calculation` - Method used: 'weighted', 'arithmetic', or 'both'
 
-**Counts and Ranges**:
-- `count` - Number of non-NaN samples
-- `depth_samples` - Total number of samples in mask
-- `depth_thickness` - Total thickness of interval (sum of depth intervals)
-- `min` - Minimum value
-- `max` - Maximum value
+**Multi-method output** (when `arithmetic=True`):
+- Values become dictionaries: `{'weighted': x, 'arithmetic': y}`
 
 #### Why Weighted Statistics Matter
 

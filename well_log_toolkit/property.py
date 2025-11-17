@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 
 from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
-from .statistics import compute_intervals, weighted_mean, weighted_sum, weighted_std, weighted_percentile, arithmetic_mean, arithmetic_std
+from .statistics import compute_intervals, weighted_mean, weighted_sum, weighted_std, weighted_percentile, arithmetic_mean, arithmetic_sum, arithmetic_std
 
 if TYPE_CHECKING:
     from .well import Well
@@ -617,46 +617,96 @@ class Property:
                 f"Failed to resample data: {e}"
             )
     
-    def sums_avg(self) -> dict:
+    def sums_avg(self, weighted: bool = True, arithmetic: bool = False) -> dict:
         """
         Compute hierarchical statistics grouped by all secondary properties.
-        
+
+        Parameters
+        ----------
+        weighted : bool, default True
+            Include depth-weighted statistics
+        arithmetic : bool, default False
+            Include arithmetic (unweighted) statistics
+
         Returns
         -------
         dict
             Nested dictionary with statistics for each group combination.
-            If no secondary properties, returns simple statistics dict.
-        
+            Structure includes:
+            - mean: weighted and/or arithmetic mean
+            - sum: weighted and/or arithmetic sum
+            - std_dev: weighted and/or arithmetic standard deviation
+            - percentile: {p10, p50, p90} values
+            - range: {min, max} value range
+            - samples: number of valid samples
+            - thickness: depth interval for this group
+            - gross_thickness: total depth interval (all groups)
+            - thickness_fraction: thickness / gross_thickness
+            - calculation: 'weighted', 'arithmetic', or 'both'
+
         Examples
         --------
         >>> # Simple statistics (no filters)
         >>> phie = well.get_property('PHIE')
         >>> stats = phie.sums_avg()
-        >>> # {'mean': 0.18, 'sum': 45.2, 'count': 251, ...}
-        
+        >>> # {'mean': 0.18, 'sum': 45.2, 'samples': 251, ...}
+
+        >>> # With arithmetic stats
+        >>> stats = phie.sums_avg(arithmetic=True)
+        >>> # {'mean': {'weighted': 0.18, 'arithmetic': 0.17}, ...}
+
         >>> # Grouped statistics
         >>> filtered = phie.filter('Zone').filter('NTG_Flag')
         >>> stats = filtered.sums_avg()
         >>> # {'Zone_1': {'NTG_Flag_0': {...}, 'NTG_Flag_1': {...}}, ...}
         """
+        # Calculate gross thickness for fraction calculation
+        full_intervals = compute_intervals(self.depth)
+        valid_mask = ~np.isnan(self.values)
+        gross_thickness = float(np.sum(full_intervals[valid_mask]))
+
         if not self.secondary_properties:
             # No filters, simple statistics
-            return self._compute_stats(np.ones(len(self.depth), dtype=bool))
-        
+            return self._compute_stats(
+                np.ones(len(self.depth), dtype=bool),
+                weighted=weighted,
+                arithmetic=arithmetic,
+                gross_thickness=gross_thickness
+            )
+
         # Build hierarchical grouping
-        return self._recursive_group(0, np.ones(len(self.depth), dtype=bool))
-    
-    def _recursive_group(self, filter_idx: int, mask: np.ndarray) -> dict:
+        return self._recursive_group(
+            0,
+            np.ones(len(self.depth), dtype=bool),
+            weighted=weighted,
+            arithmetic=arithmetic,
+            gross_thickness=gross_thickness
+        )
+
+    def _recursive_group(
+        self,
+        filter_idx: int,
+        mask: np.ndarray,
+        weighted: bool,
+        arithmetic: bool,
+        gross_thickness: float
+    ) -> dict:
         """
         Recursively group by secondary properties.
-        
+
         Parameters
         ----------
         filter_idx : int
             Index of current secondary property
         mask : np.ndarray
             Boolean mask for current group
-        
+        weighted : bool
+            Include weighted statistics
+        arithmetic : bool
+            Include arithmetic statistics
+        gross_thickness : float
+            Total gross thickness for fraction calculation
+
         Returns
         -------
         dict
@@ -664,17 +714,17 @@ class Property:
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute statistics for this group
-            return self._compute_stats(mask)
-        
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness)
+
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
         filter_values = current_filter.values[mask]
         unique_vals = np.unique(filter_values[~np.isnan(filter_values)])
-        
+
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_stats(mask)
-        
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness)
+
         # Group by each unique value
         result = {}
         for val in unique_vals:
@@ -689,11 +739,19 @@ class Property:
             else:  # Float value
                 key = f"{current_filter.name}_{val:.2f}"
 
-            result[key] = self._recursive_group(filter_idx + 1, sub_mask)
+            result[key] = self._recursive_group(
+                filter_idx + 1, sub_mask, weighted, arithmetic, gross_thickness
+            )
 
         return result
-    
-    def _compute_stats(self, mask: np.ndarray) -> dict:
+
+    def _compute_stats(
+        self,
+        mask: np.ndarray,
+        weighted: bool = True,
+        arithmetic: bool = False,
+        gross_thickness: float = 0.0
+    ) -> dict:
         """
         Compute statistics for values selected by mask.
 
@@ -705,12 +763,21 @@ class Property:
         ----------
         mask : np.ndarray
             Boolean mask selecting subset of data
+        weighted : bool
+            Include weighted statistics
+        arithmetic : bool
+            Include arithmetic statistics
+        gross_thickness : float
+            Total gross thickness for fraction calculation
 
         Returns
         -------
         dict
-            Statistics dictionary with weighted (depth-interval weighted) and
-            arithmetic (sample-based) statistics.
+            Statistics dictionary with organized structure:
+            - mean, sum, std: single value or {weighted, arithmetic} dict
+            - percentile: {p10, p50, p90} with single or nested values
+            - samples, thickness, fraction, min, max
+            - calculation: method indicator
         """
         values = self.values[mask]
         valid = values[~np.isnan(values)]
@@ -721,31 +788,76 @@ class Property:
         # in the full sequence, not just within their zone.
         full_intervals = compute_intervals(self.depth)
         intervals = full_intervals[mask]
-        valid_mask = ~np.isnan(values)
-        valid_intervals = intervals[valid_mask]
+        valid_mask_local = ~np.isnan(values)
+        valid_intervals = intervals[valid_mask_local]
 
         # Total depth thickness (sum of intervals, not just first to last)
-        depth_thickness = float(np.sum(valid_intervals)) if len(valid_intervals) > 0 else 0.0
+        thickness = float(np.sum(valid_intervals)) if len(valid_intervals) > 0 else 0.0
 
-        return {
-            # Depth-weighted statistics (preferred for well log analysis)
-            'weighted_mean': weighted_mean(values, intervals),
-            'weighted_sum': weighted_sum(values, intervals),
-            'weighted_std': weighted_std(values, intervals),
-            'weighted_p10': weighted_percentile(values, intervals, 10),
-            'weighted_p50': weighted_percentile(values, intervals, 50),
-            'weighted_p90': weighted_percentile(values, intervals, 90),
+        # Fraction of gross thickness
+        fraction = thickness / gross_thickness if gross_thickness > 0 else 0.0
 
-            # Arithmetic statistics (sample-based, for reference)
-            'arithmetic_mean': arithmetic_mean(values),
-            'arithmetic_std': arithmetic_std(values),
+        # Determine calculation method for output
+        if weighted and arithmetic:
+            calc_method = 'both'
+        elif weighted:
+            calc_method = 'weighted'
+        else:
+            calc_method = 'arithmetic'
 
-            # Counts and ranges
-            'count': int(len(valid)),
-            'depth_samples': int(np.sum(mask)),
-            'depth_thickness': depth_thickness,
+        # Helper to format single or dual values
+        def format_value(w_val, a_val):
+            if weighted and arithmetic:
+                return {'weighted': w_val, 'arithmetic': a_val}
+            elif weighted:
+                return w_val
+            else:
+                return a_val
+
+        # Compute weighted stats
+        w_mean = weighted_mean(values, intervals)
+        w_sum = weighted_sum(values, intervals)
+        w_std = weighted_std(values, intervals)
+        w_p10 = weighted_percentile(values, intervals, 10)
+        w_p50 = weighted_percentile(values, intervals, 50)
+        w_p90 = weighted_percentile(values, intervals, 90)
+
+        # Compute arithmetic stats
+        a_mean = arithmetic_mean(values)
+        a_sum = arithmetic_sum(values)
+        a_std = arithmetic_std(values)
+        # Arithmetic percentiles using numpy
+        if len(valid) > 0:
+            a_p10 = float(np.percentile(valid, 10))
+            a_p50 = float(np.percentile(valid, 50))
+            a_p90 = float(np.percentile(valid, 90))
+        else:
+            a_p10 = a_p50 = a_p90 = np.nan
+
+        # Build percentile dict
+        percentile_dict = {
+            'p10': format_value(w_p10, a_p10),
+            'p50': format_value(w_p50, a_p50),
+            'p90': format_value(w_p90, a_p90),
+        }
+
+        # Build range dict
+        range_dict = {
             'min': float(np.min(valid)) if len(valid) > 0 else np.nan,
             'max': float(np.max(valid)) if len(valid) > 0 else np.nan,
+        }
+
+        return {
+            'mean': format_value(w_mean, a_mean),
+            'sum': format_value(w_sum, a_sum),
+            'std_dev': format_value(w_std, a_std),
+            'percentile': percentile_dict,
+            'range': range_dict,
+            'samples': int(len(valid)),
+            'thickness': thickness,
+            'gross_thickness': gross_thickness,
+            'thickness_fraction': fraction,
+            'calculation': calc_method,
         }
     
     def _apply_labels(self, values: np.ndarray) -> np.ndarray:
