@@ -115,6 +115,11 @@ class Property:
         self._depth_cache: Optional[np.ndarray] = None
         self._values_cache: Optional[np.ndarray] = None
 
+        # Filtered copy tracking
+        self._is_filtered = False  # True if this is a filtered copy with modified depth grid
+        self._boundary_samples_inserted = 0  # Number of boundary samples added during filtering
+        self._original_sample_count = 0  # Original sample count before filtering
+
         # For derived properties (not lazy), store data directly
         if not lazy:
             if depth is not None and values is not None:
@@ -234,6 +239,40 @@ class Property:
             "Either provide values during initialization or set source_las for lazy loading."
         )
 
+    @property
+    def is_filtered(self) -> bool:
+        """
+        Check if this property is a filtered copy with modified depth grid.
+
+        Returns
+        -------
+        bool
+            True if this is a filtered copy, False if original
+        """
+        return self._is_filtered
+
+    def filter_info(self) -> dict:
+        """
+        Get information about filtering applied to this property.
+
+        Returns
+        -------
+        dict
+            Dictionary with filtering metadata:
+            - is_filtered: bool - whether this is a filtered copy
+            - filters: list[str] - names of applied filters
+            - original_sample_count: int - samples before filtering
+            - current_sample_count: int - samples after filtering
+            - boundary_samples_inserted: int - synthetic samples added at boundaries
+        """
+        return {
+            'is_filtered': self._is_filtered,
+            'filters': [sp.name for sp in self.secondary_properties],
+            'original_sample_count': self._original_sample_count if self._is_filtered else len(self.depth),
+            'current_sample_count': len(self.depth),
+            'boundary_samples_inserted': self._boundary_samples_inserted,
+        }
+
     def filter(self, property_name: str) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
@@ -341,6 +380,11 @@ class Property:
         )
         new_prop.secondary_properties = new_secondaries
 
+        # Track that this is a filtered copy with modified depth grid
+        new_prop._is_filtered = True
+        new_prop._original_sample_count = len(self.depth)
+        new_prop._boundary_samples_inserted = len(new_depth) - len(self.depth)
+
         return new_prop
 
     def _insert_boundary_samples(
@@ -367,8 +411,10 @@ class Property:
         tuple
             (new_depth, new_values, new_secondaries) with boundary samples inserted
         """
-        # Get unique boundary depths from discrete property
-        boundary_depths = discrete_prop.depth[~np.isnan(discrete_prop.values)]
+        # Get unique boundary depths from discrete property (handle duplicates)
+        # When duplicate depths exist, keep only unique ones for boundary insertion
+        valid_discrete_mask = ~np.isnan(discrete_prop.values)
+        boundary_depths = np.unique(discrete_prop.depth[valid_discrete_mask])
 
         # Determine valid depth range of main property (where data exists)
         valid_mask = ~np.isnan(self.values)
@@ -389,9 +435,10 @@ class Property:
         for bd in boundary_depths:
             # Check if boundary falls strictly within valid data range
             if min_valid_depth < bd < max_valid_depth:
-                # Check it's not already a sample point (within 1cm tolerance)
+                # Check it's not already a sample point (within 1mm tolerance)
                 # Use rtol=0 to only use absolute tolerance (avoid relative tolerance scaling with depth)
-                if not np.any(np.isclose(self.depth, bd, atol=0.01, rtol=0)):
+                # Note: 1mm tolerance to avoid duplicate samples, but still capture boundary changes
+                if not np.any(np.isclose(self.depth, bd, atol=0.001, rtol=0)):
                     boundaries_to_insert.append(bd)
 
         if not boundaries_to_insert:
@@ -520,11 +567,26 @@ class Property:
         mask = ~np.isnan(old_values)
         valid_depth = old_depth[mask]
         valid_values = old_values[mask]
-        
+
         if len(valid_depth) == 0:
             # All NaN, return NaN array
             return np.full_like(new_depth, np.nan, dtype=np.float64)
-        
+
+        # Handle duplicate depths: keep the LAST value for each depth
+        # This is important when tops data has multiple entries at same depth
+        if len(valid_depth) > 1:
+            unique_depths, unique_indices = np.unique(valid_depth, return_index=True)
+            if len(unique_depths) < len(valid_depth):
+                # Duplicates exist - for each unique depth, find the last occurrence
+                last_indices = []
+                for ud in unique_depths:
+                    # Find all indices where depth equals this unique depth
+                    matches = np.where(valid_depth == ud)[0]
+                    # Take the last one
+                    last_indices.append(matches[-1])
+                valid_depth = valid_depth[last_indices]
+                valid_values = valid_values[last_indices]
+
         if len(valid_depth) == 1:
             # Single point, use nearest neighbor
             method = 'nearest'
@@ -651,11 +713,14 @@ class Property:
             arithmetic (sample-based) statistics.
         """
         values = self.values[mask]
-        depth_subset = self.depth[mask]
         valid = values[~np.isnan(values)]
 
-        # Compute depth intervals for weighting
-        intervals = compute_intervals(depth_subset)
+        # Compute depth intervals on FULL depth array first, then mask
+        # This is critical! Intervals must be computed on full grid so that
+        # zone boundary samples get correct weights based on their neighbors
+        # in the full sequence, not just within their zone.
+        full_intervals = compute_intervals(self.depth)
+        intervals = full_intervals[mask]
         valid_mask = ~np.isnan(values)
         valid_intervals = intervals[valid_mask]
 
@@ -851,9 +916,13 @@ class Property:
     def __repr__(self) -> str:
         """String representation."""
         filters = f", filters={len(self.secondary_properties)}" if self.secondary_properties else ""
+        filtered_info = ""
+        if self._is_filtered:
+            filtered_info = f", filtered=True, boundary_samples={self._boundary_samples_inserted}"
         return (
             f"Property('{self.name}', "
             f"samples={len(self.depth)}, "
             f"type='{self.type}'"
-            f"{filters})"
+            f"{filters}"
+            f"{filtered_info})"
         )
