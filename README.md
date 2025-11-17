@@ -27,12 +27,12 @@ import pandas as pd
 
 # Initialize manager and load LAS files
 manager = WellDataManager()
-manager.load_las('path/to/36_7-5_A.las')
-manager.load_las('path/to/36_7-5_B.las')
+manager.load_las('path/to/12_3-4_A.las')
+manager.load_las('path/to/12_3-4_B.las')
 
 # Load formation tops from DataFrame
 tops_df = pd.DataFrame({
-    'Well': ['36/7-5 A', '36/7-5 A', '36/7-5 B', '36/7-5 B'],
+    'Well': ['12/3-4 A', '12/3-4 A', '12/3-4 B', '12/3-4 B'],
     'Surface': ['Top_Brent', 'Top_Statfjord', 'Top_Brent', 'Top_Statfjord'],
     'MD': [2850.0, 3100.0, 2900.0, 3150.0]
 })
@@ -46,7 +46,7 @@ manager.load_tops(
 )
 
 # Access well and compute hierarchical statistics
-well = manager.well_36_7_5_A
+well = manager.well_12_3_4_A
 stats = well.PHIE.filter('Zone').sums_avg()
 
 print(stats)
@@ -101,21 +101,21 @@ Wells are accessible as attributes on the manager. Special characters in well na
 
 ```python
 # Well names are sanitized for attribute access
-# "36/7-5 A" becomes "well_36_7_5_A"
-well = manager.well_36_7_5_A
+# "12/3-4 A" becomes "well_12_3_4_A"
+well = manager.well_12_3_4_A
 
 # List all wells
-print(manager.wells)  # ['36_7_5_A', '36_7_5_B']
+print(manager.wells)  # ['12_3_4_A', '12_3_4_B']
 
 # Get well by original name
-well = manager.get_well('36/7-5 A')
+well = manager.get_well('12/3-4 A')
 
 # Remove a well
-manager.remove_well('36_7_5_A')
+manager.remove_well('12_3_4_A')
 
 # Add a well manually
 from well_log_toolkit import Well
-new_well = Well(name='36/7-5 C')
+new_well = Well(name='12/3-4 C')
 manager.add_well(new_well)
 ```
 
@@ -124,7 +124,7 @@ manager.add_well(new_well)
 Properties are accessible as attributes on wells. Each property knows its source:
 
 ```python
-well = manager.well_36_7_5_A
+well = manager.well_12_3_4_A
 
 # Direct property access
 phie = well.PHIE
@@ -152,7 +152,7 @@ Formation tops create discrete properties that can be used for filtering. The Da
 
 | Column | Description | Example |
 |--------|-------------|---------|
-| Well column | Well identifier (matches LAS WELL field) | `'36/7-5 A'` |
+| Well column | Well identifier (matches LAS WELL field) | `'12/3-4 A'` |
 | Depth column | Measured depth of the top | `2850.0` |
 | Discrete column | Name/label of the formation | `'Top_Brent'` |
 
@@ -161,7 +161,7 @@ import pandas as pd
 
 # Create tops DataFrame
 tops_df = pd.DataFrame({
-    'Well': ['36/7-5 A', '36/7-5 A', '36/7-5 A', '36/7-5 B', '36/7-5 B'],
+    'Well': ['12/3-4 A', '12/3-4 A', '12/3-4 A', '12/3-4 B', '12/3-4 B'],
     'Surface': ['Top_Brent', 'Top_Statfjord', 'Top_Cook', 'Top_Brent', 'Top_Statfjord'],
     'MD': [2850.0, 3100.0, 3400.0, 2900.0, 3150.0]
 })
@@ -176,10 +176,10 @@ manager.load_tops(
 )
 
 # Tops are added as a new source called 'Imported_Tops'
-print(manager.well_36_7_5_A.sources)  # [..., 'Imported_Tops']
+print(manager.well_12_3_4_A.sources)  # [..., 'Imported_Tops']
 
 # Access the discrete property
-zone = manager.well_36_7_5_A.Imported_Tops.Zone
+zone = manager.well_12_3_4_A.Imported_Tops.Zone
 print(zone.type)    # 'discrete'
 print(zone.labels)  # {0: 'Top_Brent', 1: 'Top_Statfjord', 2: 'Top_Cook'}
 ```
@@ -191,7 +191,7 @@ print(zone.labels)  # {0: 'Top_Brent', 1: 'Top_Statfjord', 2: 'Top_Cook'}
 Discrete logs (facies, flags, zones) need labels to make statistics readable:
 
 ```python
-well = manager.well_36_7_5_A
+well = manager.well_12_3_4_A
 
 # Get the property
 ntg_flag = well.get_property('NTG_Flag')
@@ -218,7 +218,7 @@ Labels are automatically preserved when exporting to LAS format and recovered wh
 The real power comes from chaining multiple filters:
 
 ```python
-well = manager.well_36_7_5_A
+well = manager.well_12_3_4_A
 
 # Single filter - group by Zone
 stats = well.PHIE.filter('Zone').sums_avg()
@@ -290,7 +290,7 @@ well.export_sources('output_folder/')
 Manage sources within a well:
 
 ```python
-well = manager.well_36_7_5_A
+well = manager.well_12_3_4_A
 
 # List sources
 print(well.sources)  # ['Petrophysics', 'CoreData', 'Imported_Tops']
@@ -316,10 +316,10 @@ manager.save('my_project/')
 
 # This creates:
 # my_project/
-#   well_36_7_5_A/
+#   well_12_3_4_A/
 #     Petrophysics.las
 #     Imported_Tops.las
-#   well_36_7_5_B/
+#   well_12_3_4_B/
 #     Petrophysics.las
 #     Imported_Tops.las
 
@@ -402,7 +402,7 @@ df = pd.DataFrame({
 
 LasFile.export_las(
     'output.las',
-    well_name='36/7-5 A',
+    well_name='12/3-4 A',
     df=df,
     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v'},
     discrete_labels={'Zone': {0: 'Brent', 1: 'Statfjord'}}
