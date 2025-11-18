@@ -3,13 +3,140 @@ Global orchestrator for multi-well analysis.
 """
 from pathlib import Path
 from typing import Optional, Union
+import warnings
 
 import pandas as pd
 
 from .exceptions import LasFileError
 from .las_file import LasFile
 from .well import Well
+from .property import Property
 from .utils import sanitize_well_name, sanitize_property_name
+
+
+class _ManagerPropertyProxy:
+    """
+    Proxy object for manager-level property operations.
+
+    This proxy enables broadcasting property operations across all wells:
+        manager.PHIE_scaled = manager.PHIE * 0.01
+
+    The proxy is created when accessing a property name on the manager,
+    and operations on the proxy create new proxies that remember the operation.
+    When assigned to a manager attribute, the operation is broadcast to all wells.
+    """
+
+    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None):
+        self._manager = manager
+        self._property_name = property_name
+        self._operation = operation  # Function to apply to each property
+
+    def _apply_operation(self, prop: Property):
+        """Apply stored operation to a property."""
+        if self._operation is None:
+            # No operation, just return the property
+            return prop
+        else:
+            # Apply the operation
+            return self._operation(prop)
+
+    def _create_proxy_with_operation(self, operation):
+        """Create a new proxy with an operation."""
+        return _ManagerPropertyProxy(self._manager, self._property_name, operation)
+
+    # Arithmetic operations
+    def __add__(self, other):
+        """manager.PHIE + value"""
+        return self._create_proxy_with_operation(lambda p: p + other)
+
+    def __radd__(self, other):
+        """value + manager.PHIE"""
+        return self._create_proxy_with_operation(lambda p: other + p)
+
+    def __sub__(self, other):
+        """manager.PHIE - value"""
+        return self._create_proxy_with_operation(lambda p: p - other)
+
+    def __rsub__(self, other):
+        """value - manager.PHIE"""
+        return self._create_proxy_with_operation(lambda p: other - p)
+
+    def __mul__(self, other):
+        """manager.PHIE * value"""
+        return self._create_proxy_with_operation(lambda p: p * other)
+
+    def __rmul__(self, other):
+        """value * manager.PHIE"""
+        return self._create_proxy_with_operation(lambda p: other * p)
+
+    def __truediv__(self, other):
+        """manager.PHIE / value"""
+        return self._create_proxy_with_operation(lambda p: p / other)
+
+    def __rtruediv__(self, other):
+        """value / manager.PHIE"""
+        return self._create_proxy_with_operation(lambda p: other / p)
+
+    def __pow__(self, other):
+        """manager.PHIE ** value"""
+        return self._create_proxy_with_operation(lambda p: p ** other)
+
+    # Comparison operations
+    def __gt__(self, other):
+        """manager.PHIE > value"""
+        return self._create_proxy_with_operation(lambda p: p > other)
+
+    def __ge__(self, other):
+        """manager.PHIE >= value"""
+        return self._create_proxy_with_operation(lambda p: p >= other)
+
+    def __lt__(self, other):
+        """manager.PHIE < value"""
+        return self._create_proxy_with_operation(lambda p: p < other)
+
+    def __le__(self, other):
+        """manager.PHIE <= value"""
+        return self._create_proxy_with_operation(lambda p: p <= other)
+
+    def _broadcast_to_manager(self, manager: 'WellDataManager', target_name: str):
+        """
+        Broadcast the operation to all wells with the source property.
+
+        Parameters
+        ----------
+        manager : WellDataManager
+            Manager to broadcast to
+        target_name : str
+            Name for the new computed property in each well
+        """
+        applied_count = 0
+        skipped_wells = []
+
+        for well_name, well in manager._wells.items():
+            # Check if well has the source property
+            try:
+                source_prop = well.get_property(self._property_name)
+
+                # Apply operation to create new property
+                result_prop = self._apply_operation(source_prop)
+
+                # Assign to well (will be stored as computed property)
+                setattr(well, target_name, result_prop)
+                applied_count += 1
+
+            except (AttributeError, KeyError):
+                # Well doesn't have this property, skip it
+                skipped_wells.append(well_name)
+
+        # Provide feedback
+        if applied_count > 0:
+            print(f"✓ Created property '{target_name}' in {applied_count} well(s)")
+        if skipped_wells:
+            warnings.warn(
+                f"Skipped {len(skipped_wells)} well(s) without property '{self._property_name}': "
+                f"{', '.join(skipped_wells[:3])}{'...' if len(skipped_wells) > 3 else ''}",
+                UserWarning
+            )
 
 
 class WellDataManager:
@@ -58,7 +185,51 @@ class WellDataManager:
         # Load project if provided
         if project is not None:
             self.load(project)
-    
+
+    def __setattr__(self, name: str, value):
+        """
+        Intercept attribute assignment for manager-level broadcasting.
+
+        When assigning a ManagerPropertyProxy to a manager attribute, it broadcasts
+        the operation to all wells that have the source property.
+
+        Examples
+        --------
+        >>> manager.PHIE_scaled = manager.PHIE * 0.01  # Applies to all wells with PHIE
+        >>> manager.Reservoir = manager.PHIE > 0.15    # Applies to all wells with PHIE
+        """
+        # Allow setting private attributes normally
+        if name.startswith('_'):
+            object.__setattr__(self, name, value)
+            return
+
+        # Check if this is a ManagerPropertyProxy (result of manager.PROPERTY operation)
+        if isinstance(value, _ManagerPropertyProxy):
+            # This is a broadcasting operation
+            value._broadcast_to_manager(self, name)
+        else:
+            # Normal attribute assignment
+            object.__setattr__(self, name, value)
+
+    def __getattr__(self, name: str):
+        """
+        Get well or create property proxy for broadcasting.
+
+        Handles both well access (well_XXX) and property broadcasting (PROPERTY_NAME).
+        """
+        # Check if it's a well access pattern
+        if name.startswith('well_'):
+            if name in self._wells:
+                return self._wells[name]
+            raise AttributeError(
+                f"Well '{name}' not found in manager. "
+                f"Available wells: {', '.join(self._wells.keys()) or 'none'}"
+            )
+
+        # Otherwise, treat as property name for broadcasting
+        # Return a proxy that can be used for operations across all wells
+        return _ManagerPropertyProxy(self, name)
+
     def load_las(
         self,
         filepath: Union[str, Path, list[Union[str, Path]]],
@@ -447,33 +618,7 @@ class WellDataManager:
             self._name_mapping[well_name] = well_key
 
         return self._wells[well_key]
-    
-    def __getattr__(self, name: str) -> Well:
-        """
-        Enable well access via attributes: manager.well_12_3_2_B
-        
-        This is called when normal attribute lookup fails.
-        """
-        # Don't intercept private attributes or methods
-        if name.startswith('_') or name in [
-            'wells', 'load_las', 'load_tops', 'add_well', 'get_well', 'remove_well',
-            'save', 'load'
-        ]:
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
-        
-        # Try to get well
-        if name in self._wells:
-            return self._wells[name]
-        
-        # Not found
-        available = ', '.join(self._wells.keys())
-        raise AttributeError(
-            f"Well '{name}' not found in manager. "
-            f"Available wells: {available or 'none'}"
-        )
-    
+
     @property
     def wells(self) -> list[str]:
         """

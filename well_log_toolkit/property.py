@@ -14,13 +14,14 @@ from .statistics import (
     mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
 )
 from .utils import filter_names
+from .operations import PropertyOperationsMixin
 
 if TYPE_CHECKING:
     from .well import Well
     from .las_file import LasFile
 
 
-class Property:
+class Property(PropertyOperationsMixin):
     """
     Single log property with depth-value pairs and filtering operations.
 
@@ -136,6 +137,66 @@ class Property:
                     np.nan,
                     self._values_cache
                 )
+
+    def __repr__(self) -> str:
+        """Return detailed string representation of the property."""
+        unit_str = f" ({self.unit})" if self.unit else ""
+        type_str = f", type={self.type}" if self.type != 'continuous' else ""
+
+        # Get depth and values (triggers lazy loading if needed)
+        depth = self.depth
+        values = self.values
+
+        # Format header
+        header = f"Property(name='{self.name}'{unit_str}{type_str}, samples={len(depth)})"
+
+        # Format depth range
+        if len(depth) > 0:
+            depth_range = f"  depth: [{depth[0]:.2f}, ..., {depth[-1]:.2f}]"
+        else:
+            depth_range = "  depth: []"
+
+        # Format values with limited display
+        if len(values) > 0:
+            # Show first few values
+            if len(values) <= 6:
+                values_str = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values)
+                values_line = f"  {self.name}: [{values_str}]"
+            else:
+                first_vals = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[:3])
+                last_vals = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[-3:])
+                values_line = f"  {self.name}: [{first_vals}, ..., {last_vals}]"
+        else:
+            values_line = f"  {self.name}: []"
+
+        return f"{header}\n{depth_range}\n{values_line}"
+
+    def __str__(self) -> str:
+        """Return user-friendly string representation (numpy-style)."""
+        # Get depth and values
+        depth = self.depth
+        values = self.values
+
+        if len(depth) == 0:
+            return f"{self.name}: (empty)"
+
+        # Create two-row display similar to numpy arrays
+        unit_str = f" ({self.unit})" if self.unit else ""
+
+        # Limit display for long arrays
+        if len(depth) <= 10:
+            depth_str = ", ".join(f"{d:.2f}" for d in depth)
+            values_str = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values)
+        else:
+            depth_first = ", ".join(f"{d:.2f}" for d in depth[:5])
+            depth_last = ", ".join(f"{d:.2f}" for d in depth[-5:])
+            depth_str = f"{depth_first}, ..., {depth_last}"
+
+            values_first = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[:5])
+            values_last = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[-5:])
+            values_str = f"{values_first}, ..., {values_last}"
+
+        return f"depth: {depth_str}\n{self.name}{unit_str}: {values_str}"
 
     @property
     def source(self) -> Optional[str]:
@@ -339,6 +400,116 @@ class Property:
             'current_sample_count': len(self.depth),
             'boundary_samples_inserted': self._boundary_samples_inserted,
         }
+
+    def resample(self, target_depth: Union[np.ndarray, 'Property']) -> 'Property':
+        """
+        Resample property to a new depth grid using linear interpolation.
+
+        This method creates a new Property object with values interpolated to match
+        the target depth grid. This is required when combining properties with
+        different sampling rates.
+
+        Parameters
+        ----------
+        target_depth : np.ndarray or Property
+            Target depth grid to resample to. Can be:
+            - numpy array of depth values
+            - Property object (will use its .depth attribute)
+
+        Returns
+        -------
+        Property
+            New property with values interpolated to target depth grid
+
+        Notes
+        -----
+        - Uses linear interpolation for continuous data
+        - Uses nearest-neighbor interpolation for discrete data
+        - Values outside the original depth range are set to NaN
+        - NaN values in original data are excluded from interpolation
+
+        Examples
+        --------
+        >>> # Resample to another property's depth grid
+        >>> phie_resampled = well.CorePHIE.resample(well.PHIE.depth)
+        >>> result = well.PHIE + phie_resampled
+
+        >>> # Or pass the property directly
+        >>> phie_resampled = well.CorePHIE.resample(well.PHIE)
+        >>> result = well.PHIE + phie_resampled
+
+        >>> # Resample to regular 0.5m grid
+        >>> target = np.arange(2800, 3500, 0.5)
+        >>> phie_regular = well.PHIE.resample(target)
+        """
+        # Extract depth array if Property object passed
+        if hasattr(target_depth, 'depth'):
+            target_depth = target_depth.depth
+
+        target_depth = np.asarray(target_depth, dtype=np.float64)
+
+        # Check if already on same grid
+        if len(self.depth) == len(target_depth) and np.allclose(self.depth, target_depth, rtol=1e-9, atol=1e-9):
+            # Already on same grid - return copy
+            return Property(
+                name=self.name,
+                depth=self.depth.copy(),
+                values=self.values.copy(),
+                parent_well=self.parent_well,
+                unit=self.unit,
+                prop_type=self.type,
+                description=self.description,
+                labels=self.labels.copy() if self.labels else None,
+                source_name='computed',
+                original_name=self.original_name
+            )
+
+        # Handle NaN values - exclude from interpolation
+        valid_mask = ~np.isnan(self.values)
+        if np.sum(valid_mask) < 2:
+            # Not enough valid data to interpolate
+            return Property(
+                name=self.name,
+                depth=target_depth.copy(),
+                values=np.full_like(target_depth, np.nan),
+                parent_well=self.parent_well,
+                unit=self.unit,
+                prop_type=self.type,
+                description=f"{self.description} (resampled, insufficient data)",
+                labels=self.labels.copy() if self.labels else None,
+                source_name='computed',
+                original_name=self.original_name
+            )
+
+        # Choose interpolation method based on type
+        if self.type == 'discrete':
+            kind = 'nearest'
+        else:
+            kind = 'linear'
+
+        # Perform interpolation
+        interpolator = interp1d(
+            self.depth[valid_mask],
+            self.values[valid_mask],
+            kind=kind,
+            bounds_error=False,
+            fill_value=np.nan
+        )
+        resampled_values = interpolator(target_depth)
+
+        # Create new property
+        return Property(
+            name=self.name,
+            depth=target_depth.copy(),
+            values=resampled_values,
+            parent_well=self.parent_well,
+            unit=self.unit,
+            prop_type=self.type,
+            description=f"{self.description} (resampled)",
+            labels=self.labels.copy() if self.labels else None,
+            source_name='computed',
+            original_name=self.original_name
+        )
 
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
         """

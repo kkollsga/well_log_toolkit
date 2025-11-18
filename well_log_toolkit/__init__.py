@@ -32,11 +32,15 @@ Examples
 >>> stats = well.phie.filter('Zone').filter('NTG_Flag').sums_avg()
 >>> # Returns: {'Reservoir': {'Net': {...}, 'NonNet': {...}}, ...}
 >>>
+>>> # Create new properties with mathematical expressions
+>>> well.HC_Volume = well.PHIE * (1 - well.SW)
+>>> well.Reservoir = (well.PHIE > 0.15) & (well.SW < 0.35)
+>>>
 >>> # Export to LAS format
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.42"
+__version__ = "0.1.43"
 
 from .manager import WellDataManager
 from .well import Well

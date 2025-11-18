@@ -220,6 +220,120 @@ class Well:
         # Track sources marked for rename (to rename files on save)
         self._renamed_sources: dict[str, str] = {}  # {old_name: new_name}
 
+    def __setattr__(self, name: str, value):
+        """
+        Intercept attribute assignment to handle property operations.
+
+        Behavior:
+        - If assigning to NEW property name: creates computed property
+        - If assigning to EXISTING property: overwrites its data in-place
+
+        Examples
+        --------
+        >>> well.new_phie = well.PHIE * 0.01  # Creates NEW computed property
+        >>> well.PHIE = well.PHIE * 0.01      # OVERWRITES existing PHIE data
+        >>> well.Reservoir = well.PHIE > 0.15 # Creates NEW discrete property
+        """
+        # Check if this is a Property being assigned
+        if isinstance(value, Property) and not name.startswith('_'):
+            # Check if property already exists
+            try:
+                existing_prop = self.get_property(name)
+                # Property exists - overwrite its data
+                self._overwrite_property(name, value)
+            except (AttributeError, PropertyNotFoundError):
+                # Property doesn't exist - create new computed property
+                self._add_computed_property(name, value)
+        else:
+            # Normal attribute assignment
+            object.__setattr__(self, name, value)
+
+    def _add_computed_property(self, name: str, prop: Property):
+        """
+        Add a computed property to the well.
+
+        Computed properties are stored in a special 'computed' source and
+        can be exported like any other property.
+
+        Parameters
+        ----------
+        name : str
+            Name for the new property
+        prop : Property
+            Property object to add
+        """
+        # Sanitize the name
+        from .utils import sanitize_property_name
+        sanitized_name = sanitize_property_name(name)
+
+        # Update property metadata
+        prop.name = sanitized_name
+        prop.original_name = name
+        prop.parent_well = self
+        prop.source_name = 'computed'
+
+        # Create or update 'computed' source
+        if 'computed' not in self._sources:
+            self._sources['computed'] = {
+                'path': None,
+                'las_file': None,
+                'properties': {},
+                'modified': True
+            }
+
+        # Add property to computed source
+        self._sources['computed']['properties'][sanitized_name] = prop
+        self._sources['computed']['modified'] = True
+
+    def _overwrite_property(self, name: str, new_prop: Property):
+        """
+        Overwrite an existing property's data in-place.
+
+        This maintains the property's source location but updates its depth and values.
+        If the new property has different dimensions, the entire property is replaced.
+
+        Parameters
+        ----------
+        name : str
+            Name of existing property to overwrite
+        new_prop : Property
+            Property object with new data
+        """
+        from .utils import sanitize_property_name
+        sanitized_name = sanitize_property_name(name)
+
+        # Find which source contains this property
+        source_name = None
+        for src_name, src_data in self._sources.items():
+            if sanitized_name in src_data['properties']:
+                source_name = src_name
+                break
+
+        if source_name is None:
+            # Property doesn't exist - shouldn't reach here, but handle gracefully
+            self._add_computed_property(name, new_prop)
+            return
+
+        # Get the existing property
+        existing_prop = self._sources[source_name]['properties'][sanitized_name]
+
+        # Update the existing property's data
+        existing_prop._depth_cache = new_prop.depth.copy()
+        existing_prop._values_cache = new_prop.values.copy()
+
+        # Update metadata if provided
+        if new_prop.unit:
+            existing_prop.unit = new_prop.unit
+        if new_prop.description:
+            existing_prop.description = new_prop.description
+        if new_prop.labels:
+            existing_prop._labels = new_prop.labels.copy()
+        if new_prop.type:
+            existing_prop._type = new_prop.type
+
+        # Mark source as modified
+        self._sources[source_name]['modified'] = True
+
     def load_las(self, las: Union[LasFile, str, Path], sampled: bool = False) -> 'Well':
         """
         Load LAS file into this well, organized by source.

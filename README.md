@@ -6,6 +6,7 @@ A Python library for petrophysical well log analysis with lazy loading, multi-we
 
 - **Lazy Loading** - Headers parsed immediately, data loaded only when accessed
 - **Multi-Well Management** - Intuitive attribute-based access to wells and properties
+- **Property Computation** - Create new properties using natural mathematical expressions with automatic depth alignment
 - **Hierarchical Filtering** - Chain discrete filters and compute grouped statistics
 - **Depth-Weighted Statistics** - Proper averaging that accounts for depth intervals
 - **Accurate Zone Boundaries** - Synthetic samples inserted at zone tops for precise interval partitioning
@@ -84,6 +85,13 @@ print(stats)
 stats = well.PHIE.filter('Zone').sums_avg(arithmetic=True)
 # 'mean': {'weighted': 0.182, 'arithmetic': 0.179}
 # 'calculation': 'both'
+
+# Create new properties with mathematical expressions
+well.HC_Volume = well.PHIE * (1 - well.SW)  # Hydrocarbon pore volume
+well.Reservoir = (well.PHIE > 0.15) & (well.SW < 0.35)  # Reservoir flag
+
+# Apply operations across all wells
+manager.PHIE_percent = manager.PHIE * 100  # Converts PHIE to percent in all wells
 ```
 
 ---
@@ -496,6 +504,239 @@ stats = core_phie.filter('Zone').sums_avg(weighted=True)
 # → No synthetic samples - these are discrete physical measurements
 # → Each plug is assigned to zone based on its actual depth
 ```
+
+### 12. Property Computation Operations
+
+Create new properties using intuitive mathematical expressions. The toolkit enforces **strict depth matching** (like numpy) - operations fail if depths don't match exactly. Use explicit `.resample()` to align properties with different sampling rates.
+
+#### Arithmetic Operations
+
+```python
+well = manager.well_12_3_4_A
+
+# Scalar operations - multiply, divide, add, subtract
+well.PHIE_fraction = well.PHIE * 0.01
+well.PHIE_percent = well.PHIE * 100
+well.PHIE_adjusted = well.PHIE - 0.02
+well.PHIE_doubled = well.PHIE * 2
+
+# Property-to-property operations (same depth grid required)
+well.HC_Volume = well.PHIE * (1 - well.SW)  # Works if depths match
+well.Porosity_Diff = well.PHIE - well.PHIT
+
+# Complex expressions
+well.Bulk_Volume = well.PHIE / (well.NTG + 0.001)  # Avoid division by zero
+well.Combined = (well.PHIE + well.PERM * 0.001) / 2
+
+# Unary operations
+well.Neg_PHIE = -well.PHIE
+well.Abs_Delta = abs(well.PHIE - well.PHIT)
+
+# Assignment behavior
+well.new_property = well.PHIE * 2  # Creates NEW property
+well.PHIE = well.PHIE * 2          # OVERWRITES existing PHIE data
+```
+
+**Strict Depth Matching**: Operations fail if properties have different depth grids (like numpy's broadcasting rules). This prevents silent interpolation errors and makes data handling explicit.
+
+#### Property Inspection
+
+Properties can be printed to inspect their data in a numpy-style format:
+
+```python
+# Print property (numpy-style display)
+print(well.PHIE)
+# depth: 2800.00, 2801.00, 2802.00, 2803.00, 2804.00, ..., 3796.00, 3797.00, 3798.00, 3799.00, 3800.00
+# PHIE (v/v): 0.180, 0.185, 0.192, 0.188, 0.175, ..., 0.220, 0.218, 0.215, 0.212, 0.210
+
+# Detailed repr
+repr(well.PHIE)
+# Property(name='PHIE' (v/v), samples=1001)
+#   depth: [2800.00, ..., 3800.00]
+#   PHIE: [0.180, 0.185, 0.192, ..., 0.212, 0.210]
+```
+
+#### Explicit Resampling
+
+When properties have different depth grids, use `.resample()` to explicitly align them:
+
+```python
+# Different sampling rates - operation fails
+try:
+    result = well.PHIE + well.CorePHIE  # Error: depths don't match
+except DepthAlignmentError as e:
+    print(e)
+    # DepthAlignmentError: Cannot combine properties with different depth grids.
+    #   PHIE: 1000 samples (2800.00-3800.00m, 1.00m spacing)
+    #   CorePHIE: 50 samples (2800.00-3800.00m, 20.00m spacing)
+
+# Explicit resampling - now it works
+core_resampled = well.CorePHIE.resample(well.PHIE)
+result = well.PHIE + core_resampled
+
+# Or pass Property directly
+core_resampled = well.CorePHIE.resample(well.PHIE)
+
+# Resample to custom grid
+target_depth = np.arange(2800, 3800, 0.5)  # 0.5m regular grid
+phie_fine = well.PHIE.resample(target_depth)
+```
+
+**Resampling Notes**:
+- Uses linear interpolation for continuous properties
+- Uses nearest-neighbor for discrete properties
+- NaN values are excluded from interpolation
+- Values outside original depth range become NaN
+- Always creates a new Property (non-destructive)
+
+#### Comparison Operations
+
+Create discrete flag properties using comparison operators. These are automatically marked as discrete type:
+
+```python
+# Simple comparisons
+well.High_Poro = well.PHIE > 0.15          # Flag: porosity > 15%
+well.Low_Water = well.SW < 0.35            # Flag: water saturation < 35%
+well.Good_Perm = well.PERM >= 100          # Flag: permeability >= 100mD
+
+# Comparison operations return discrete properties with auto-generated labels
+print(well.High_Poro.type)    # 'discrete'
+print(well.High_Poro.labels)  # {0: 'False', 1: 'True'}
+print(well.High_Poro)
+# depth: 2800.00, 2801.00, ..., 3799.00, 3800.00
+# High_Poro (flag): 0.000, 0.000, ..., 1.000, 1.000
+
+# Use in filtering
+stats = well.PHIE.filter('High_Poro').sums_avg()
+# {'False': {...}, 'True': {...}}
+```
+
+#### Logical Operations
+
+Combine conditions using logical operators to create complex selection criteria:
+
+```python
+# AND operation - reservoir flag
+well.Reservoir = (well.PHIE > 0.15) & (well.SW < 0.35)
+
+# OR operation - either condition
+well.Problem_Zone = (well.PHIE < 0.05) | (well.SW > 0.90)
+
+# NOT operation - invert flag
+well.Non_Reservoir = ~well.Reservoir
+
+# Complex logic
+well.Good_Reservoir = (well.PHIE > 0.15) & (well.SW < 0.4) & (well.PERM > 50)
+
+# Use in filtering
+stats = well.PHIE.filter('Reservoir').sums_avg()
+# {'False': {...}, 'True': {...}}
+```
+
+#### Manager-Level Broadcasting
+
+Apply operations to all wells at once. The operation is automatically applied to every well that has the source property:
+
+```python
+# Scale property across all wells
+manager.PHIE_scaled = manager.PHIE * 100
+
+# Create flags across all wells
+manager.High_Poro = manager.PHIE > 0.15
+
+# Complex operations
+manager.HC_Volume = manager.PHIE * (1 - manager.SW)
+
+# Output:
+# ✓ Created property 'HC_Volume' in 12 well(s)
+# ⚠ Skipped 3 well(s) without property 'PHIE' or 'SW'
+```
+
+Wells without the required property are automatically skipped with a warning. The created properties are added to each well's `computed` source.
+
+#### The 'computed' Source
+
+All computed properties are stored in a special source called `computed`:
+
+```python
+# View all computed properties
+print(well.sources)  # ['Petrophysics', 'Imported_Tops', 'computed']
+print(well.computed.properties)  # ['PHIE_scaled', 'High_Poro', 'HC_Volume', ...]
+
+# Access computed properties
+hc_volume = well.computed.HC_Volume
+
+# Or directly via well
+hc_volume = well.HC_Volume
+
+# Export computed properties
+well.export_to_las('output_with_computed.las')
+
+# Remove computed source
+well.remove_source('computed')
+```
+
+#### Property Operations in Workflows
+
+Combine property operations with filtering and statistics:
+
+```python
+# Create reservoir flag
+well.Reservoir = (well.PHIE > 0.15) & (well.SW < 0.35)
+
+# Compute hydrocarbon volume
+well.HC_Volume = well.PHIE * (1 - well.SW)
+
+# Filter by zone and reservoir flag
+stats = well.HC_Volume.filter('Zone').filter('Reservoir').sums_avg()
+# {
+#   'Top_Brent': {
+#     'True': {'mean': 0.14, 'sum': 35.0, 'thickness': 250.0, ...},
+#     'False': {...}
+#   },
+#   'Top_Statfjord': {...}
+# }
+
+# Export with computed properties
+well.export_to_las('analysis_output.las')
+```
+
+#### Advanced Examples
+
+```python
+# Normalize property to 0-1 range
+min_val = np.nanmin(well.PHIE.values)
+max_val = np.nanmax(well.PHIE.values)
+well.PHIE_normalized = (well.PHIE - min_val) / (max_val - min_val)
+
+# Create quality score
+well.Quality_Score = (well.PHIE * 0.4 +
+                      (1 - well.SW) * 0.3 +
+                      well.PERM / 1000 * 0.3)
+
+# Multi-tier reservoir classification
+well.Tier_1 = (well.PHIE > 0.20) & (well.SW < 0.30) & (well.PERM > 200)
+well.Tier_2 = (well.PHIE > 0.15) & (well.SW < 0.40) & (well.PERM > 100)
+well.Tier_3 = (well.PHIE > 0.10) & (well.SW < 0.50) & (well.PERM > 50)
+
+# Compute tier statistics
+for tier in ['Tier_1', 'Tier_2', 'Tier_3']:
+    stats = well.PHIE.filter(tier).sums_avg()
+    print(f"{tier}: {stats['True']['thickness']} m thickness")
+```
+
+#### Notes
+
+- **Strict Depth Matching**: Operations fail if depths don't match (like numpy). Use `.resample()` to explicitly align
+- **Assignment Behavior**:
+  - `well.new_prop = expr` creates NEW property in `computed` source
+  - `well.existing_prop = expr` OVERWRITES existing property data
+- **NaN Handling**: NaN values propagate through operations (numpy default behavior)
+- **Unit Tracking**: Units are tracked but not validated. Combined units shown as `unit1*unit2`, etc.
+- **Auto-Labels**: Comparison operations automatically get `{0: 'False', 1: 'True'}` labels
+- **Computed Properties**: Automatically marked with `source_name='computed'`
+- **Type Conversion**: Comparison operations automatically create discrete properties
+- **Error Handling**: Operations raise clear errors for mismatched depths
 
 ---
 
