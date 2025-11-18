@@ -2,6 +2,7 @@
 Utility functions for well log toolkit.
 """
 import re
+from typing import Optional, List, Iterable
 
 
 def sanitize_well_name(name: str, keep_hyphens: bool = False) -> str:
@@ -158,3 +159,57 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
             rest = rest[1:].strip()  # Remove leading dot
 
     return mnemonic, rest, description
+
+
+def filter_names(
+    all_names: Iterable[str],
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None
+) -> Optional[List[str]]:
+    """
+    Filter a list of names based on include/exclude parameters.
+
+    If both include and exclude are specified, exclude overrides (removes from include list).
+
+    Parameters
+    ----------
+    all_names : Iterable[str]
+        All available names
+    include : list[str], optional
+        Names to include. If None, includes all names.
+    exclude : list[str], optional
+        Names to exclude. If both include and exclude are specified,
+        exclude overrides (removes from include list).
+
+    Returns
+    -------
+    list[str] or None
+        Filtered list of names, or None if no filtering should be applied
+        (i.e., include all names)
+
+    Examples
+    --------
+    >>> all_names = ['A', 'B', 'C', 'D']
+    >>> filter_names(all_names, include=['A', 'B', 'C'])
+    ['A', 'B', 'C']
+    >>> filter_names(all_names, exclude=['D'])
+    ['A', 'B', 'C']
+    >>> filter_names(all_names, include=['A', 'B', 'C'], exclude=['C'])
+    ['A', 'B']
+    >>> filter_names(all_names)  # No filtering
+    None
+    """
+    # Determine which names to include/exclude
+    # If both include and exclude are specified, exclude overrides
+    if include is not None:
+        # Start with include list, then remove excluded
+        if exclude is not None:
+            return [name for name in include if name not in exclude]
+        else:
+            return list(include)
+    elif exclude is not None:
+        # No include list, just exclude from all names
+        return [name for name in all_names if name not in exclude]
+    else:
+        # No filtering
+        return None

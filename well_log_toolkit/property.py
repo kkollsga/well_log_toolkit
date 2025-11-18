@@ -13,6 +13,7 @@ from .statistics import (
     compute_intervals,
     mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
 )
+from .utils import filter_names
 
 if TYPE_CHECKING:
     from .well import Well
@@ -1044,20 +1045,10 @@ class Property:
             self.name: self._apply_labels(self.values) if discrete_labels and self.labels else self.values
         }
 
-        # Determine which secondary properties to include
+        # Determine which secondary properties to include using filter_names helper
         # If both include and exclude are specified, exclude overrides
-        if include is not None:
-            # Start with include list, then remove excluded
-            if exclude is not None:
-                secondary_filter = [name for name in include if name not in exclude]
-            else:
-                secondary_filter = include
-        elif exclude is not None:
-            # No include list, just exclude from all secondary properties
-            secondary_filter = [sp.name for sp in self.secondary_properties if sp.name not in exclude]
-        else:
-            # Include all secondary properties
-            secondary_filter = None
+        secondary_names = [sp.name for sp in self.secondary_properties]
+        secondary_filter = filter_names(secondary_names, include, exclude)
 
         # Add secondary properties
         for sec_prop in self.secondary_properties:

@@ -10,7 +10,7 @@ import pandas as pd
 from .exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
 from .property import Property
 from .las_file import LasFile
-from .utils import sanitize_property_name, sanitize_well_name
+from .utils import sanitize_property_name, sanitize_well_name, filter_names
 
 if TYPE_CHECKING:
     from .manager import WellDataManager
@@ -1274,10 +1274,8 @@ class Well:
         if not all_properties:
             return pd.DataFrame()
 
-        # Determine which properties to include/exclude
-        # If both include and exclude are specified, exclude overrides (removes from include list)
+        # Validate include list if provided
         if include is not None:
-            # Validate all requested properties exist
             missing = set(include) - set(all_properties.keys())
             if missing:
                 available = ', '.join(all_properties.keys())
@@ -1285,16 +1283,9 @@ class Well:
                     f"Properties not found: {', '.join(missing)}. "
                     f"Available: {available}"
                 )
-            # Start with include list, then remove excluded
-            if exclude is not None:
-                properties_filter = [name for name in include if name not in exclude]
-            else:
-                properties_filter = include
-        elif exclude is not None:
-            # No include list, just exclude from all properties
-            properties_filter = [name for name in all_properties.keys() if name not in exclude]
-        else:
-            properties_filter = None  # Include all
+
+        # Filter properties using helper function
+        properties_filter = filter_names(all_properties.keys(), include, exclude)
 
         # Determine reference property
         if reference_property is None:
