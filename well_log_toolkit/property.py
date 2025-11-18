@@ -833,6 +833,12 @@ class Property:
             # No valid values, return stats for current mask
             return self._compute_stats(mask, weighted, arithmetic, gross_thickness)
 
+        # Calculate parent thickness BEFORE subdividing
+        # This becomes the gross_thickness for all child groups
+        parent_intervals = compute_intervals(self.depth)
+        parent_valid = mask & ~np.isnan(self.values)
+        parent_thickness = float(np.sum(parent_intervals[parent_valid]))
+
         # Group by each unique value
         result = {}
         for val in unique_vals:
@@ -848,7 +854,7 @@ class Property:
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_group(
-                filter_idx + 1, sub_mask, weighted, arithmetic, gross_thickness
+                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness
             )
 
         return result
