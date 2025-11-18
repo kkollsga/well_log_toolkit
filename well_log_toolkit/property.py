@@ -138,41 +138,17 @@ class Property(PropertyOperationsMixin):
                     self._values_cache
                 )
 
-    def __repr__(self) -> str:
-        """Return detailed string representation of the property."""
-        unit_str = f" ({self.unit})" if self.unit else ""
-        type_str = f", type={self.type}" if self.type != 'continuous' else ""
-
-        # Get depth and values (triggers lazy loading if needed)
-        depth = self.depth
-        values = self.values
-
-        # Format header
-        header = f"Property(name='{self.name}'{unit_str}{type_str}, samples={len(depth)})"
-
-        # Format depth range
-        if len(depth) > 0:
-            depth_range = f"  depth: [{depth[0]:.2f}, ..., {depth[-1]:.2f}]"
-        else:
-            depth_range = "  depth: []"
-
-        # Format values with limited display
-        if len(values) > 0:
-            # Show first few values
-            if len(values) <= 6:
-                values_str = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values)
-                values_line = f"  {self.name}: [{values_str}]"
-            else:
-                first_vals = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[:3])
-                last_vals = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[-3:])
-                values_line = f"  {self.name}: [{first_vals}, ..., {last_vals}]"
-        else:
-            values_line = f"  {self.name}: []"
-
-        return f"{header}\n{depth_range}\n{values_line}"
 
     def __str__(self) -> str:
-        """Return user-friendly string representation (numpy-style)."""
+        """
+        Return user-friendly string representation (numpy-style clipped array).
+
+        Arrays are clipped at 8 elements, showing first 3 and last 3 with '...' separator.
+        This mimics numpy's default array printing behavior.
+
+        If filters are active (secondary properties), they are shown below the main values
+        with their labels for discrete properties.
+        """
         # Get depth and values
         depth = self.depth
         values = self.values
@@ -180,23 +156,80 @@ class Property(PropertyOperationsMixin):
         if len(depth) == 0:
             return f"{self.name}: (empty)"
 
-        # Create two-row display similar to numpy arrays
+        # Determine if we should clip (numpy-like threshold)
+        clip_threshold = 8
+        should_clip = len(depth) > clip_threshold
+
+        # Format unit string
         unit_str = f" ({self.unit})" if self.unit else ""
 
-        # Limit display for long arrays
-        if len(depth) <= 10:
-            depth_str = ", ".join(f"{d:.2f}" for d in depth)
-            values_str = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values)
+        # Build main output
+        if not should_clip:
+            # Show all values (numpy-style with spaces)
+            depth_arr = " ".join(f"{d:.2f}" for d in depth)
+            values_arr = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values)
+
+            result = f"[{self.name}]\ndepth: [{depth_arr}]\nvalues{unit_str}: [{values_arr}]"
         else:
-            depth_first = ", ".join(f"{d:.2f}" for d in depth[:5])
-            depth_last = ", ".join(f"{d:.2f}" for d in depth[-5:])
-            depth_str = f"{depth_first}, ..., {depth_last}"
+            # Clip array (show first 3 ... last 3)
+            depth_first = " ".join(f"{d:.2f}" for d in depth[:3])
+            depth_last = " ".join(f"{d:.2f}" for d in depth[-3:])
+            depth_arr = f"{depth_first} ... {depth_last}"
 
-            values_first = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[:5])
-            values_last = ", ".join(f"{v:.3f}" if not np.isnan(v) else "nan" for v in values[-5:])
-            values_str = f"{values_first}, ..., {values_last}"
+            values_first = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[:3])
+            values_last = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[-3:])
+            values_arr = f"{values_first} ... {values_last}"
 
-        return f"depth: {depth_str}\n{self.name}{unit_str}: {values_str}"
+            result = f"[{self.name}] ({len(depth)} samples)\ndepth: [{depth_arr}]\nvalues{unit_str}: [{values_arr}]"
+
+        # Add filter information if secondary properties exist
+        if self.secondary_properties:
+            result += "\n\nFilters:"
+            for sec_prop in self.secondary_properties:
+                # Format secondary property values
+                sec_values = sec_prop.values
+
+                if not should_clip:
+                    # Show all values
+                    sec_arr = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values)
+                else:
+                    # Clip array
+                    sec_first = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[:3])
+                    sec_last = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[-3:])
+                    sec_arr = f"{sec_first} ... {sec_last}"
+
+                # Add unit string if present
+                sec_unit_str = f" ({sec_prop.unit})" if sec_prop.unit else ""
+                result += f"\n  {sec_prop.name}{sec_unit_str}: [{sec_arr}]"
+
+        return result
+
+    def _format_discrete_value(self, value: float, prop: 'Property') -> str:
+        """
+        Format a discrete value with its label if available.
+
+        Parameters
+        ----------
+        value : float
+            Numeric value
+        prop : Property
+            Property containing labels
+
+        Returns
+        -------
+        str
+            Formatted value string (label if available, otherwise numeric)
+        """
+        if np.isnan(value):
+            return "    nan"
+
+        # Try to get label
+        if prop.labels and int(value) in prop.labels:
+            label = prop.labels[int(value)]
+            # Pad to align nicely (use ~7 chars for label width)
+            return f"{label:>7s}"
+        else:
+            return f"{value:7.0f}"
 
     @property
     def source(self) -> Optional[str]:
@@ -1388,12 +1421,19 @@ class Property(PropertyOperationsMixin):
 
     def __repr__(self) -> str:
         """String representation."""
+        # Add unit if present
+        unit_str = f" ({self.unit})" if self.unit else ""
+
+        # Add filters info if any secondary properties
         filters = f", filters={len(self.secondary_properties)}" if self.secondary_properties else ""
+
+        # Add filtered info if this is a filtered property
         filtered_info = ""
         if self._is_filtered:
             filtered_info = f", filtered=True, boundary_samples={self._boundary_samples_inserted}"
+
         return (
-            f"Property('{self.name}', "
+            f"Property('{self.name}'{unit_str}, "
             f"samples={len(self.depth)}, "
             f"type='{self.type}'"
             f"{filters}"

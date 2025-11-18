@@ -48,11 +48,12 @@ def compute_intervals(depth: np.ndarray) -> np.ndarray:
     # First point: half interval to next point
     intervals[0] = (depth[1] - depth[0]) / 2.0
 
-    # Middle points: midpoint to midpoint
-    for i in range(1, len(depth) - 1):
-        lower_mid = (depth[i] + depth[i-1]) / 2.0
-        upper_mid = (depth[i+1] + depth[i]) / 2.0
-        intervals[i] = upper_mid - lower_mid
+    # Middle points: midpoint to midpoint (vectorized)
+    # lower_mid[i] = (depth[i] + depth[i-1]) / 2.0
+    # upper_mid[i] = (depth[i+1] + depth[i]) / 2.0
+    # intervals[i] = upper_mid[i] - lower_mid[i]
+    # Simplifies to: intervals[i] = (depth[i+1] - depth[i-1]) / 2.0
+    intervals[1:-1] = (depth[2:] - depth[:-2]) / 2.0
 
     # Last point: half interval from previous point
     intervals[-1] = (depth[-1] - depth[-2]) / 2.0

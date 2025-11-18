@@ -7,7 +7,7 @@ import warnings
 
 import pandas as pd
 
-from .exceptions import LasFileError
+from .exceptions import LasFileError, PropertyNotFoundError
 from .las_file import LasFile
 from .well import Well
 from .property import Property
@@ -98,6 +98,57 @@ class _ManagerPropertyProxy:
         """manager.PHIE <= value"""
         return self._create_proxy_with_operation(lambda p: p <= other)
 
+    def __str__(self) -> str:
+        """
+        Return string representation showing property across all wells.
+
+        Returns
+        -------
+        str
+            Formatted string with property data from each well
+
+        Examples
+        --------
+        >>> print(manager.PHIE)
+        [PHIE] across 3 well(s):
+
+        Well: well_36_7_5_A
+        [PHIE] (1001 samples)
+        depth: [2800.00, 2801.00, 2802.00, ..., 3798.00, 3799.00, 3800.00]
+        values (v/v): [0.180, 0.185, 0.192, ..., 0.215, 0.212, 0.210]
+
+        Well: well_36_7_5_B
+        [PHIE] (856 samples)
+        ...
+        """
+        import numpy as np
+
+        # Get all wells that have this property
+        wells_with_prop = []
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                wells_with_prop.append((well_name, prop))
+            except (AttributeError, PropertyNotFoundError):
+                pass
+
+        if not wells_with_prop:
+            return f"[{self._property_name}] - No wells have this property"
+
+        # Build output
+        lines = [f"[{self._property_name}] across {len(wells_with_prop)} well(s):", ""]
+
+        for well_name, prop in wells_with_prop:
+            # Add well name header
+            lines.append(f"Well: {well_name}")
+
+            # Use property's __str__ for consistent formatting
+            prop_str = str(prop)
+            lines.append(prop_str)
+            lines.append("")
+
+        return "\n".join(lines)
+
     def _broadcast_to_manager(self, manager: 'WellDataManager', target_name: str):
         """
         Broadcast the operation to all wells with the source property.
@@ -124,7 +175,7 @@ class _ManagerPropertyProxy:
                 setattr(well, target_name, result_prop)
                 applied_count += 1
 
-            except (AttributeError, KeyError):
+            except (AttributeError, KeyError, PropertyNotFoundError):
                 # Well doesn't have this property, skip it
                 skipped_wells.append(well_name)
 
