@@ -992,8 +992,8 @@ class Property:
 
     def data(
         self,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None,
+        include: Optional[Union[str, list[str]]] = None,
+        exclude: Optional[Union[str, list[str]]] = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
         clip_to_property: Optional[str] = None
@@ -1003,12 +1003,13 @@ class Property:
 
         Parameters
         ----------
-        include : list[str], optional
-            List of secondary property names to include. If None, includes all.
-            Main property is always included.
-        exclude : list[str], optional
-            List of secondary property names to exclude. If both include and
+        include : str or list[str], optional
+            Secondary property name(s) to include. If None, includes all.
+            Main property is always included. Can be a single string or a list of strings.
+        exclude : str or list[str], optional
+            Secondary property name(s) to exclude. If both include and
             exclude are specified, exclude overrides (removes from include list).
+            Can be a single string or a list of strings.
         discrete_labels : bool, default True
             If True, apply label mappings to discrete properties
         clip_edges : bool, default True
@@ -1033,8 +1034,14 @@ class Property:
         >>> # Include only specific secondary properties
         >>> df = filtered.data(include=['Zone'])
 
+        >>> # Include single secondary property (string or list)
+        >>> df = filtered.data(include='Zone')  # Same as include=['Zone']
+
         >>> # Exclude specific secondary properties
         >>> df = filtered.data(exclude=['NTG_Flag'])
+
+        >>> # Exclude single secondary property
+        >>> df = filtered.data(exclude='NTG_Flag')
 
         >>> # Clip to property range
         >>> df = filtered.data(clip_to_property='Zone')
@@ -1087,8 +1094,8 @@ class Property:
     def head(
         self,
         n: int = 5,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None
+        include: Optional[Union[str, list[str]]] = None,
+        exclude: Optional[Union[str, list[str]]] = None
     ) -> pd.DataFrame:
         """
         Return first n rows of property data.

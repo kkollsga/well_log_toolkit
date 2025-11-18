@@ -175,11 +175,13 @@ def filter_names(
     ----------
     all_names : Iterable[str]
         All available names
-    include : list[str], optional
+    include : list[str] or str, optional
         Names to include. If None, includes all names.
-    exclude : list[str], optional
+        Can be a single string (automatically converted to list).
+    exclude : list[str] or str, optional
         Names to exclude. If both include and exclude are specified,
         exclude overrides (removes from include list).
+        Can be a single string (automatically converted to list).
 
     Returns
     -------
@@ -192,6 +194,8 @@ def filter_names(
     >>> all_names = ['A', 'B', 'C', 'D']
     >>> filter_names(all_names, include=['A', 'B', 'C'])
     ['A', 'B', 'C']
+    >>> filter_names(all_names, include='A')  # Single string
+    ['A']
     >>> filter_names(all_names, exclude=['D'])
     ['A', 'B', 'C']
     >>> filter_names(all_names, include=['A', 'B', 'C'], exclude=['C'])
@@ -199,6 +203,12 @@ def filter_names(
     >>> filter_names(all_names)  # No filtering
     None
     """
+    # Convert strings to lists for convenience
+    if isinstance(include, str):
+        include = [include]
+    if isinstance(exclude, str):
+        exclude = [exclude]
+
     # Determine which names to include/exclude
     # If both include and exclude are specified, exclude overrides
     if include is not None:

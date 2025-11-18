@@ -62,7 +62,7 @@ class SourceView:
 
     def data(
         self,
-        include: Optional[list[str]] = None,
+        include: Optional[Union[str, list[str]]] = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
         clip_to_property: Optional[str] = None
@@ -1175,8 +1175,8 @@ class Well:
     def data(
         self,
         reference_property: Optional[str] = None,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None,
+        include: Optional[Union[str, list[str]]] = None,
+        exclude: Optional[Union[str, list[str]]] = None,
         auto_resample: bool = True,
         merge_method: str = 'resample',
         discrete_labels: bool = True,
@@ -1197,11 +1197,13 @@ class Well:
             is True, all properties will be merged to this property's depth
             grid. If not specified, defaults to the first property that was added
             (typically the first property from the first LAS file loaded).
-        include : list[str], optional
-            List of property names to include. If None, includes all properties.
-        exclude : list[str], optional
-            List of property names to exclude. If both include and exclude are
+        include : str or list[str], optional
+            Property name(s) to include. If None, includes all properties.
+            Can be a single string or a list of strings.
+        exclude : str or list[str], optional
+            Property name(s) to exclude. If both include and exclude are
             specified, exclude overrides (removes properties from include list).
+            Can be a single string or a list of strings.
         auto_resample : bool, default True
             If True, automatically merge all properties to the reference
             property's depth grid (uses first property if not specified).
@@ -1243,8 +1245,14 @@ class Well:
         >>> # Include only specific properties
         >>> df = well.data(include=['PHIE', 'SW', 'PERM'])
 
+        >>> # Include single property (string or list)
+        >>> df = well.data(include='PHIE')  # Same as include=['PHIE']
+
         >>> # Exclude specific properties
         >>> df = well.data(exclude=['QC_Flag', 'Temp_Data'])
+
+        >>> # Exclude single property
+        >>> df = well.data(exclude='QC_Flag')
 
         >>> # Include with exclusions (exclude overrides)
         >>> df = well.data(include=['PHIE', 'SW', 'PERM', 'Zone'], exclude=['Zone'])
@@ -1261,6 +1269,12 @@ class Well:
         >>> # Clip to specific property's defined range
         >>> df = well.data(clip_to_property='PHIE')
         """
+        # Convert strings to lists for convenience
+        if isinstance(include, str):
+            include = [include]
+        if isinstance(exclude, str):
+            exclude = [exclude]
+
         if not self._sources:
             return pd.DataFrame()
 
@@ -1368,8 +1382,8 @@ class Well:
     def head(
         self,
         n: int = 5,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None
+        include: Optional[Union[str, list[str]]] = None,
+        exclude: Optional[Union[str, list[str]]] = None
     ) -> pd.DataFrame:
         """
         Return first n rows of well data.

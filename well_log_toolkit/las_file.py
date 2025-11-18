@@ -265,19 +265,21 @@ class LasFile:
 
     def data(
         self,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None
+        include: Optional[Union[str, list[str]]] = None,
+        exclude: Optional[Union[str, list[str]]] = None
     ) -> pd.DataFrame:
         """
         Lazy-load and return data with optional column filtering.
 
         Parameters
         ----------
-        include : list[str], optional
-            List of column names to include. If None, includes all columns.
-        exclude : list[str], optional
-            List of column names to exclude. If both include and exclude are specified,
+        include : str or list[str], optional
+            Column name(s) to include. If None, includes all columns.
+            Can be a single string or a list of strings.
+        exclude : str or list[str], optional
+            Column name(s) to exclude. If both include and exclude are specified,
             exclude overrides (removes from include list).
+            Can be a single string or a list of strings.
 
         Returns
         -------
@@ -287,9 +289,10 @@ class LasFile:
         Examples
         --------
         >>> df = las.data()
+        >>> df = las.data(include='PHIE')  # Single column
         >>> df = las.data(include=['DEPT', 'PHIE', 'SW'])
-        >>> df = las.data(exclude=['QC_Flag'])
-        >>> df = las.data(include=['DEPT', 'PHIE', 'SW', 'Zone'], exclude=['Zone'])
+        >>> df = las.data(exclude='QC_Flag')  # Exclude single column
+        >>> df = las.data(include=['DEPT', 'PHIE', 'SW', 'Zone'], exclude='Zone')
         """
         if self._data is None:
             self._load_data()
