@@ -240,7 +240,7 @@ class Property:
         # If lazy and not cached, load from source LAS
         if self._lazy and self.source_las is not None:
             # Load data from LAS file
-            las_data = self.source_las.data
+            las_data = self.source_las.data()
 
             # Get depth column
             depth_col = self.source_las.depth_column
@@ -279,7 +279,7 @@ class Property:
         # If lazy and not cached, load from source LAS
         if self._lazy and self.source_las is not None:
             # Load data from LAS file
-            las_data = self.source_las.data
+            las_data = self.source_las.data()
 
             # Get property column using original name
             if self.original_name not in las_data.columns:

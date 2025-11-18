@@ -317,7 +317,7 @@ class Well:
             print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
 
         # OPTIMIZATION: Don't load data yet - use lazy loading
-        # Data will be loaded from las.data when property.depth or property.values is first accessed
+        # Data will be loaded from las.data() when property.depth or property.values is first accessed
         depth_col = las.depth_column
 
         if depth_col is None:
@@ -1450,7 +1450,7 @@ class Well:
 
         >>> # Create LasFile, modify, then export
         >>> las = well.to_las()
-        >>> # ... modify las.data if needed ...
+        >>> # ... modify via las.set_data(df) if needed ...
         >>> las.export('output.las')
         """
         if not self._sources:
@@ -1767,7 +1767,7 @@ class Well:
                     las_data[prop.original_name] = prop.values
 
                 # Update the LAS data
-                original_las.data = pd.DataFrame(las_data)
+                original_las.set_data(pd.DataFrame(las_data))
 
                 # Sync discrete labels from Property objects to LAS parameter_info
                 # This ensures user-modified labels are persisted to the LAS file

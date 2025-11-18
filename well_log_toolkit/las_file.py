@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .exceptions import LasFileError, UnsupportedVersionError
-from .utils import parse_las_line
+from .utils import parse_las_line, filter_names
 
 
 class LasFile:
@@ -61,7 +61,7 @@ class LasFile:
     >>> print(las.curves.keys())
     dict_keys(['DEPT', 'PHIE_2025', 'PERM_Lam_2025', ...])
     >>> las.update_curve('PHIE_2025', type='continuous', alias='PHIE')
-    >>> df = las.data  # Lazy load
+    >>> df = las.data()  # Lazy load
 
     >>> # Check for discrete properties
     >>> print(las.discrete_properties)
@@ -262,23 +262,49 @@ class LasFile:
                     continue
 
         return labels if labels else None
-    
-    @property
-    def data(self) -> pd.DataFrame:
+
+    def data(
+        self,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None
+    ) -> pd.DataFrame:
         """
-        Lazy-load and return data.
+        Lazy-load and return data with optional column filtering.
+
+        Parameters
+        ----------
+        include : list[str], optional
+            List of column names to include. If None, includes all columns.
+        exclude : list[str], optional
+            List of column names to exclude. If both include and exclude are specified,
+            exclude overrides (removes from include list).
 
         Returns
         -------
         pd.DataFrame
             Well log data with curves as columns
+
+        Examples
+        --------
+        >>> df = las.data()
+        >>> df = las.data(include=['DEPT', 'PHIE', 'SW'])
+        >>> df = las.data(exclude=['QC_Flag'])
+        >>> df = las.data(include=['DEPT', 'PHIE', 'SW', 'Zone'], exclude=['Zone'])
         """
         if self._data is None:
             self._load_data()
+
+        # Apply filtering if requested
+        if include is not None or exclude is not None:
+            all_columns = self._data.columns.tolist()
+            columns_filter = filter_names(all_columns, include, exclude)
+
+            if columns_filter is not None:
+                return self._data[columns_filter]
+
         return self._data
 
-    @data.setter
-    def data(self, df: pd.DataFrame) -> None:
+    def set_data(self, df: pd.DataFrame) -> None:
         """
         Set data DataFrame.
 
@@ -744,7 +770,7 @@ class LasFile:
         --------
         >>> # Load, modify, and re-export a LAS file
         >>> las = LasFile('input.las')
-        >>> # ... modify las.data if needed ...
+        >>> # ... modify via las.set_data(df) if needed ...
         >>> las.export('output.las')
 
         >>> # Create LasFile from Well and export
@@ -752,7 +778,7 @@ class LasFile:
         >>> las.export('output.las')
         """
         if self._data is None:
-            raise LasFileError("No data loaded. Call .data property first to load data.")
+            raise LasFileError("No data loaded. Call .data() method first to load data.")
 
         # Collect curve units and discrete labels
         unit_mappings = {}
