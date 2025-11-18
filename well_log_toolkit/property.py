@@ -991,6 +991,8 @@ class Property:
 
     def data(
         self,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
         clip_to_property: Optional[str] = None
@@ -1000,6 +1002,12 @@ class Property:
 
         Parameters
         ----------
+        include : list[str], optional
+            List of secondary property names to include. If None, includes all.
+            Main property is always included.
+        exclude : list[str], optional
+            List of secondary property names to exclude. If both include and
+            exclude are specified, exclude overrides (removes from include list).
         discrete_labels : bool, default True
             If True, apply label mappings to discrete properties
         clip_edges : bool, default True
@@ -1020,14 +1028,43 @@ class Property:
         >>> filtered = well.phie.filter('Zone').filter('NTG_Flag')
         >>> df = filtered.data()
         >>> print(df.head())
+
+        >>> # Include only specific secondary properties
+        >>> df = filtered.data(include=['Zone'])
+
+        >>> # Exclude specific secondary properties
+        >>> df = filtered.data(exclude=['NTG_Flag'])
+
+        >>> # Clip to property range
         >>> df = filtered.data(clip_to_property='Zone')
         """
+        # Main property is always included
         data = {
             'DEPT': self.depth,
             self.name: self._apply_labels(self.values) if discrete_labels and self.labels else self.values
         }
 
+        # Determine which secondary properties to include
+        # If both include and exclude are specified, exclude overrides
+        if include is not None:
+            # Start with include list, then remove excluded
+            if exclude is not None:
+                secondary_filter = [name for name in include if name not in exclude]
+            else:
+                secondary_filter = include
+        elif exclude is not None:
+            # No include list, just exclude from all secondary properties
+            secondary_filter = [sp.name for sp in self.secondary_properties if sp.name not in exclude]
+        else:
+            # Include all secondary properties
+            secondary_filter = None
+
+        # Add secondary properties
         for sec_prop in self.secondary_properties:
+            # Skip if not in filter
+            if secondary_filter is not None and sec_prop.name not in secondary_filter:
+                continue
+
             if discrete_labels and sec_prop.labels:
                 data[sec_prop.name] = sec_prop._apply_labels(sec_prop.values)
             else:
@@ -1056,16 +1093,25 @@ class Property:
 
         return df
 
-    def head(self, n: int = 5) -> pd.DataFrame:
+    def head(
+        self,
+        n: int = 5,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None
+    ) -> pd.DataFrame:
         """
         Return first n rows of property data.
 
-        Convenience method equivalent to `property.data().head(n)`.
+        Convenience method equivalent to `property.data(**kwargs).head(n)`.
 
         Parameters
         ----------
         n : int, default 5
             Number of rows to return
+        include : list[str], optional
+            List of secondary property names to include
+        exclude : list[str], optional
+            List of secondary property names to exclude
 
         Returns
         -------
@@ -1076,8 +1122,9 @@ class Property:
         --------
         >>> well.PHIE.head()
         >>> well.PHIE.filter('Zone').head(10)
+        >>> well.PHIE.filter('Zone').filter('NTG').head(include=['Zone'])
         """
-        return self.data().head(n)
+        return self.data(include=include, exclude=exclude).head(n)
 
     def export_to_las(
         self,

@@ -1199,10 +1199,9 @@ class Well:
             (typically the first property from the first LAS file loaded).
         include : list[str], optional
             List of property names to include. If None, includes all properties.
-            Cannot be used with exclude.
         exclude : list[str], optional
-            List of property names to exclude. If None, no properties are excluded.
-            Cannot be used with include. Useful when you want all properties except a few.
+            List of property names to exclude. If both include and exclude are
+            specified, exclude overrides (removes properties from include list).
         auto_resample : bool, default True
             If True, automatically merge all properties to the reference
             property's depth grid (uses first property if not specified).
@@ -1230,10 +1229,8 @@ class Well:
         ------
         WellError
             If properties have different depth grids and auto_resample is False
-        ValueError
-            If both include and exclude are specified
         PropertyNotFoundError
-            If reference_property is not found
+            If reference_property or included properties are not found
 
         Examples
         --------
@@ -1248,6 +1245,9 @@ class Well:
 
         >>> # Exclude specific properties
         >>> df = well.data(exclude=['QC_Flag', 'Temp_Data'])
+
+        >>> # Include with exclusions (exclude overrides)
+        >>> df = well.data(include=['PHIE', 'SW', 'PERM', 'Zone'], exclude=['Zone'])
 
         >>> # Use concat merge method instead of resample
         >>> df = well.data(merge_method='concat')
@@ -1274,17 +1274,9 @@ class Well:
         if not all_properties:
             return pd.DataFrame()
 
-        # Validate include/exclude
-        if include is not None and exclude is not None:
-            raise ValueError(
-                "Cannot specify both 'include' and 'exclude'. "
-                "Use either include to specify properties to include, "
-                "or exclude to specify properties to skip."
-            )
-
         # Determine which properties to include/exclude
+        # If both include and exclude are specified, exclude overrides (removes from include list)
         if include is not None:
-            properties_filter = include
             # Validate all requested properties exist
             missing = set(include) - set(all_properties.keys())
             if missing:
@@ -1293,7 +1285,13 @@ class Well:
                     f"Properties not found: {', '.join(missing)}. "
                     f"Available: {available}"
                 )
+            # Start with include list, then remove excluded
+            if exclude is not None:
+                properties_filter = [name for name in include if name not in exclude]
+            else:
+                properties_filter = include
         elif exclude is not None:
+            # No include list, just exclude from all properties
             properties_filter = [name for name in all_properties.keys() if name not in exclude]
         else:
             properties_filter = None  # Include all
@@ -1376,16 +1374,25 @@ class Well:
 
         return df
 
-    def head(self, n: int = 5) -> pd.DataFrame:
+    def head(
+        self,
+        n: int = 5,
+        include: Optional[list[str]] = None,
+        exclude: Optional[list[str]] = None
+    ) -> pd.DataFrame:
         """
         Return first n rows of well data.
 
-        Convenience method equivalent to `well.data().head(n)`.
+        Convenience method equivalent to `well.data(**kwargs).head(n)`.
 
         Parameters
         ----------
         n : int, default 5
             Number of rows to return
+        include : list[str], optional
+            List of property names to include
+        exclude : list[str], optional
+            List of property names to exclude
 
         Returns
         -------
@@ -1396,8 +1403,10 @@ class Well:
         --------
         >>> well.head()
         >>> well.head(10)
+        >>> well.head(include=['PHIE', 'SW'])
+        >>> well.head(exclude=['QC_Flag'])
         """
-        return self.data().head(n)
+        return self.data(include=include, exclude=exclude).head(n)
 
     def to_las(
         self,
