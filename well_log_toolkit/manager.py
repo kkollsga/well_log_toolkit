@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Union
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from .exceptions import LasFileError, PropertyNotFoundError
@@ -12,6 +13,36 @@ from .las_file import LasFile
 from .well import Well
 from .property import Property
 from .utils import sanitize_well_name, sanitize_property_name
+
+
+def _sanitize_for_json(obj):
+    """
+    Recursively sanitize data structures for JSON serialization.
+
+    Converts NaN, inf, and -inf values to None to ensure JSON compliance.
+    This prevents jupyter-client warnings about non-JSON-compliant floats.
+
+    Parameters
+    ----------
+    obj : any
+        Object to sanitize (dict, list, float, etc.)
+
+    Returns
+    -------
+    any
+        Sanitized object with NaN/inf values replaced by None
+    """
+    if isinstance(obj, dict):
+        return {key: _sanitize_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, float):
+        # Check for NaN, inf, -inf using numpy
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return obj
+    else:
+        return obj
 
 
 class _ManagerPropertyProxy:
@@ -238,6 +269,7 @@ class _ManagerPropertyProxy:
             Nested dictionary with well names as keys and minimum values as values.
             If a property exists in multiple sources for a well, returns nested dict
             with source names as keys.
+            NaN/inf values are converted to None for JSON compliance.
 
         Examples
         --------
@@ -254,7 +286,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def max(self, nested: bool = False) -> dict:
         """
@@ -272,6 +304,7 @@ class _ManagerPropertyProxy:
             Nested dictionary with well names as keys and maximum values as values.
             If a property exists in multiple sources for a well, returns nested dict
             with source names as keys.
+            NaN/inf values are converted to None for JSON compliance.
 
         Examples
         --------
@@ -288,7 +321,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def mean(self, weighted: bool = True, nested: bool = False) -> dict:
         """
@@ -328,7 +361,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def std(self, weighted: bool = True, nested: bool = False) -> dict:
         """
@@ -368,7 +401,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def percentile(self, p: float, weighted: bool = True, nested: bool = False) -> dict:
         """
@@ -410,7 +443,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def median(self, weighted: bool = True, nested: bool = False) -> dict:
         """
@@ -450,7 +483,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def mode(self, weighted: bool = True, bins: int = 50, nested: bool = False) -> dict:
         """
@@ -496,7 +529,7 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return result
+        return _sanitize_for_json(result)
 
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> '_ManagerPropertyProxy':
         """
@@ -639,7 +672,7 @@ class _ManagerPropertyProxy:
             if well_result is not None:
                 result[well_name] = well_result
 
-        return result
+        return _sanitize_for_json(result)
 
     def _compute_sums_avg_for_well(
         self,
