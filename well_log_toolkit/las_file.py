@@ -887,14 +887,26 @@ class LasFile:
         # Convert entire DataFrame to string array at once
         values = df_export.values  # Get numpy array (no copy if possible)
 
+        # Get list of discrete property columns for integer formatting
+        discrete_cols = set()
+        if discrete_labels:
+            discrete_cols = set(discrete_labels.keys())
+
         # Format all values at once using numpy vectorization
         # This is 10-100x faster than iterrows()
         formatted = np.empty(values.shape, dtype='U12')  # Pre-allocate string array
         for col_idx in range(values.shape[1]):
+            col_name = df_export.columns[col_idx]
             col_data = values[:, col_idx]
+
             # Format column values (all same type within column)
             if np.issubdtype(col_data.dtype, np.number):
-                formatted[:, col_idx] = np.char.mod('%12.4f', col_data)
+                # Discrete properties: format as integers (no decimals)
+                if col_name in discrete_cols:
+                    formatted[:, col_idx] = np.char.mod('%12.0f', col_data)
+                # Continuous/sampled properties: format with decimals
+                else:
+                    formatted[:, col_idx] = np.char.mod('%12.4f', col_data)
             else:
                 formatted[:, col_idx] = np.char.mod('%12s', col_data.astype(str))
 

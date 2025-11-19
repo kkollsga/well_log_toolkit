@@ -138,6 +138,16 @@ class Property(PropertyOperationsMixin):
                     self._values_cache
                 )
 
+                # For discrete properties, round to nearest integer to handle
+                # sampling artifacts at zone boundaries (e.g., 0.28 -> 0, 0.67 -> 1)
+                # This conversion happens once at initialization for efficiency
+                if prop_type == 'discrete':
+                    self._values_cache = np.where(
+                        np.isnan(self._values_cache),
+                        np.nan,  # Keep NaN as NaN
+                        np.round(self._values_cache)  # Round valid values to nearest integer
+                    )
+
 
     def __str__(self) -> str:
         """
@@ -288,6 +298,9 @@ class Property(PropertyOperationsMixin):
         """
         Set the property type and mark source as modified.
 
+        When changing to 'discrete', values are automatically rounded to nearest integer
+        to handle sampling artifacts at zone boundaries (e.g., 0.28 -> 0, 0.67 -> 1).
+
         Parameters
         ----------
         value : str
@@ -295,8 +308,22 @@ class Property(PropertyOperationsMixin):
         """
         if value not in ('continuous', 'discrete', 'sampled'):
             raise ValueError(f"type must be 'continuous', 'discrete', or 'sampled', got '{value}'")
-        if value != self._type:
+
+        old_type = self._type
+        if value != old_type:
             self._type = value
+
+            # If changing TO discrete, round values to integers
+            if value == 'discrete' and self._values_cache is not None:
+                self._values_cache = np.where(
+                    np.isnan(self._values_cache),
+                    np.nan,  # Keep NaN as NaN
+                    np.round(self._values_cache)  # Round valid values to nearest integer
+                )
+
+            # Note: No conversion needed when changing FROM discrete to continuous/sampled
+            # Values are already floats (just rounded), which is valid for continuous
+
             self._mark_source_modified()
 
     @property
@@ -410,6 +437,16 @@ class Property(PropertyOperationsMixin):
                 np.nan,
                 values
             )
+
+            # For discrete properties, round to nearest integer to handle
+            # sampling artifacts at zone boundaries (e.g., 0.28 -> 0, 0.67 -> 1)
+            # This conversion happens once at load time for efficiency
+            if self._type == 'discrete':
+                values = np.where(
+                    np.isnan(values),
+                    np.nan,  # Keep NaN as NaN
+                    np.round(values)  # Round valid values to nearest integer
+                )
 
             self._values_cache = values
             return self._values_cache
@@ -1327,21 +1364,28 @@ class Property(PropertyOperationsMixin):
         for val in unique_vals:
             sub_mask = mask & (current_filter.values == val)
 
+            # Discrete properties are already rounded to integers at load time,
+            # so we can directly use integer conversion for label lookup
+            if current_filter.type == 'discrete':
+                int_val = int(val)  # Already rounded at load time
+            else:
+                int_val = int(val) if val == int(val) else None
+
             # Create readable key with label if available
             if current_filter.labels is not None:
-                # Try exact match first (handles both int and float)
-                if val in current_filter.labels:
+                # Try integer lookup first (for discrete properties)
+                if int_val is not None and int_val in current_filter.labels:
+                    key = current_filter.labels[int_val]
+                # Try float lookup (for backward compatibility with float-keyed labels)
+                elif val in current_filter.labels:
                     key = current_filter.labels[val]
-                # Try integer version for backward compatibility
-                elif val == int(val) and int(val) in current_filter.labels:
-                    key = current_filter.labels[int(val)]
                 # No label found, format as string
-                elif val == int(val):
-                    key = f"{current_filter.name}_{int(val)}"
+                elif int_val is not None:
+                    key = f"{current_filter.name}_{int_val}"
                 else:
                     key = f"{current_filter.name}_{val:.2f}"
-            elif val == int(val):  # Integer value without label
-                key = f"{current_filter.name}_{int(val)}"
+            elif int_val is not None:  # Integer value without label
+                key = f"{current_filter.name}_{int_val}"
             else:  # Float value without labels dict
                 key = f"{current_filter.name}_{val:.2f}"
 
