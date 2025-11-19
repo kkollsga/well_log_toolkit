@@ -1328,12 +1328,21 @@ class Property(PropertyOperationsMixin):
             sub_mask = mask & (current_filter.values == val)
 
             # Create readable key with label if available
-            if current_filter.labels is not None and val == int(val) and int(val) in current_filter.labels:
-                # Use label from mapping
-                key = current_filter.labels[int(val)]
+            if current_filter.labels is not None:
+                # Try exact match first (handles both int and float)
+                if val in current_filter.labels:
+                    key = current_filter.labels[val]
+                # Try integer version for backward compatibility
+                elif val == int(val) and int(val) in current_filter.labels:
+                    key = current_filter.labels[int(val)]
+                # No label found, format as string
+                elif val == int(val):
+                    key = f"{current_filter.name}_{int(val)}"
+                else:
+                    key = f"{current_filter.name}_{val:.2f}"
             elif val == int(val):  # Integer value without label
                 key = f"{current_filter.name}_{int(val)}"
-            else:  # Float value
+            else:  # Float value without labels dict
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_group(
