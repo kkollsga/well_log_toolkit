@@ -143,8 +143,8 @@ class Property(PropertyOperationsMixin):
         """
         Return user-friendly string representation (numpy-style clipped array).
 
-        Arrays are clipped at 8 elements, showing first 3 and last 3 with '...' separator.
-        This mimics numpy's default array printing behavior.
+        Arrays are clipped at 12 elements, showing first 6 and last 6 with '...' separator.
+        NaN values at both ends are removed before displaying (like .data() method).
 
         If filters are active (secondary properties), they are shown below the main values
         with their labels for discrete properties.
@@ -156,8 +156,28 @@ class Property(PropertyOperationsMixin):
         if len(depth) == 0:
             return f"{self.name}: (empty)"
 
-        # Determine if we should clip (numpy-like threshold)
-        clip_threshold = 8
+        # Clip NaN values from both ends (like .data() does)
+        valid_mask = ~np.isnan(values)
+        if not np.any(valid_mask):
+            # All NaN
+            return f"[{self.name}] (all NaN values)"
+
+        # Find first and last valid indices
+        valid_indices = np.where(valid_mask)[0]
+        first_valid = valid_indices[0]
+        last_valid = valid_indices[-1]
+
+        # Clip to valid range
+        depth = depth[first_valid:last_valid + 1]
+        values = values[first_valid:last_valid + 1]
+
+        # Also clip secondary properties to same range
+        clipped_secondaries = []
+        for sec_prop in self.secondary_properties:
+            clipped_secondaries.append(sec_prop.values[first_valid:last_valid + 1])
+
+        # Determine if we should clip (show 6 at each end if > 12 total)
+        clip_threshold = 12
         should_clip = len(depth) > clip_threshold
 
         # Format unit string
@@ -171,31 +191,31 @@ class Property(PropertyOperationsMixin):
 
             result = f"[{self.name}]\ndepth: [{depth_arr}]\nvalues{unit_str}: [{values_arr}]"
         else:
-            # Clip array (show first 3 ... last 3)
-            depth_first = " ".join(f"{d:.2f}" for d in depth[:3])
-            depth_last = " ".join(f"{d:.2f}" for d in depth[-3:])
+            # Clip array (show first 6 ... last 6)
+            depth_first = " ".join(f"{d:.2f}" for d in depth[:6])
+            depth_last = " ".join(f"{d:.2f}" for d in depth[-6:])
             depth_arr = f"{depth_first} ... {depth_last}"
 
-            values_first = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[:3])
-            values_last = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[-3:])
+            values_first = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[:6])
+            values_last = " ".join(f"{v:.3f}" if not np.isnan(v) else "   nan" for v in values[-6:])
             values_arr = f"{values_first} ... {values_last}"
 
             result = f"[{self.name}] ({len(depth)} samples)\ndepth: [{depth_arr}]\nvalues{unit_str}: [{values_arr}]"
 
         # Add filter information if secondary properties exist
-        if self.secondary_properties:
+        if clipped_secondaries:
             result += "\n\nFilters:"
-            for sec_prop in self.secondary_properties:
-                # Format secondary property values
-                sec_values = sec_prop.values
+            for i, sec_prop in enumerate(self.secondary_properties):
+                # Use clipped values
+                sec_values = clipped_secondaries[i]
 
                 if not should_clip:
                     # Show all values
                     sec_arr = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values)
                 else:
-                    # Clip array
-                    sec_first = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[:3])
-                    sec_last = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[-3:])
+                    # Clip array (show first 6 ... last 6)
+                    sec_first = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[:6])
+                    sec_last = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[-6:])
                     sec_arr = f"{sec_first} ... {sec_last}"
 
                 # Add unit string if present
