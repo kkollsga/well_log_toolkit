@@ -756,6 +756,62 @@ class Property(PropertyOperationsMixin):
             return stat_mode(self.values, method='arithmetic',
                            bins=bins, is_discrete=(self.type == 'discrete'))
 
+    def get_value(self, target_depth: float) -> dict:
+        """
+        Get the value at the closest depth point.
+
+        Finds the nearest sample point to the target depth and returns
+        both the actual depth and the corresponding value.
+
+        Parameters
+        ----------
+        target_depth : float
+            Target depth to query
+
+        Returns
+        -------
+        dict
+            Dictionary with keys:
+            - 'depth': Actual depth of the nearest sample
+            - 'value': Property value at that depth
+            - 'distance': Absolute distance from target to actual depth
+
+        Examples
+        --------
+        >>> # Get porosity at approximately 2850m
+        >>> result = well.PHIE.get_value(2850.0)
+        >>> print(result)
+        {'depth': 2850.5, 'value': 0.18, 'distance': 0.5}
+
+        >>> # Access the values
+        >>> actual_depth = result['depth']
+        >>> phie_value = result['value']
+
+        >>> # For discrete properties with labels
+        >>> zone = well.Zone.get_value(2850.0)
+        >>> print(zone)
+        {'depth': 2850.0, 'value': 0.0, 'distance': 0.0}
+        >>> # To get the label, use the labels dict
+        >>> if well.Zone.labels:
+        ...     label = well.Zone.labels.get(int(zone['value']))
+        """
+        if len(self.depth) == 0:
+            return {
+                'depth': np.nan,
+                'value': np.nan,
+                'distance': np.nan
+            }
+
+        # Find index of closest depth
+        distances = np.abs(self.depth - target_depth)
+        closest_idx = np.argmin(distances)
+
+        return {
+            'depth': float(self.depth[closest_idx]),
+            'value': float(self.values[closest_idx]),
+            'distance': float(distances[closest_idx])
+        }
+
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
