@@ -809,7 +809,7 @@ class Property(PropertyOperationsMixin):
         return {
             'depth': float(self.depth[closest_idx]),
             'value': float(self.values[closest_idx]),
-            'distance': float(distances[closest_idx])
+            'distance': round(float(distances[closest_idx]), 8)  # 8 decimals to avoid float drift
         }
 
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
