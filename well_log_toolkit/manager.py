@@ -98,6 +98,56 @@ class _ManagerPropertyProxy:
         """manager.PHIE <= value"""
         return self._create_proxy_with_operation(lambda p: p <= other)
 
+    @property
+    def type(self):
+        """Get type from first well with this property."""
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                return prop.type
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        return None
+
+    @type.setter
+    def type(self, value: str):
+        """Set type for this property in all wells."""
+        count = 0
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                prop.type = value
+                count += 1
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        if count > 0:
+            print(f"✓ Set type='{value}' for property '{self._property_name}' in {count} well(s)")
+
+    @property
+    def labels(self):
+        """Get labels from first well with this property."""
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                return prop.labels
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        return None
+
+    @labels.setter
+    def labels(self, value: dict):
+        """Set labels for this property in all wells."""
+        count = 0
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                prop.labels = value
+                count += 1
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        if count > 0:
+            print(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
+
     def __str__(self) -> str:
         """
         Return string representation showing property across all wells.
