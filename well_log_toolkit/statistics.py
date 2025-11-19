@@ -348,6 +348,113 @@ def percentile(
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
+def mode(
+    values: np.ndarray,
+    weights: Optional[np.ndarray] = None,
+    method: Optional[str] = None,
+    bins: int = 50,
+    is_discrete: bool = False
+) -> Union[float, dict]:
+    """
+    Compute mode (most frequent value) with optional method selection.
+
+    For continuous data, values are binned before finding the mode.
+    For discrete data, bins parameter is ignored.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Property values (may contain NaN)
+    weights : np.ndarray, optional
+        Weights (depth intervals) for weighted calculation
+    method : str, optional
+        'weighted' for depth-weighted mode, 'arithmetic' for simple mode.
+        If None, returns dict with both methods.
+    bins : int, default 50
+        Number of bins for continuous data (ignored if is_discrete=True)
+    is_discrete : bool, default False
+        If True, treat as discrete data (no binning)
+
+    Returns
+    -------
+    float or dict
+        If method specified: single float value (mode)
+        If method is None: {'weighted': float, 'arithmetic': float}
+
+    Examples
+    --------
+    >>> values = np.array([0.1, 0.2, 0.2, 0.3, 0.2])
+    >>> mode(values, method='arithmetic')
+    0.2
+    >>> discrete_values = np.array([1, 1, 2, 1, 3])
+    >>> mode(discrete_values, method='arithmetic', is_discrete=True)
+    1.0
+    """
+    # Arithmetic mode computation
+    def _arithmetic():
+        valid = values[~np.isnan(values)]
+        if len(valid) == 0:
+            return np.nan
+
+        if is_discrete:
+            # For discrete: find most common value
+            unique_vals, counts = np.unique(valid, return_counts=True)
+            mode_idx = np.argmax(counts)
+            return float(unique_vals[mode_idx])
+        else:
+            # For continuous: bin the data first
+            hist, bin_edges = np.histogram(valid, bins=bins)
+            mode_bin_idx = np.argmax(hist)
+            # Return midpoint of the modal bin
+            mode_value = (bin_edges[mode_bin_idx] + bin_edges[mode_bin_idx + 1]) / 2.0
+            return float(mode_value)
+
+    # Weighted mode computation
+    def _weighted():
+        if weights is None:
+            raise ValueError("weights required for weighted method")
+        valid_mask = ~np.isnan(values) & ~np.isnan(weights)
+        valid_values = values[valid_mask]
+        valid_weights = weights[valid_mask]
+
+        if len(valid_values) == 0:
+            return np.nan
+
+        if is_discrete:
+            # For discrete: sum weights for each unique value
+            unique_vals = np.unique(valid_values)
+            max_weight = 0
+            mode_val = unique_vals[0]
+
+            for val in unique_vals:
+                val_mask = valid_values == val
+                total_weight = np.sum(valid_weights[val_mask])
+                if total_weight > max_weight:
+                    max_weight = total_weight
+                    mode_val = val
+
+            return float(mode_val)
+        else:
+            # For continuous: bin the data and weight each bin
+            hist, bin_edges = np.histogram(valid_values, bins=bins, weights=valid_weights)
+            mode_bin_idx = np.argmax(hist)
+            # Return midpoint of the modal bin
+            mode_value = (bin_edges[mode_bin_idx] + bin_edges[mode_bin_idx + 1]) / 2.0
+            return float(mode_value)
+
+    if method == 'weighted':
+        return _weighted()
+    elif method == 'arithmetic':
+        return _arithmetic()
+    elif method is None:
+        return {
+            'weighted': _weighted(),
+            'arithmetic': _arithmetic()
+        }
+    else:
+        raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
+
+
 def compute_all_statistics(
     values: np.ndarray,
     depth: np.ndarray

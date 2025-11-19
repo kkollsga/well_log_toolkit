@@ -40,7 +40,7 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.46"
+__version__ = "0.1.47"
 
 from .manager import WellDataManager
 from .well import Well
@@ -53,6 +53,7 @@ from .statistics import (
     sum,
     std,
     percentile,
+    mode,
     compute_all_statistics,
 )
 from .exceptions import (
@@ -82,6 +83,7 @@ __all__ = [
     "sum",
     "std",
     "percentile",
+    "mode",
     "compute_all_statistics",
     # Exceptions
     "WellLogError",

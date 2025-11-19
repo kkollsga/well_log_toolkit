@@ -693,6 +693,69 @@ class Property(PropertyOperationsMixin):
         else:
             return stat_percentile(self.values, p, method='arithmetic')
 
+    def median(self, weighted: bool = True) -> float:
+        """
+        Compute median value (50th percentile).
+
+        Parameters
+        ----------
+        weighted : bool, default True
+            If True, compute depth-weighted median (default for well logs).
+            If False, compute simple arithmetic median (for sampled data).
+
+        Returns
+        -------
+        float
+            Median value, or NaN if no valid data
+
+        Examples
+        --------
+        >>> prop.median()  # Depth-weighted median by default
+        0.18
+        >>> prop.median(weighted=False)  # Arithmetic median
+        0.175
+        """
+        return self.percentile(50, weighted=weighted)
+
+    def mode(self, weighted: bool = True, bins: int = 50) -> float:
+        """
+        Compute mode (most frequent value).
+
+        For continuous data, values are binned before finding the mode.
+        For discrete data, bins parameter is ignored.
+
+        Parameters
+        ----------
+        weighted : bool, default True
+            If True, compute depth-weighted mode (default for well logs).
+            If False, compute simple arithmetic mode (for sampled data).
+        bins : int, default 50
+            Number of bins for continuous data (ignored for discrete properties)
+
+        Returns
+        -------
+        float
+            Mode value, or NaN if no valid data
+
+        Examples
+        --------
+        >>> prop.mode()  # Depth-weighted mode
+        0.18
+        >>> prop.mode(weighted=False)  # Arithmetic mode
+        0.17
+        >>> discrete_prop.mode()  # For discrete: most common value
+        1.0
+        """
+        from .statistics import mode as stat_mode
+
+        if weighted:
+            intervals = compute_intervals(self.depth)
+            return stat_mode(self.values, intervals, method='weighted',
+                           bins=bins, is_discrete=(self.type == 'discrete'))
+        else:
+            return stat_mode(self.values, method='arithmetic',
+                           bins=bins, is_discrete=(self.type == 'discrete'))
+
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
@@ -1241,7 +1304,7 @@ class Property(PropertyOperationsMixin):
         -------
         dict
             Statistics dictionary with organized structure:
-            - mean, sum, std: single value or {weighted, arithmetic} dict
+            - mean, median, mode, sum, std_dev: single value or {weighted, arithmetic} dict
             - percentile: {p10, p50, p90} with single or nested values
             - range: {min, max} value range
             - depth_range: {min, max} depth range within the zone
@@ -1278,12 +1341,17 @@ class Property(PropertyOperationsMixin):
             stat_method = 'arithmetic'
 
         # Compute stats using unified functions
+        from .statistics import mode as stat_mode
+
         mean_result = stat_mean(values, intervals, method=stat_method)
         sum_result = stat_sum(values, intervals, method=stat_method)
         std_result = stat_std(values, intervals, method=stat_method)
         p10_result = stat_percentile(values, 10, intervals, method=stat_method)
         p50_result = stat_percentile(values, 50, intervals, method=stat_method)
         p90_result = stat_percentile(values, 90, intervals, method=stat_method)
+        median_result = p50_result  # Median is same as P50
+        mode_result = stat_mode(values, intervals, method=stat_method,
+                               bins=50, is_discrete=(self.type == 'discrete'))
 
         # Build percentile dict
         percentile_dict = {
@@ -1328,6 +1396,8 @@ class Property(PropertyOperationsMixin):
 
         return {
             'mean': mean_result,
+            'median': median_result,
+            'mode': mode_result,
             'sum': sum_result,
             'std_dev': std_result,
             'percentile': percentile_dict,
