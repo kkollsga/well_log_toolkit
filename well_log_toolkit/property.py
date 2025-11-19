@@ -1120,7 +1120,7 @@ class Property(PropertyOperationsMixin):
                 f"Failed to resample data: {e}"
             )
     
-    def sums_avg(self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None) -> dict:
+    def sums_avg(self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6) -> dict:
         """
         Compute hierarchical statistics grouped by all secondary properties.
 
@@ -1132,6 +1132,8 @@ class Property(PropertyOperationsMixin):
         arithmetic : bool, optional
             Include arithmetic (unweighted) statistics.
             Default: False for continuous/discrete, True for sampled
+        precision : int, default 6
+            Number of decimal places for rounding numeric results
 
         Returns
         -------
@@ -1169,6 +1171,10 @@ class Property(PropertyOperationsMixin):
         >>> # Sampled data uses arithmetic by default
         >>> core_phie.type = 'sampled'
         >>> stats = core_phie.sums_avg()  # arithmetic=True, weighted=False
+
+        >>> # Custom precision
+        >>> stats = phie.sums_avg(precision=3)
+        >>> # {'mean': 0.180, 'sum': 45.200, ...}
         """
         # Set defaults based on property type
         # Sampled data: use arithmetic (each sample has equal weight)
@@ -1195,7 +1201,8 @@ class Property(PropertyOperationsMixin):
                 np.ones(len(self.depth), dtype=bool),
                 weighted=weighted,
                 arithmetic=arithmetic,
-                gross_thickness=gross_thickness
+                gross_thickness=gross_thickness,
+                precision=precision
             )
 
         # Build hierarchical grouping
@@ -1204,7 +1211,8 @@ class Property(PropertyOperationsMixin):
             np.ones(len(self.depth), dtype=bool),
             weighted=weighted,
             arithmetic=arithmetic,
-            gross_thickness=gross_thickness
+            gross_thickness=gross_thickness,
+            precision=precision
         )
 
     def _recursive_group(
@@ -1213,7 +1221,8 @@ class Property(PropertyOperationsMixin):
         mask: np.ndarray,
         weighted: bool,
         arithmetic: bool,
-        gross_thickness: float
+        gross_thickness: float,
+        precision: int = 6
     ) -> dict:
         """
         Recursively group by secondary properties.
@@ -1230,6 +1239,8 @@ class Property(PropertyOperationsMixin):
             Include arithmetic statistics
         gross_thickness : float
             Total gross thickness for fraction calculation
+        precision : int, default 6
+            Number of decimal places for rounding
 
         Returns
         -------
@@ -1238,7 +1249,7 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute statistics for this group
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness)
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision)
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -1247,7 +1258,7 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness)
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision)
 
         # Calculate parent thickness BEFORE subdividing
         # This becomes the gross_thickness for all child groups
@@ -1270,7 +1281,7 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_group(
-                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness
+                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness, precision
             )
 
         return result
@@ -1280,7 +1291,8 @@ class Property(PropertyOperationsMixin):
         mask: np.ndarray,
         weighted: bool = True,
         arithmetic: bool = False,
-        gross_thickness: float = 0.0
+        gross_thickness: float = 0.0,
+        precision: int = 6
     ) -> dict:
         """
         Compute statistics for values selected by mask.
@@ -1299,6 +1311,8 @@ class Property(PropertyOperationsMixin):
             Include arithmetic statistics
         gross_thickness : float
             Total gross thickness for fraction calculation
+        precision : int, default 6
+            Number of decimal places for rounding
 
         Returns
         -------
@@ -1394,19 +1408,31 @@ class Property(PropertyOperationsMixin):
                 'max': np.nan,
             }
 
+        # Helper function to round values recursively
+        def _round_value(val):
+            """Round a value, handling dicts, floats, and NaN."""
+            if isinstance(val, dict):
+                return {k: _round_value(v) for k, v in val.items()}
+            elif isinstance(val, float):
+                if np.isnan(val):
+                    return val
+                return round(val, precision)
+            else:
+                return val
+
         return {
-            'mean': mean_result,
-            'median': median_result,
-            'mode': mode_result,
-            'sum': sum_result,
-            'std_dev': std_result,
-            'percentile': percentile_dict,
-            'range': range_dict,
-            'depth_range': depth_range_dict,
+            'mean': _round_value(mean_result),
+            'median': _round_value(median_result),
+            'mode': _round_value(mode_result),
+            'sum': _round_value(sum_result),
+            'std_dev': _round_value(std_result),
+            'percentile': _round_value(percentile_dict),
+            'range': _round_value(range_dict),
+            'depth_range': _round_value(depth_range_dict),
             'samples': int(len(valid)),
-            'thickness': thickness,
-            'gross_thickness': gross_thickness,
-            'thickness_fraction': fraction,
+            'thickness': round(thickness, precision),
+            'gross_thickness': round(gross_thickness, precision),
+            'thickness_fraction': round(fraction, precision),
             'calculation': calc_method,
         }
     
