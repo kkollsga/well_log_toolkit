@@ -564,6 +564,135 @@ class Property(PropertyOperationsMixin):
             original_name=self.original_name
         )
 
+    def min(self) -> float:
+        """
+        Return minimum value (ignoring NaN).
+
+        Returns
+        -------
+        float
+            Minimum value, or NaN if all values are NaN
+
+        Examples
+        --------
+        >>> prop.min()
+        0.05
+        """
+        valid = self.values[~np.isnan(self.values)]
+        if len(valid) == 0:
+            return np.nan
+        return float(np.min(valid))
+
+    def max(self) -> float:
+        """
+        Return maximum value (ignoring NaN).
+
+        Returns
+        -------
+        float
+            Maximum value, or NaN if all values are NaN
+
+        Examples
+        --------
+        >>> prop.max()
+        0.35
+        """
+        valid = self.values[~np.isnan(self.values)]
+        if len(valid) == 0:
+            return np.nan
+        return float(np.max(valid))
+
+    def mean(self, weighted: bool = True) -> float:
+        """
+        Compute mean value.
+
+        Parameters
+        ----------
+        weighted : bool, default True
+            If True, compute depth-weighted mean using interval thicknesses (default for well logs).
+            If False, compute simple arithmetic mean (for sampled data like core points).
+
+        Returns
+        -------
+        float
+            Mean value, or NaN if no valid data
+
+        Examples
+        --------
+        >>> prop.mean()  # Depth-weighted by default
+        0.185
+        >>> prop.mean(weighted=False)  # Arithmetic mean
+        0.182
+        """
+        if weighted:
+            intervals = compute_intervals(self.depth)
+            return stat_mean(self.values, intervals, method='weighted')
+        else:
+            return stat_mean(self.values, method='arithmetic')
+
+    def std(self, weighted: bool = True) -> float:
+        """
+        Compute standard deviation.
+
+        Parameters
+        ----------
+        weighted : bool, default True
+            If True, compute depth-weighted standard deviation (default for well logs).
+            If False, compute simple arithmetic standard deviation (for sampled data).
+
+        Returns
+        -------
+        float
+            Standard deviation, or NaN if insufficient valid data
+
+        Examples
+        --------
+        >>> prop.std()  # Depth-weighted by default
+        0.042
+        >>> prop.std(weighted=False)  # Arithmetic std
+        0.044
+        """
+        if weighted:
+            intervals = compute_intervals(self.depth)
+            return stat_std(self.values, intervals, method='weighted')
+        else:
+            return stat_std(self.values, method='arithmetic')
+
+    def percentile(self, p: float, weighted: bool = True) -> float:
+        """
+        Compute percentile value.
+
+        Parameters
+        ----------
+        p : float
+            Percentile to compute (0-100 scale). For example:
+            - p=10 gives 10th percentile (P10)
+            - p=50 gives median (P50)
+            - p=90 gives 90th percentile (P90)
+        weighted : bool, default True
+            If True, compute depth-weighted percentile (default for well logs).
+            If False, compute simple arithmetic percentile (for sampled data).
+
+        Returns
+        -------
+        float
+            Percentile value, or NaN if no valid data
+
+        Examples
+        --------
+        >>> prop.percentile(50)  # Depth-weighted median by default
+        0.18
+        >>> prop.percentile(90)  # Depth-weighted P90
+        0.24
+        >>> prop.percentile(10, weighted=False)  # Arithmetic P10
+        0.09
+        """
+        if weighted:
+            intervals = compute_intervals(self.depth)
+            return stat_percentile(self.values, p, intervals, method='weighted')
+        else:
+            return stat_percentile(self.values, p, method='arithmetic')
+
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
@@ -1169,13 +1298,33 @@ class Property(PropertyOperationsMixin):
             'max': float(np.max(valid)) if len(valid) > 0 else np.nan,
         }
 
-        # Build depth_range dict (min and max depth within the zone)
-        masked_depths = self.depth[mask]
-        valid_depths = masked_depths[valid_mask_local]
-        depth_range_dict = {
-            'min': float(np.min(valid_depths)) if len(valid_depths) > 0 else np.nan,
-            'max': float(np.max(valid_depths)) if len(valid_depths) > 0 else np.nan,
-        }
+        # Build depth_range dict (zone boundaries)
+        # For discrete properties: zone extends from first occurrence to next zone start
+        # This accounts for forward-fill behavior of discrete properties
+        if np.any(mask):
+            # Find first and last depth in the zone (including NaN values)
+            mask_indices = np.where(mask)[0]
+            first_idx = mask_indices[0]
+            last_idx = mask_indices[-1]
+
+            zone_top = float(self.depth[first_idx])
+
+            # Bottom: if there are depths below last occurrence, extend to next depth
+            # (where the next zone starts). Otherwise, use last occurrence depth.
+            if last_idx < len(self.depth) - 1:
+                zone_bottom = float(self.depth[last_idx + 1])
+            else:
+                zone_bottom = float(self.depth[last_idx])
+
+            depth_range_dict = {
+                'min': zone_top,
+                'max': zone_bottom,
+            }
+        else:
+            depth_range_dict = {
+                'min': np.nan,
+                'max': np.nan,
+            }
 
         return {
             'mean': mean_result,
