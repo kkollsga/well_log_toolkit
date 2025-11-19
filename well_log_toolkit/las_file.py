@@ -263,6 +263,164 @@ class LasFile:
 
         return labels if labels else None
 
+    def check_depth_compatibility(self, other, well=None) -> dict:
+        """
+        Check if depth grids are compatible between two LAS files.
+
+        Checks if all depth values in this LAS file exist in the other LAS file
+        (within tolerance), or if depths are identical.
+
+        Parameters
+        ----------
+        other : LasFile or str
+            Either a LasFile instance to compare with, or a string source name.
+            If string, must provide `well` parameter to look up the source.
+        well : Well, optional
+            Well object to look up source from if `other` is a string.
+            Required when `other` is a string.
+
+        Returns
+        -------
+        dict
+            Dictionary with compatibility information:
+            - 'compatible' (bool): True if grids are compatible
+            - 'reason' (str): Explanation of compatibility/incompatibility
+            - 'existing' (dict): Info about existing depth grid
+            - 'new' (dict): Info about new depth grid
+            - 'requires_resampling' (bool): Whether resampling is needed
+
+        Raises
+        ------
+        ValueError
+            If `other` is a string but `well` is not provided
+        KeyError
+            If source name doesn't exist in well
+
+        Examples
+        --------
+        >>> # Compare two LasFile objects
+        >>> las1 = LasFile("well1.las")
+        >>> las2 = LasFile("well2.las")
+        >>> result = las2.check_depth_compatibility(las1)
+        >>> if result['compatible']:
+        ...     print("Compatible!")
+        >>> else:
+        ...     print(f"Incompatible: {result['reason']}")
+
+        >>> # Compare with a source by name
+        >>> result = new_las.check_depth_compatibility('Petrophysics', well=well)
+        """
+        import numpy as np
+
+        # Resolve other to LasFile if it's a string
+        if isinstance(other, str):
+            if well is None:
+                raise ValueError(
+                    f"When 'other' is a source name ('{other}'), the 'well' parameter is required"
+                )
+
+            # Look up the source in the well
+            if other not in well._sources:
+                available = ', '.join(well._sources.keys())
+                raise KeyError(
+                    f"Source '{other}' not found in well '{well.name}'. "
+                    f"Available sources: {available or 'none'}"
+                )
+
+            other_las = well._sources[other]['las_file']
+            if other_las is None:
+                raise ValueError(
+                    f"Source '{other}' has no LAS file (synthetic source). "
+                    f"Cannot check compatibility with synthetic sources."
+                )
+            other = other_las
+
+        # Get depth arrays
+        self_data = self.data()
+        other_data = other.data()
+
+        self_depth = self_data[self.depth_column].values
+        other_depth = other_data[other.depth_column].values
+
+        # Remove NaN values
+        self_depth = self_depth[~np.isnan(self_depth)]
+        other_depth = other_depth[~np.isnan(other_depth)]
+
+        if len(self_depth) == 0 or len(other_depth) == 0:
+            return {
+                'compatible': False,
+                'reason': 'Empty depth array',
+                'existing': self._depth_info(other_depth),
+                'new': self._depth_info(self_depth),
+                'requires_resampling': True
+            }
+
+        # Check if grids are identical (within tolerance)
+        if len(self_depth) == len(other_depth) and np.allclose(self_depth, other_depth, rtol=1e-9, atol=1e-9):
+            return {
+                'compatible': True,
+                'reason': 'Identical depth grids',
+                'existing': self._depth_info(other_depth),
+                'new': self._depth_info(self_depth),
+                'requires_resampling': False
+            }
+
+        # Check if all depths in new file exist in existing file (subset check)
+        # This allows adding data that's on a subset of existing depths
+        tolerance = 1e-6  # 1 micron tolerance for depth matching
+        all_depths_found = True
+        for depth in self_depth:
+            if not np.any(np.abs(other_depth - depth) < tolerance):
+                all_depths_found = False
+                break
+
+        if all_depths_found:
+            return {
+                'compatible': True,
+                'reason': 'New depths are subset of existing depths',
+                'existing': self._depth_info(other_depth),
+                'new': self._depth_info(self_depth),
+                'requires_resampling': False
+            }
+
+        # Check if grids have same spacing but different start/stop
+        # (can be handled by adding NaN padding)
+        self_spacing = np.median(np.diff(self_depth)) if len(self_depth) > 1 else 0.0
+        other_spacing = np.median(np.diff(other_depth)) if len(other_depth) > 1 else 0.0
+
+        if np.abs(self_spacing - other_spacing) < tolerance:
+            # Same spacing - could potentially pad with NaN
+            return {
+                'compatible': True,
+                'reason': 'Same spacing, different range (can pad with NaN)',
+                'existing': self._depth_info(other_depth),
+                'new': self._depth_info(self_depth),
+                'requires_resampling': False  # Can use NaN padding
+            }
+
+        # Incompatible - different grids requiring resampling
+        return {
+            'compatible': False,
+            'reason': 'Different depth grids requiring resampling',
+            'existing': self._depth_info(other_depth),
+            'new': self._depth_info(self_depth),
+            'requires_resampling': True
+        }
+
+    def _depth_info(self, depth: 'np.ndarray') -> dict:
+        """Helper to extract depth grid information."""
+        import numpy as np
+        if len(depth) == 0:
+            return {'samples': 0, 'start': np.nan, 'stop': np.nan, 'spacing': np.nan}
+
+        spacing = np.median(np.diff(depth)) if len(depth) > 1 else 0.0
+        return {
+            'samples': len(depth),
+            'start': float(depth[0]),
+            'stop': float(depth[-1]),
+            'spacing': float(spacing)
+        }
+
     def data(
         self,
         include: Optional[Union[str, list[str]]] = None,

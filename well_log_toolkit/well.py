@@ -334,7 +334,7 @@ class Well:
         # Mark source as modified
         self._sources[source_name]['modified'] = True
 
-    def load_las(self, las: Union[LasFile, str, Path], sampled: bool = False) -> 'Well':
+    def load_las(self, las: Union[LasFile, str, Path], sampled: bool = False, resample_method: Optional[str] = None, merge: bool = False) -> 'Well':
         """
         Load LAS file into this well, organized by source.
 
@@ -342,7 +342,6 @@ class Well:
         from the filename stem (without extension), sanitized for Python attribute
         access. If the filename starts with the well name, that prefix is removed
         to avoid redundancy (e.g., "36_7_5_B_CorePor.las" becomes "CorePor").
-        If a source with the same name already exists, a numeric suffix is added.
 
         Parameters
         ----------
@@ -352,6 +351,19 @@ class Well:
             If True, mark all properties from this source as 'sampled' type.
             Use this for core plug data or other point measurements where
             boundary insertion during filtering should be disabled.
+        resample_method : str, optional
+            Method to use if depth grids are incompatible. Only used when loading
+            data with different depth grids than existing data:
+            - None (default): Will raise error if grids incompatible
+            - 'linear': Linear interpolation (for continuous properties)
+            - 'nearest': Nearest neighbor (for discrete/sampled)
+            - 'previous': Forward-fill / previous value (for discrete)
+            - 'next': Backward-fill / next value
+        merge : bool, default False
+            If True and a source with the same name already exists, merge the new
+            properties into the existing source instead of overwriting it.
+            When merging with incompatible depth grids, resample_method must be specified.
+            If False (default), existing source is overwritten with warning.
 
         Returns
         -------
@@ -364,6 +376,7 @@ class Well:
             If LAS well name doesn't match this well
         WellError
             If no depth column found in LAS file
+            If merging with incompatible depths and no resample_method specified
 
         Examples
         --------
@@ -373,6 +386,11 @@ class Well:
         >>> well.load_las("formation_tops.las")    # Source name: "formation_tops"
         >>> # Load core plug data as sampled
         >>> well.load_las("36_7-5_B_Core.las", sampled=True)
+        >>> # Load data with incompatible depths
+        >>> well.load_las("interpreted.las", resample_method='linear')
+        >>> # Merge additional properties into existing source
+        >>> well.load_las("CorePor.las")  # Load initial properties
+        >>> well.load_las("CorePor_Extra.las", merge=True)  # Merge new properties into "CorePor"
         >>> # Access by source
         >>> well.CorePor.PHIE
         >>> well.Log.GR
@@ -425,10 +443,44 @@ class Well:
             # Fallback for LasFile objects without filepath
             base_source_name = 'unknown_source'
 
-        # Check if source already exists and notify user of overwrite
+        # Handle source name and merge logic
         source_name = base_source_name
+
+        # Check if source already exists
         if source_name in self._sources:
-            print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
+            if merge:
+                # MERGE MODE: Add new properties to existing source
+                existing_source = self._sources[source_name]
+                existing_las = existing_source['las_file']
+
+                # Check depth compatibility
+                if existing_las:
+                    compatibility = existing_las.check_depth_compatibility(las)
+
+                    if not compatibility['compatible'] and compatibility['requires_resampling']:
+                        # Incompatible depths - need resampling
+                        if resample_method is None:
+                            raise WellError(
+                                f"Cannot merge into source '{source_name}': incompatible depth grids.\n"
+                                f"Reason: {compatibility['reason']}\n"
+                                f"Existing depth: {compatibility['existing']}\n"
+                                f"New depth: {compatibility['new']}\n"
+                                f"To merge, specify a resample_method: 'linear', 'nearest', 'previous', or 'next'"
+                            )
+                        else:
+                            print(f"Merging into source '{source_name}' with resampling (method={resample_method})")
+                    elif compatibility['compatible'] and compatibility['reason'] != 'Identical depth grids':
+                        # Compatible but not identical (different coverage or NaN tails)
+                        print(f"⚠ Merging into source '{source_name}': {compatibility['reason']}")
+                    else:
+                        # Identical depth grids
+                        print(f"Merging into source '{source_name}' (identical depth grids)")
+                else:
+                    # No existing LAS file (synthetic source) - just warn
+                    print(f"Merging into synthetic source '{source_name}'")
+            else:
+                # OVERWRITE MODE: Replace existing source
+                print(f"Overwriting existing source '{source_name}' in well '{self.name}'")
 
         # OPTIMIZATION: Don't load data yet - use lazy loading
         # Data will be loaded from las.data() when property.depth or property.values is first accessed
@@ -489,14 +541,39 @@ class Well:
 
             source_properties[sanitized_prop_name] = prop
 
-        # Store source with its properties
-        # Mark as unmodified if loaded from file, modified if synthetic (no filepath)
-        self._sources[source_name] = {
-            'path': filepath,
-            'las_file': las,
-            'properties': source_properties,
-            'modified': filepath is None  # True if synthetic (no file), False if from disk
-        }
+        # Store or merge source with its properties
+        if merge and source_name in self._sources:
+            # MERGE MODE: Add/update properties in existing source
+            existing_source = self._sources[source_name]
+
+            # Add new properties or overwrite existing ones with same name
+            for prop_name, prop in source_properties.items():
+                if prop_name in existing_source['properties']:
+                    # Property exists - overwrite (smart merge)
+                    print(f"  Overwriting property '{prop_name}' in source '{source_name}'")
+                else:
+                    # New property - add it
+                    print(f"  Adding property '{prop_name}' to source '{source_name}'")
+
+                existing_source['properties'][prop_name] = prop
+
+            # Keep the original LAS file as reference (don't replace with new one)
+            # Update resample_method if specified
+            if resample_method is not None:
+                existing_source['resample_method'] = resample_method
+
+            # Mark as modified since we added/updated properties
+            existing_source['modified'] = True
+        else:
+            # OVERWRITE MODE: Create new source
+            # Mark as unmodified if loaded from file, modified if synthetic (no filepath)
+            self._sources[source_name] = {
+                'path': filepath,
+                'las_file': las,
+                'properties': source_properties,
+                'modified': filepath is None,  # True if synthetic (no file), False if from disk
+                'resample_method': resample_method  # Store for lazy loading
+            }
 
         return self  # Enable chaining
 

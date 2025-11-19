@@ -405,7 +405,8 @@ class WellDataManager:
         df: pd.DataFrame,
         property_name: str = "Well_Tops",
         source_name: str = "Imported_Tops",
-        well_col: str = "Well identifier (Well name)",
+        well_col: Optional[str] = "Well identifier (Well name)",
+        well_name: Optional[str] = None,
         discrete_col: str = "Surface",
         depth_col: str = "MD",
         x_col: Optional[str] = "X",
@@ -416,19 +417,27 @@ class WellDataManager:
         """
         Load formation tops data from a DataFrame into wells.
 
+        Supports three loading patterns:
+        1. Multi-well: well_col specified, groups DataFrame by well column
+        2. Single-well named: well_col=None, well_name specified, all data to that well
+        3. Single-well default: well_col=None, well_name=None, all data to generic "Well"
+
         Automatically creates wells if they don't exist, converts discrete values
         to discrete integers with labels, and adds the data as a source to each well.
 
         Parameters
         ----------
         df : pd.DataFrame
-            DataFrame containing tops data with columns for well name, discrete values, and depth
+            DataFrame containing tops data with columns for well name (optional), discrete values, and depth
         property_name : str, default "Well_Tops"
             Name for the discrete property (will be sanitized)
         source_name : str, default "Imported_Tops"
             Name for this source group (will be sanitized)
-        well_col : str, default "Well identifier (Well name)"
-            Column name containing well names
+        well_col : str, optional, default "Well identifier (Well name)"
+            Column name containing well names. Set to None for single-well loading.
+        well_name : str, optional
+            Well name to use when well_col=None. If both well_col and well_name are None,
+            defaults to generic "Well".
         discrete_col : str, default "Surface"
             Column name containing discrete values (e.g., formation/surface names)
         depth_col : str, default "MD"
@@ -449,34 +458,76 @@ class WellDataManager:
 
         Examples
         --------
-        >>> # Load from Excel
+        >>> # Pattern 1: Multi-well loading (groups by well column)
         >>> import pandas as pd
-        >>> df = pd.read_excel("formation_tops.xlsx")
+        >>> df = pd.DataFrame({
+        ...     'Well identifier (Well name)': ['12/3-4 A', '12/3-4 A', '12/3-4 B'],
+        ...     'Surface': ['Top_Brent', 'Top_Statfjord', 'Top_Brent'],
+        ...     'MD': [2850.0, 3100.0, 2860.0]
+        ... })
         >>> manager = WellDataManager()
-        >>> manager.load_tops(df)
+        >>> manager.load_tops(df)  # Uses default well_col
+        >>>
+        >>> # Pattern 2: Single-well with explicit name (no well column needed)
+        >>> df_single = pd.DataFrame({
+        ...     'Surface': ['Top_Brent', 'Top_Statfjord', 'Top_Cook'],
+        ...     'MD': [2850.0, 3100.0, 3400.0]
+        ... })
+        >>> manager.load_tops(
+        ...     df_single,
+        ...     well_col=None,
+        ...     well_name='12/3-4 A'  # Load all tops to this well
+        ... )
+        >>>
+        >>> # Pattern 3: Single-well with default name "Well" (simplest)
+        >>> manager.load_tops(df_single, well_col=None)
         >>>
         >>> # Access tops
-        >>> well = manager.well_36_7_5_A
+        >>> well = manager.well_12_3_4_A
         >>> print(well.sources)  # ['Imported_Tops']
         >>> well.Imported_Tops.Well_Tops  # Discrete property with formation names
         """
 
-        # Validate required columns exist
-        required_cols = [well_col, discrete_col, depth_col]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            raise ValueError(
-                f"Required columns missing from DataFrame: {', '.join(missing_cols)}. "
-                f"Available columns: {', '.join(df.columns)}"
-            )
+        # Determine loading pattern
+        if well_col is None:
+            # SINGLE-WELL MODE: Load all data to one well
+            # Use well_name if provided, otherwise default to "Well"
+            target_well_name = well_name if well_name is not None else "Well"
 
-        # Build global discrete label mapping (consistent across all wells)
-        unique_values = sorted(df[discrete_col].unique())
-        value_to_code = {value: idx for idx, value in enumerate(unique_values)}
-        code_to_value = {idx: value for value, idx in value_to_code.items()}
+            # Validate required columns (no well column needed)
+            required_cols = [discrete_col, depth_col]
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                raise ValueError(
+                    f"Required columns missing from DataFrame: {', '.join(missing_cols)}. "
+                    f"Available columns: {', '.join(df.columns)}"
+                )
 
-        # Group by well
-        grouped = df.groupby(well_col)
+            # Build global discrete label mapping (consistent across all wells)
+            unique_values = sorted(df[discrete_col].unique())
+            value_to_code = {value: idx for idx, value in enumerate(unique_values)}
+            code_to_value = {idx: value for value, idx in value_to_code.items()}
+
+            # Create a fake grouped structure for single well
+            grouped = [(target_well_name, df)]
+        else:
+            # MULTI-WELL MODE: Group by well column (existing behavior)
+            # Validate required columns exist
+            required_cols = [well_col, discrete_col, depth_col]
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                raise ValueError(
+                    f"Required columns missing from DataFrame: {', '.join(missing_cols)}. "
+                    f"Available columns: {', '.join(df.columns)}"
+                )
+
+            # Build global discrete label mapping (consistent across all wells)
+            unique_values = sorted(df[discrete_col].unique())
+            value_to_code = {value: idx for idx, value in enumerate(unique_values)}
+            code_to_value = {idx: value for value, idx in value_to_code.items()}
+
+            # Group by well
+            grouped = df.groupby(well_col)
 
         for well_name, well_df in grouped:
             # Get or create well
@@ -550,6 +601,265 @@ class WellDataManager:
 
             # Load it
             well.load_las(las)
+
+        return self
+
+    def load_properties(
+        self,
+        df: pd.DataFrame,
+        source_name: str = "external_df",
+        well_col: Optional[str] = "Well",
+        well_name: Optional[str] = None,
+        depth_col: str = "DEPT",
+        unit_mappings: Optional[dict[str, str]] = None,
+        type_mappings: Optional[dict[str, str]] = None,
+        label_mappings: Optional[dict[str, dict[int, str]]] = None,
+        resample_method: Optional[str] = None
+    ) -> 'WellDataManager':
+        """
+        Load properties from a DataFrame into wells.
+
+        Supports three loading patterns:
+        1. Multi-well: well_col specified, groups DataFrame by well column
+        2. Single-well named: well_col=None, well_name specified, all data to that well
+        3. Single-well default: well_col=None, well_name=None, all data to generic "Well"
+
+        IMPORTANT: Depth grids must be compatible. If incompatible, you must specify
+        a resampling method explicitly. This prevents accidental data loss.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame containing properties with columns for well name (optional), depth, and properties
+        source_name : str, default "external_df"
+            Name for this source group (will be sanitized)
+        well_col : str, optional, default "Well"
+            Column name containing well names. Set to None for single-well loading.
+        well_name : str, optional
+            Well name to use when well_col=None. If both well_col and well_name are None,
+            defaults to generic "Well".
+        depth_col : str, default "DEPT"
+            Column name containing measured depth values
+        unit_mappings : dict[str, str], optional
+            Mapping of property names to units (e.g., {'PHIE': 'v/v', 'SW': 'v/v'})
+        type_mappings : dict[str, str], optional
+            Mapping of property names to types: 'continuous', 'discrete', or 'sampled'
+            (e.g., {'Zone': 'discrete', 'PHIE': 'continuous'})
+        label_mappings : dict[str, dict[int, str]], optional
+            Label mappings for discrete properties
+            (e.g., {'Zone': {0: 'Top_Brent', 1: 'Top_Statfjord'}})
+        resample_method : str, optional
+            Method to use if depth grids are incompatible:
+            - None (default): Raises error if depths incompatible
+            - 'linear': Linear interpolation (for continuous properties)
+            - 'nearest': Nearest neighbor (for discrete/sampled)
+            - 'previous': Forward-fill / previous value (for discrete)
+            - 'next': Backward-fill / next value
+            Warning: Resampling sampled data (core plugs) may cause data loss.
+
+        Returns
+        -------
+        WellDataManager
+            Self for method chaining
+
+        Raises
+        ------
+        ValueError
+            If required columns are missing or if depths are incompatible and resample_method=None
+
+        Examples
+        --------
+        >>> # Pattern 1: Multi-well loading (groups by well column)
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({
+        ...     'Well': ['12/3-4 A', '12/3-4 A', '12/3-4 B'],
+        ...     'DEPT': [2850.0, 2851.0, 2850.5],
+        ...     'CorePHIE': [0.20, 0.22, 0.19],
+        ...     'CorePERM': [150, 200, 120]
+        ... })
+        >>> manager.load_properties(
+        ...     df,
+        ...     source_name='CoreData',
+        ...     well_col='Well',  # Groups by this column
+        ...     unit_mappings={'CorePHIE': 'v/v', 'CorePERM': 'mD'},
+        ...     type_mappings={'CorePHIE': 'sampled', 'CorePERM': 'sampled'}
+        ... )
+        ✓ Loaded 2 properties into well '12/3-4 A' from source 'CoreData'
+        ✓ Loaded 2 properties into well '12/3-4 B' from source 'CoreData'
+
+        >>> # Pattern 2: Single-well with explicit name (no well column needed)
+        >>> df_single = pd.DataFrame({
+        ...     'DEPT': [2850.0, 2851.0, 2852.0],
+        ...     'PHIE': [0.20, 0.22, 0.19]
+        ... })
+        >>> manager.load_properties(
+        ...     df_single,
+        ...     well_col=None,
+        ...     well_name='12/3-4 A',  # Load all data to this well
+        ...     source_name='Interpreted'
+        ... )
+        ✓ Loaded 1 properties into well '12/3-4 A' from source 'Interpreted'
+
+        >>> # Pattern 3: Single-well with default name "Well" (simplest)
+        >>> manager.load_properties(
+        ...     df_single,
+        ...     well_col=None,  # No well column
+        ...     source_name='Analysis'
+        ... )
+        ✓ Loaded 1 properties into well 'Well' from source 'Analysis'
+
+        >>> # Load with incompatible depths - requires explicit resampling
+        >>> manager.load_properties(
+        ...     df,
+        ...     source_name='Interpreted',
+        ...     resample_method='linear'  # Explicitly allow resampling
+        ... )
+
+        >>> # Access the data
+        >>> well = manager.well_12_3_4_A
+        >>> print(well.sources)  # ['Petrophysics', 'CoreData']
+        >>> well.CoreData.CorePHIE  # Sampled property
+        """
+
+        # Determine loading pattern
+        if well_col is None:
+            # SINGLE-WELL MODE: Load all data to one well
+            # Use well_name if provided, otherwise default to "Well"
+            target_well_name = well_name if well_name is not None else "Well"
+
+            # Validate depth column exists
+            if depth_col not in df.columns:
+                raise ValueError(
+                    f"Required column '{depth_col}' missing from DataFrame. "
+                    f"Available columns: {', '.join(df.columns)}"
+                )
+
+            # Get property columns (all except depth)
+            prop_cols = [col for col in df.columns if col != depth_col]
+
+            if not prop_cols:
+                raise ValueError(
+                    f"No property columns found in DataFrame. "
+                    f"DataFrame must have columns other than '{depth_col}'."
+                )
+
+            # Create a fake grouped structure for single well
+            grouped = [(target_well_name, df)]
+        else:
+            # MULTI-WELL MODE: Group by well column (existing behavior)
+            # Validate required columns exist
+            required_cols = [well_col, depth_col]
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                raise ValueError(
+                    f"Required columns missing from DataFrame: {', '.join(missing_cols)}. "
+                    f"Available columns: {', '.join(df.columns)}"
+                )
+
+            # Get property columns (all except well and depth)
+            prop_cols = [col for col in df.columns if col not in [well_col, depth_col]]
+
+            if not prop_cols:
+                raise ValueError(
+                    f"No property columns found in DataFrame. "
+                    f"DataFrame must have columns other than '{well_col}' and '{depth_col}'."
+                )
+
+            # Group by well
+            grouped = df.groupby(well_col)
+
+        # Set defaults for mappings
+        unit_mappings = unit_mappings or {}
+        type_mappings = type_mappings or {}
+        label_mappings = label_mappings or {}
+
+        for well_name, well_df in grouped:
+            # Get or create well
+            sanitized_name = sanitize_well_name(well_name)
+            # Use well_ prefix for dictionary key (attribute access)
+            well_key = f"well_{sanitized_name}"
+
+            if well_key not in self._wells:
+                self._wells[well_key] = Well(
+                    name=well_name,
+                    sanitized_name=sanitized_name,
+                    parent_manager=self
+                )
+                self._name_mapping[well_name] = well_key
+
+            well = self._wells[well_key]
+
+            # Build DataFrame for this well (rename depth column to DEPT)
+            well_data = {'DEPT': well_df[depth_col].values}
+            for prop_col in prop_cols:
+                well_data[prop_col] = well_df[prop_col].values
+
+            props_df = pd.DataFrame(well_data)
+
+            # Build unit mappings (include DEPT)
+            full_unit_mappings = {'DEPT': unit_mappings.get(depth_col, 'm')}
+            for prop_col in prop_cols:
+                full_unit_mappings[prop_col] = unit_mappings.get(prop_col, '')
+
+            # Build type mappings
+            full_type_mappings = {}
+            for prop_col in prop_cols:
+                full_type_mappings[prop_col] = type_mappings.get(prop_col, 'continuous')
+
+            # Sanitize source name
+            base_source_name = sanitize_property_name(source_name)
+
+            # Check if source already exists and notify user of overwrite
+            if base_source_name in well._sources:
+                print(f"⚠ Overwriting existing source '{base_source_name}' in well '{well.name}'")
+
+            # Create LasFile from DataFrame
+            las = LasFile.from_dataframe(
+                df=props_df,
+                well_name=well_name,
+                source_name=base_source_name,
+                unit_mappings=full_unit_mappings,
+                type_mappings=full_type_mappings,
+                label_mappings=label_mappings
+            )
+
+            # Check compatibility if well already has data
+            if well._sources:
+                # Get an existing LAS file to check compatibility
+                existing_source = list(well._sources.values())[0]
+                existing_las = existing_source['las_file']
+                compatibility = las.check_depth_compatibility(existing_las)
+
+                if not compatibility['compatible']:
+                    if resample_method is None:
+                        # Strict mode - raise error and suggest resampling method
+                        raise ValueError(
+                            f"Depth grid incompatible for well '{well.name}': {compatibility['reason']}\n"
+                            f"Existing: {compatibility['existing']['samples']} samples "
+                            f"({compatibility['existing']['start']:.2f}-{compatibility['existing']['stop']:.2f}m, "
+                            f"{compatibility['existing']['spacing']:.4f}m spacing)\n"
+                            f"New data: {compatibility['new']['samples']} samples "
+                            f"({compatibility['new']['start']:.2f}-{compatibility['new']['stop']:.2f}m, "
+                            f"{compatibility['new']['spacing']:.4f}m spacing)\n\n"
+                            f"To merge incompatible grids, specify a resampling method:\n"
+                            f"  resample_method='linear'    # For continuous properties\n"
+                            f"  resample_method='nearest'   # For discrete/sampled properties\n"
+                            f"  resample_method='previous'  # Forward-fill for discrete\n"
+                            f"  resample_method='next'      # Backward-fill\n\n"
+                            f"WARNING: Resampling sampled data (core plugs) may cause data loss."
+                        )
+                    else:
+                        # Resampling method specified - warn and proceed
+                        warnings.warn(
+                            f"Resampling new data to existing grid using method '{resample_method}' "
+                            f"for well '{well.name}'. This may cause data loss for sampled properties.",
+                            UserWarning
+                        )
+
+            # Load it (with resampling if specified)
+            well.load_las(las, resample_method=resample_method)
+
+            print(f"✓ Loaded {len(prop_cols)} properties into well '{well.name}' from source '{base_source_name}'")
 
         return self
 
