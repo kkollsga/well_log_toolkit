@@ -44,6 +44,79 @@ class _ManagerPropertyProxy:
         """Create a new proxy with an operation."""
         return _ManagerPropertyProxy(self._manager, self._property_name, operation)
 
+    def _compute_for_well(self, well, stat_func, nested=False):
+        """
+        Helper to compute a statistic for a property in a well.
+
+        Handles both unique and ambiguous property cases:
+        - If property is unique and nested=False: returns single value
+        - If property is unique and nested=True: returns dict with source name as key
+        - If property is ambiguous: returns dict with source names as keys
+        - If property not found: returns None
+
+        Parameters
+        ----------
+        well : Well
+            Well object to compute statistic for
+        stat_func : callable
+            Function that takes a Property and returns a statistic value
+            Example: lambda prop: prop.mean(weighted=True)
+        nested : bool, optional
+            If True, always return nested dict with source names, even for unique properties
+            If False (default), return single value for unique properties
+
+        Returns
+        -------
+        float or dict or None
+            - float: if property is unique and nested=False
+            - dict: if property is ambiguous or nested=True (source_name -> value)
+            - None: if property not found
+        """
+        if nested:
+            # Force full nesting - always show source names
+            source_results = {}
+
+            for source_name in well._sources.keys():
+                try:
+                    prop = well.get_property(self._property_name, source=source_name)
+                    prop = self._apply_operation(prop)
+                    source_results[source_name] = stat_func(prop)
+                except PropertyNotFoundError:
+                    # Property doesn't exist in this source, skip it
+                    pass
+
+            return source_results if source_results else None
+
+        # Default behavior (nested=False)
+        try:
+            # Try to get property without specifying source (unique case)
+            prop = well.get_property(self._property_name)
+            prop = self._apply_operation(prop)
+            return stat_func(prop)
+
+        except PropertyNotFoundError as e:
+            # Check if it's ambiguous (exists in multiple sources)
+            if "ambiguous" in str(e).lower():
+                # Property exists in multiple sources - compute for each
+                source_results = {}
+
+                for source_name in well._sources.keys():
+                    try:
+                        prop = well.get_property(self._property_name, source=source_name)
+                        prop = self._apply_operation(prop)
+                        source_results[source_name] = stat_func(prop)
+                    except PropertyNotFoundError:
+                        # Property doesn't exist in this source, skip it
+                        pass
+
+                return source_results if source_results else None
+            else:
+                # Property truly not found in this well
+                return None
+
+        except (AttributeError, KeyError):
+            return None
+
     # Arithmetic operations
     def __add__(self, other):
         """manager.PHIE + value"""
@@ -147,6 +220,282 @@ class _ManagerPropertyProxy:
                 pass
         if count > 0:
             print(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
+
+    def min(self, nested: bool = False) -> dict:
+        """
+        Compute minimum value for this property across all wells.
+
+        Parameters
+        ----------
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and minimum values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.min()
+        {'well_A': 0.05, 'well_B': {'log': 0.08, 'core': 0.06}}
+
+        >>> manager.PHIE.min(nested=True)
+        {'well_A': {'log': 0.05}, 'well_B': {'log': 0.08, 'core': 0.06}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.min(), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def max(self, nested: bool = False) -> dict:
+        """
+        Compute maximum value for this property across all wells.
+
+        Parameters
+        ----------
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and maximum values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.max()
+        {'well_A': 0.35, 'well_B': {'log': 0.42, 'core': 0.38}}
+
+        >>> manager.PHIE.max(nested=True)
+        {'well_A': {'log': 0.35}, 'well_B': {'log': 0.42, 'core': 0.38}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.max(), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def mean(self, weighted: bool = True, nested: bool = False) -> dict:
+        """
+        Compute mean value for this property across all wells.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Whether to use depth-weighted mean (default True)
+            If False, uses arithmetic (unweighted) mean
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and mean values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.mean()
+        {'well_A': 0.185, 'well_B': {'log': 0.192, 'core': 0.175}}
+
+        >>> manager.PHIE.mean(weighted=False)
+        {'well_A': 0.182, 'well_B': {'log': 0.188, 'core': 0.170}}
+
+        >>> manager.PHIE.mean(nested=True)
+        {'well_A': {'log': 0.185}, 'well_B': {'log': 0.192, 'core': 0.175}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.mean(weighted=weighted), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def std(self, weighted: bool = True, nested: bool = False) -> dict:
+        """
+        Compute standard deviation for this property across all wells.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Whether to use depth-weighted standard deviation (default True)
+            If False, uses arithmetic (unweighted) standard deviation
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and std values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.std()
+        {'well_A': 0.042, 'well_B': {'log': 0.038, 'core': 0.045}}
+
+        >>> manager.PHIE.std(weighted=False)
+        {'well_A': 0.044, 'well_B': {'log': 0.041, 'core': 0.048}}
+
+        >>> manager.PHIE.std(nested=True)
+        {'well_A': {'log': 0.042}, 'well_B': {'log': 0.038, 'core': 0.045}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.std(weighted=weighted), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def percentile(self, p: float, weighted: bool = True, nested: bool = False) -> dict:
+        """
+        Compute percentile for this property across all wells.
+
+        Parameters
+        ----------
+        p : float
+            Percentile to compute (0-100)
+        weighted : bool, optional
+            Whether to use depth-weighted percentile (default True)
+            If False, uses arithmetic (unweighted) percentile
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and percentile values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PhieLam_2025.percentile(50)
+        {'well_A': 0.45, 'well_B': {'log': 0.48, 'core': 0.42}}
+
+        >>> manager.PHIE.percentile(90, weighted=False)
+        {'well_A': 0.25, 'well_B': {'log': 0.28, 'core': 0.24}}
+
+        >>> manager.PHIE.percentile(50, nested=True)
+        {'well_A': {'log': 0.45}, 'well_B': {'log': 0.48, 'core': 0.42}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.percentile(p, weighted=weighted), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def median(self, weighted: bool = True, nested: bool = False) -> dict:
+        """
+        Compute median value (50th percentile) for this property across all wells.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Whether to use depth-weighted median (default True)
+            If False, uses arithmetic (unweighted) median
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and median values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.median()
+        {'well_A': 0.18, 'well_B': {'log': 0.19, 'core': 0.17}}
+
+        >>> manager.PHIE.median(weighted=False)
+        {'well_A': 0.175, 'well_B': {'log': 0.185, 'core': 0.165}}
+
+        >>> manager.PHIE.median(nested=True)
+        {'well_A': {'log': 0.18}, 'well_B': {'log': 0.19, 'core': 0.17}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.median(weighted=weighted), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
+
+    def mode(self, weighted: bool = True, bins: int = 50, nested: bool = False) -> dict:
+        """
+        Compute mode (most frequent value) for this property across all wells.
+
+        For continuous data, values are binned before finding the mode.
+        For discrete data, bins parameter is ignored.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Whether to use depth-weighted mode (default True)
+            If False, uses arithmetic (unweighted) mode
+        bins : int, optional
+            Number of bins for continuous data (default 50)
+            Ignored for discrete properties
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with well names as keys and mode values as values.
+            If a property exists in multiple sources for a well, returns nested dict
+            with source names as keys.
+
+        Examples
+        --------
+        >>> manager.PHIE.mode()
+        {'well_A': 0.18, 'well_B': {'log': 0.17, 'core': 0.19}}
+
+        >>> manager.PHIE.mode(weighted=False, bins=100)
+        {'well_A': 0.19, 'well_B': {'log': 0.18, 'core': 0.20}}
+
+        >>> manager.PHIE.mode(nested=True)
+        {'well_A': {'log': 0.18}, 'well_B': {'log': 0.17, 'core': 0.19}}
+        """
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            value = self._compute_for_well(well, lambda prop: prop.mode(weighted=weighted, bins=bins), nested=nested)
+            if value is not None:
+                result[well_name] = value
+
+        return result
 
     def __str__(self) -> str:
         """
