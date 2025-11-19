@@ -26,10 +26,11 @@ class _ManagerPropertyProxy:
     When assigned to a manager attribute, the operation is broadcast to all wells.
     """
 
-    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None):
+    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None, filters=None):
         self._manager = manager
         self._property_name = property_name
         self._operation = operation  # Function to apply to each property
+        self._filters = filters or []  # List of (filter_name, insert_boundaries) tuples
 
     def _apply_operation(self, prop: Property):
         """Apply stored operation to a property."""
@@ -42,7 +43,7 @@ class _ManagerPropertyProxy:
 
     def _create_proxy_with_operation(self, operation):
         """Create a new proxy with an operation."""
-        return _ManagerPropertyProxy(self._manager, self._property_name, operation)
+        return _ManagerPropertyProxy(self._manager, self._property_name, operation, self._filters)
 
     def _compute_for_well(self, well, stat_func, nested=False):
         """
@@ -496,6 +497,249 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         return result
+
+    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> '_ManagerPropertyProxy':
+        """
+        Add a discrete property filter for grouped statistics across all wells.
+
+        Creates a new proxy with the filter stored. Multiple filters can be chained.
+        Use with sums_avg() to compute grouped statistics.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of discrete property to filter by
+        insert_boundaries : bool, optional
+            If True, insert synthetic samples at discrete property boundaries.
+            Default is True for continuous properties, False for sampled properties.
+
+        Returns
+        -------
+        _ManagerPropertyProxy
+            New proxy with filter added
+
+        Examples
+        --------
+        >>> # Single filter
+        >>> manager.PHIE.filter("Zone").sums_avg()
+        >>> # Returns statistics grouped by Zone for each well
+
+        >>> # Multiple filters (chained)
+        >>> manager.PHIE.filter("Well_Tops").filter("NetSand_2025").sums_avg()
+        >>> # Returns statistics grouped by Well_Tops then NetSand_2025
+        """
+        # Create new filter list with this filter added
+        new_filters = self._filters + [(property_name, insert_boundaries)]
+
+        # Return new proxy with filter added
+        return _ManagerPropertyProxy(self._manager, self._property_name, self._operation, new_filters)
+
+    def sums_avg(
+        self,
+        weighted: Optional[bool] = None,
+        arithmetic: Optional[bool] = None,
+        precision: int = 6,
+        nested: bool = False
+    ) -> dict:
+        """
+        Compute hierarchical statistics grouped by filters across all wells.
+
+        Must be called on a filtered proxy (created via .filter()).
+        Returns statistics for each group combination in each well.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Include depth-weighted statistics.
+            Default: True for continuous/discrete, False for sampled
+        arithmetic : bool, optional
+            Include arithmetic (unweighted) statistics.
+            Default: False for continuous/discrete, True for sampled
+        precision : int, default 6
+            Number of decimal places for rounding numeric results
+        nested : bool, optional
+            If True, always return nested dict with source names (default False)
+            If False, only nest when property exists in multiple sources
+
+        Returns
+        -------
+        dict
+            Nested dictionary with structure:
+            {
+                "well_name": {
+                    "filter_value_1": {
+                        "filter_value_2": {
+                            "mean": ..., "sum": ..., "std_dev": ..., ...
+                        }
+                    }
+                }
+            }
+
+            With nested=True:
+            {
+                "well_name": {
+                    "source_name": {
+                        "filter_value_1": {...}
+                    }
+                }
+            }
+
+        Examples
+        --------
+        >>> # Single filter
+        >>> manager.PHIE.filter("Zone").sums_avg()
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {
+        >>> #         "Zone_1": {"mean": 0.18, "sum": 45.2, ...},
+        >>> #         "Zone_2": {"mean": 0.22, ...}
+        >>> #     },
+        >>> #     "well_B": {...}
+        >>> # }
+
+        >>> # Multiple filters
+        >>> manager.PHIE.filter("Zone").filter("NTG_Flag").sums_avg()
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {
+        >>> #         "Zone_1": {
+        >>> #             "NTG_0": {"mean": 0.15, ...},
+        >>> #             "NTG_1": {"mean": 0.21, ...}
+        >>> #         }
+        >>> #     }
+        >>> # }
+
+        >>> # With nested source names
+        >>> manager.PHIE.filter("Zone").sums_avg(nested=True)
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {
+        >>> #         "log": {
+        >>> #             "Zone_1": {"mean": 0.18, ...}
+        >>> #         }
+        >>> #     },
+        >>> #     "well_B": {
+        >>> #         "log": {"Zone_1": {...}},
+        >>> #         "core": {"Zone_1": {...}}
+        >>> #     }
+        >>> # }
+        """
+        if not self._filters:
+            raise ValueError(
+                "sums_avg() requires at least one filter. "
+                "Use .filter('property_name') before calling sums_avg()"
+            )
+
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            well_result = self._compute_sums_avg_for_well(
+                well, weighted, arithmetic, precision, nested
+            )
+            if well_result is not None:
+                result[well_name] = well_result
+
+        return result
+
+    def _compute_sums_avg_for_well(
+        self,
+        well,
+        weighted: Optional[bool],
+        arithmetic: Optional[bool],
+        precision: int,
+        nested: bool
+    ):
+        """
+        Helper to compute sums_avg for a property in a well.
+
+        Applies all filters and computes grouped statistics.
+        """
+        if nested:
+            # Force full nesting - compute for each source
+            source_results = {}
+
+            for source_name in well._sources.keys():
+                try:
+                    # Get property from this source
+                    prop = well.get_property(self._property_name, source=source_name)
+                    prop = self._apply_operation(prop)
+
+                    # Apply all filters
+                    for filter_name, insert_boundaries in self._filters:
+                        if insert_boundaries is not None:
+                            prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                        else:
+                            prop = prop.filter(filter_name)
+
+                    # Compute sums_avg
+                    source_results[source_name] = prop.sums_avg(
+                        weighted=weighted,
+                        arithmetic=arithmetic,
+                        precision=precision
+                    )
+
+                except (PropertyNotFoundError, AttributeError):
+                    # Property doesn't exist in this source, skip it
+                    pass
+
+            return source_results if source_results else None
+
+        # Default behavior (nested=False)
+        try:
+            # Try to get property without specifying source (unique case)
+            prop = well.get_property(self._property_name)
+            prop = self._apply_operation(prop)
+
+            # Apply all filters
+            for filter_name, insert_boundaries in self._filters:
+                if insert_boundaries is not None:
+                    prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                else:
+                    prop = prop.filter(filter_name)
+
+            # Compute sums_avg
+            return prop.sums_avg(
+                weighted=weighted,
+                arithmetic=arithmetic,
+                precision=precision
+            )
+
+        except PropertyNotFoundError as e:
+            # Check if it's ambiguous (exists in multiple sources)
+            if "ambiguous" in str(e).lower():
+                # Property exists in multiple sources - compute for each
+                source_results = {}
+
+                for source_name in well._sources.keys():
+                    try:
+                        prop = well.get_property(self._property_name, source=source_name)
+                        prop = self._apply_operation(prop)
+
+                        # Apply all filters
+                        for filter_name, insert_boundaries in self._filters:
+                            if insert_boundaries is not None:
+                                prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                            else:
+                                prop = prop.filter(filter_name)
+
+                        # Compute sums_avg
+                        source_results[source_name] = prop.sums_avg(
+                            weighted=weighted,
+                            arithmetic=arithmetic,
+                            precision=precision
+                        )
+
+                    except (PropertyNotFoundError, AttributeError):
+                        # Property doesn't exist in this source, skip it
+                        pass
+
+                return source_results if source_results else None
+            else:
+                # Property truly not found in this well
+                return None
+
+        except (AttributeError, KeyError):
+            return None
 
     def __str__(self) -> str:
         """
