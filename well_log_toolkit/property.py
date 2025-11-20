@@ -849,7 +849,7 @@ class Property(PropertyOperationsMixin):
             'distance': round(float(distances[closest_idx]), 8)  # 8 decimals to avoid float drift
         }
 
-    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> 'Property':
+    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None, source: Optional[str] = None) -> 'Property':
         """
         Add a discrete property from parent well as a filter dimension.
 
@@ -865,6 +865,9 @@ class Property(PropertyOperationsMixin):
             If True, insert synthetic samples at discrete property boundaries.
             Default is True for continuous properties, False for sampled properties.
             Set to False for sampled data (core plugs) to preserve original measurements.
+        source : str, optional
+            Source name to get filter property from. If None, searches across all sources.
+            Use this when the filter property exists in multiple sources to avoid ambiguity.
 
         Returns
         -------
@@ -889,6 +892,10 @@ class Property(PropertyOperationsMixin):
         >>> # For sampled data (core plugs), boundaries are not inserted by default
         >>> core_phie.type = 'sampled'
         >>> filtered = core_phie.filter("Zone")  # No boundary insertion
+
+        >>> # When filter property is ambiguous, specify source
+        >>> log_phie = well.get_property("PHIE", source="log")
+        >>> filtered = log_phie.filter("Zone", source="log")  # Use Zone from log source
         """
         if self.parent_well is None:
             raise PropertyNotFoundError(
@@ -898,7 +905,7 @@ class Property(PropertyOperationsMixin):
 
         # Lookup in parent well
         try:
-            discrete_prop = self.parent_well.get_property(property_name)
+            discrete_prop = self.parent_well.get_property(property_name, source=source)
         except KeyError:
             available = ', '.join(self.parent_well.properties)
             raise PropertyNotFoundError(

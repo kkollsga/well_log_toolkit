@@ -76,6 +76,74 @@ class _ManagerPropertyProxy:
         """Create a new proxy with an operation."""
         return _ManagerPropertyProxy(self._manager, self._property_name, operation, self._filters)
 
+    def _extract_statistic_from_grouped(self, grouped_result: dict, stat_name: str, **kwargs) -> dict:
+        """
+        Extract a specific statistic from grouped sums_avg results.
+
+        Recursively walks through nested dict structure and extracts the requested
+        statistic (e.g., 'mean', 'median', 'percentile') from each leaf node.
+
+        Parameters
+        ----------
+        grouped_result : dict
+            Nested result from sums_avg (group_val -> {...stats...})
+        stat_name : str
+            Name of statistic to extract ('mean', 'median', 'min', 'max', etc.)
+        **kwargs
+            Additional parameters for weighted/arithmetic selection
+            - percentile_key: e.g., 'p50' for percentile extraction
+
+        Returns
+        -------
+        dict
+            Nested dict with same structure but only the requested statistic value
+        """
+        if not isinstance(grouped_result, dict):
+            return grouped_result
+
+        # Check if this is a leaf node (contains statistics)
+        if 'mean' in grouped_result or 'samples' in grouped_result:
+            # This is a stats dict - extract the requested statistic
+            if stat_name == 'percentile':
+                # Percentile is nested under 'percentile' dict
+                percentile_key = kwargs.get('percentile_key', 'p50')
+                if 'percentile' in grouped_result and percentile_key in grouped_result['percentile']:
+                    value = grouped_result['percentile'][percentile_key]
+                    # If value is a dict with 'weighted'/'arithmetic', prefer 'weighted'
+                    if isinstance(value, dict):
+                        return value.get('weighted', value.get('arithmetic', None))
+                    return value
+                return None
+            elif stat_name == 'range_min':
+                if 'range' in grouped_result:
+                    value = grouped_result['range']['min']
+                    if isinstance(value, dict):
+                        return value.get('weighted', value.get('arithmetic', None))
+                    return value
+                return None
+            elif stat_name == 'range_max':
+                if 'range' in grouped_result:
+                    value = grouped_result['range']['max']
+                    if isinstance(value, dict):
+                        return value.get('weighted', value.get('arithmetic', None))
+                    return value
+                return None
+            else:
+                # Direct statistic (mean, median, mode, std_dev, etc.)
+                value = grouped_result.get(stat_name, None)
+                # If value is a dict with 'weighted'/'arithmetic', prefer 'weighted'
+                if isinstance(value, dict) and ('weighted' in value or 'arithmetic' in value):
+                    return value.get('weighted', value.get('arithmetic', None))
+                return value
+        else:
+            # This is a grouping level - recurse
+            result = {}
+            for key, value in grouped_result.items():
+                extracted = self._extract_statistic_from_grouped(value, stat_name, **kwargs)
+                if extracted is not None:
+                    result[key] = extracted
+            return result if result else None
+
     def _compute_for_well(self, well, stat_func, nested=False):
         """
         Helper to compute a statistic for a property in a well.
@@ -257,6 +325,8 @@ class _ManagerPropertyProxy:
         """
         Compute minimum value for this property across all wells.
 
+        If filters are applied, returns grouped minimums for each filter value.
+
         Parameters
         ----------
         nested : bool, optional
@@ -266,21 +336,33 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and minimum values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
-            NaN/inf values are converted to None for JSON compliance.
+            Nested dictionary with well names as keys.
+            - Without filters: single minimum per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.min()
-        {'well_A': 0.05, 'well_B': {'log': 0.08, 'core': 0.06}}
+        {'well_A': 0.05, 'well_B': 0.08}
 
-        >>> manager.PHIE.min(nested=True)
-        {'well_A': {'log': 0.05}, 'well_B': {'log': 0.08, 'core': 0.06}}
+        >>> manager.PHIE.filter("Zone").min()
+        {'well_A': {'Zone_1': 0.05, 'Zone_2': 0.08}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=True, arithmetic=None, precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'range_min')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single min per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.min(), nested=nested)
             if value is not None:
@@ -292,6 +374,8 @@ class _ManagerPropertyProxy:
         """
         Compute maximum value for this property across all wells.
 
+        If filters are applied, returns grouped maximums for each filter value.
+
         Parameters
         ----------
         nested : bool, optional
@@ -301,21 +385,33 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and maximum values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
-            NaN/inf values are converted to None for JSON compliance.
+            Nested dictionary with well names as keys.
+            - Without filters: single maximum per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.max()
-        {'well_A': 0.35, 'well_B': {'log': 0.42, 'core': 0.38}}
+        {'well_A': 0.35, 'well_B': 0.42}
 
-        >>> manager.PHIE.max(nested=True)
-        {'well_A': {'log': 0.35}, 'well_B': {'log': 0.42, 'core': 0.38}}
+        >>> manager.PHIE.filter("Zone").max()
+        {'well_A': {'Zone_1': 0.35, 'Zone_2': 0.42}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=True, arithmetic=None, precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'range_max')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single max per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.max(), nested=nested)
             if value is not None:
@@ -326,6 +422,8 @@ class _ManagerPropertyProxy:
     def mean(self, weighted: bool = True, nested: bool = False) -> dict:
         """
         Compute mean value for this property across all wells.
+
+        If filters are applied, returns grouped means for each filter value.
 
         Parameters
         ----------
@@ -339,23 +437,35 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and mean values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
+            Nested dictionary with well names as keys.
+            - Without filters: single mean per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.mean()
-        {'well_A': 0.185, 'well_B': {'log': 0.192, 'core': 0.175}}
+        {'well_A': 0.185, 'well_B': 0.192}
 
-        >>> manager.PHIE.mean(weighted=False)
-        {'well_A': 0.182, 'well_B': {'log': 0.188, 'core': 0.170}}
-
-        >>> manager.PHIE.mean(nested=True)
-        {'well_A': {'log': 0.185}, 'well_B': {'log': 0.192, 'core': 0.175}}
+        >>> manager.PHIE.filter("Zone").mean()
+        {'well_A': {'Zone_1': 0.17, 'Zone_2': 0.22}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=weighted if weighted else None,
+                    arithmetic=not weighted if not weighted else None,
+                    precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'mean')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single mean per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.mean(weighted=weighted), nested=nested)
             if value is not None:
@@ -366,6 +476,8 @@ class _ManagerPropertyProxy:
     def std(self, weighted: bool = True, nested: bool = False) -> dict:
         """
         Compute standard deviation for this property across all wells.
+
+        If filters are applied, returns grouped standard deviations for each filter value.
 
         Parameters
         ----------
@@ -379,23 +491,35 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and std values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
+            Nested dictionary with well names as keys.
+            - Without filters: single std per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.std()
-        {'well_A': 0.042, 'well_B': {'log': 0.038, 'core': 0.045}}
+        {'well_A': 0.042, 'well_B': 0.038}
 
-        >>> manager.PHIE.std(weighted=False)
-        {'well_A': 0.044, 'well_B': {'log': 0.041, 'core': 0.048}}
-
-        >>> manager.PHIE.std(nested=True)
-        {'well_A': {'log': 0.042}, 'well_B': {'log': 0.038, 'core': 0.045}}
+        >>> manager.PHIE.filter("Zone").std()
+        {'well_A': {'Zone_1': 0.035, 'Zone_2': 0.048}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=weighted if weighted else None,
+                    arithmetic=not weighted if not weighted else None,
+                    precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'std_dev')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single std per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.std(weighted=weighted), nested=nested)
             if value is not None:
@@ -406,6 +530,9 @@ class _ManagerPropertyProxy:
     def percentile(self, p: float, weighted: bool = True, nested: bool = False) -> dict:
         """
         Compute percentile for this property across all wells.
+
+        If filters are applied, returns grouped percentiles for each filter value.
+        If no filters, returns a single percentile per well.
 
         Parameters
         ----------
@@ -421,23 +548,47 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and percentile values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
+            Nested dictionary with well names as keys.
+            - Without filters: single percentile value per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
-        >>> manager.PhieLam_2025.percentile(50)
-        {'well_A': 0.45, 'well_B': {'log': 0.48, 'core': 0.42}}
+        >>> # Without filters
+        >>> manager.PHIE.percentile(50)
+        {'well_A': 0.18, 'well_B': 0.19}
 
-        >>> manager.PHIE.percentile(90, weighted=False)
-        {'well_A': 0.25, 'well_B': {'log': 0.28, 'core': 0.24}}
+        >>> # With filters - returns grouped percentiles
+        >>> manager.PHIE.filter("Zone").percentile(50)
+        {'well_A': {'Zone_1': 0.17, 'Zone_2': 0.22}, 'well_B': {...}}
 
-        >>> manager.PHIE.percentile(50, nested=True)
-        {'well_A': {'log': 0.45}, 'well_B': {'log': 0.48, 'core': 0.42}}
+        >>> # Multiple filters
+        >>> manager.PHIE.filter("Zone").filter("NTG_Flag").percentile(90)
+        {'well_A': {'Zone_1': {'NTG_0': 0.15, 'NTG_1': 0.25}}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics (like sums_avg)
+        if self._filters:
+            result = {}
+            percentile_key = f'p{int(p)}'  # e.g., 'p50', 'p90'
 
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=weighted if weighted else None,
+                    arithmetic=not weighted if not weighted else None,
+                    precision=6, nested=nested
+                )
+                if well_result is not None:
+                    # Extract just the requested percentile from the grouped results
+                    extracted = self._extract_statistic_from_grouped(
+                        well_result, 'percentile', percentile_key=percentile_key
+                    )
+                    if extracted is not None:
+                        result[well_name] = extracted
+
+            return _sanitize_for_json(result)
+
+        # No filters - compute single percentile per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.percentile(p, weighted=weighted), nested=nested)
             if value is not None:
@@ -448,6 +599,8 @@ class _ManagerPropertyProxy:
     def median(self, weighted: bool = True, nested: bool = False) -> dict:
         """
         Compute median value (50th percentile) for this property across all wells.
+
+        If filters are applied, returns grouped medians for each filter value.
 
         Parameters
         ----------
@@ -461,23 +614,35 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and median values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
+            Nested dictionary with well names as keys.
+            - Without filters: single median per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.median()
-        {'well_A': 0.18, 'well_B': {'log': 0.19, 'core': 0.17}}
+        {'well_A': 0.18, 'well_B': 0.19}
 
-        >>> manager.PHIE.median(weighted=False)
-        {'well_A': 0.175, 'well_B': {'log': 0.185, 'core': 0.165}}
-
-        >>> manager.PHIE.median(nested=True)
-        {'well_A': {'log': 0.18}, 'well_B': {'log': 0.19, 'core': 0.17}}
+        >>> manager.PHIE.filter("Zone").median()
+        {'well_A': {'Zone_1': 0.17, 'Zone_2': 0.21}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics (median = p50)
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=weighted if weighted else None,
+                    arithmetic=not weighted if not weighted else None,
+                    precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'median')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single median per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.median(weighted=weighted), nested=nested)
             if value is not None:
@@ -490,7 +655,7 @@ class _ManagerPropertyProxy:
         Compute mode (most frequent value) for this property across all wells.
 
         For continuous data, values are binned before finding the mode.
-        For discrete data, bins parameter is ignored.
+        If filters are applied, returns grouped modes for each filter value.
 
         Parameters
         ----------
@@ -507,23 +672,35 @@ class _ManagerPropertyProxy:
         Returns
         -------
         dict
-            Nested dictionary with well names as keys and mode values as values.
-            If a property exists in multiple sources for a well, returns nested dict
-            with source names as keys.
+            Nested dictionary with well names as keys.
+            - Without filters: single mode per well
+            - With filters: nested dict grouped by filter values
 
         Examples
         --------
         >>> manager.PHIE.mode()
-        {'well_A': 0.18, 'well_B': {'log': 0.17, 'core': 0.19}}
+        {'well_A': 0.18, 'well_B': 0.17}
 
-        >>> manager.PHIE.mode(weighted=False, bins=100)
-        {'well_A': 0.19, 'well_B': {'log': 0.18, 'core': 0.20}}
-
-        >>> manager.PHIE.mode(nested=True)
-        {'well_A': {'log': 0.18}, 'well_B': {'log': 0.17, 'core': 0.19}}
+        >>> manager.PHIE.filter("Zone").mode()
+        {'well_A': {'Zone_1': 0.16, 'Zone_2': 0.20}, ...}
         """
-        result = {}
+        # If filters are applied, use grouped statistics
+        if self._filters:
+            result = {}
+            for well_name, well in self._manager._wells.items():
+                well_result = self._compute_sums_avg_for_well(
+                    well, weighted=weighted if weighted else None,
+                    arithmetic=not weighted if not weighted else None,
+                    precision=6, nested=nested
+                )
+                if well_result is not None:
+                    extracted = self._extract_statistic_from_grouped(well_result, 'mode')
+                    if extracted is not None:
+                        result[well_name] = extracted
+            return _sanitize_for_json(result)
 
+        # No filters - compute single mode per well
+        result = {}
         for well_name, well in self._manager._wells.items():
             value = self._compute_for_well(well, lambda prop: prop.mode(weighted=weighted, bins=bins), nested=nested)
             if value is not None:
@@ -697,12 +874,26 @@ class _ManagerPropertyProxy:
                     prop = well.get_property(self._property_name, source=source_name)
                     prop = self._apply_operation(prop)
 
-                    # Apply all filters
+                    # Check if all filter properties exist in this source before applying
+                    skip_source = False
+                    for filter_name, _ in self._filters:
+                        try:
+                            # Try to get filter property from the same source
+                            well.get_property(filter_name, source=source_name)
+                        except (PropertyNotFoundError, KeyError):
+                            # Filter property doesn't exist in this source, skip it
+                            skip_source = True
+                            break
+
+                    if skip_source:
+                        continue
+
+                    # Apply all filters (specify source to avoid ambiguity)
                     for filter_name, insert_boundaries in self._filters:
                         if insert_boundaries is not None:
-                            prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                            prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
                         else:
-                            prop = prop.filter(filter_name)
+                            prop = prop.filter(filter_name, source=source_name)
 
                     # Compute sums_avg
                     source_results[source_name] = prop.sums_avg(
@@ -711,8 +902,9 @@ class _ManagerPropertyProxy:
                         precision=precision
                     )
 
-                except (PropertyNotFoundError, AttributeError):
-                    # Property doesn't exist in this source, skip it
+                except (PropertyNotFoundError, AttributeError, KeyError, ValueError) as e:
+                    # Property or filter doesn't exist in this source, skip it
+                    # This includes cases where the main property exists but filter properties don't
                     pass
 
             return source_results if source_results else None
@@ -748,21 +940,36 @@ class _ManagerPropertyProxy:
                         prop = well.get_property(self._property_name, source=source_name)
                         prop = self._apply_operation(prop)
 
-                        # Apply all filters
+                        # Check if all filter properties exist in this source before applying
+                        skip_source = False
+                        for filter_name, _ in self._filters:
+                            try:
+                                # Try to get filter property from the same source
+                                well.get_property(filter_name, source=source_name)
+                            except (PropertyNotFoundError, KeyError):
+                                # Filter property doesn't exist in this source, skip it
+                                skip_source = True
+                                break
+
+                        if skip_source:
+                            continue
+
+                        # Apply all filters (specify source to avoid ambiguity)
                         for filter_name, insert_boundaries in self._filters:
                             if insert_boundaries is not None:
-                                prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                                prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
                             else:
-                                prop = prop.filter(filter_name)
+                                prop = prop.filter(filter_name, source=source_name)
 
                         # Compute sums_avg
-                        source_results[source_name] = prop.sums_avg(
+                        result = prop.sums_avg(
                             weighted=weighted,
                             arithmetic=arithmetic,
                             precision=precision
                         )
+                        source_results[source_name] = result
 
-                    except (PropertyNotFoundError, AttributeError):
+                    except (PropertyNotFoundError, AttributeError, KeyError, ValueError) as e:
                         # Property doesn't exist in this source, skip it
                         pass
 
