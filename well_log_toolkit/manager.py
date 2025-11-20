@@ -45,6 +45,78 @@ def _sanitize_for_json(obj):
         return obj
 
 
+def _flatten_to_dataframe(nested_dict: dict, property_name: str) -> pd.DataFrame:
+    """
+    Flatten nested dictionary results into a DataFrame.
+
+    Converts hierarchical dictionary structure from manager-level statistics
+    into a tabular format with columns for each grouping level.
+
+    Parameters
+    ----------
+    nested_dict : dict
+        Nested dictionary with well names as top-level keys
+    property_name : str
+        Name of the property being analyzed (used for value column name)
+
+    Returns
+    -------
+    pd.DataFrame
+        Flattened DataFrame with columns for each level of nesting
+
+    Examples
+    --------
+    Input: {'well_A': {'Zone1': 0.2, 'Zone2': 0.3}, 'well_B': 0.25}
+    Output:
+        Well     Zone    PHIE
+        well_A   Zone1   0.2
+        well_A   Zone2   0.3
+        well_B   NaN     0.25
+    """
+    rows = []
+
+    def _recurse(value, path):
+        """Recursively traverse nested dict and collect rows."""
+        if isinstance(value, dict):
+            # This is a grouping level, recurse deeper
+            for key, sub_value in value.items():
+                _recurse(sub_value, path + [key])
+        else:
+            # This is a leaf value, create a row
+            rows.append(path + [value])
+
+    # Start recursion from each well
+    for well_name, well_result in nested_dict.items():
+        _recurse(well_result, [well_name])
+
+    if not rows:
+        # No data, return empty DataFrame
+        return pd.DataFrame()
+
+    # Determine number of columns (max depth)
+    max_depth = max(len(row) for row in rows)
+
+    # Pad shorter rows with None
+    padded_rows = [row + [None] * (max_depth - len(row)) for row in rows]
+
+    # Create column names
+    # Last column is the value, others are grouping levels
+    if max_depth == 2:
+        # Simple case: just well and value
+        columns = ['Well', property_name]
+    elif max_depth == 3:
+        # Well, one grouping level (e.g., Source or Zone), value
+        columns = ['Well', 'Group', property_name]
+    else:
+        # Well, multiple grouping levels, value
+        # Use generic names: Group1, Group2, etc.
+        columns = ['Well'] + [f'Group{i}' for i in range(1, max_depth - 1)] + [property_name]
+
+    df = pd.DataFrame(padded_rows, columns=columns)
+
+    return df
+
+
 class _ManagerPropertyProxy:
     """
     Proxy object for manager-level property operations.
@@ -321,7 +393,7 @@ class _ManagerPropertyProxy:
         if count > 0:
             print(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
 
-    def min(self, nested: bool = False) -> dict:
+    def min(self, nested: bool = False, return_df: bool = False):
         """
         Compute minimum value for this property across all wells.
 
@@ -332,11 +404,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single minimum per well
             - With filters: nested dict grouped by filter values
 
@@ -347,6 +422,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").min()
         {'well_A': {'Zone_1': 0.05, 'Zone_2': 0.08}, ...}
+
+        >>> manager.PHIE.filter("Zone").min(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.05
+        1  well_A  Zone_2     0.08
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -359,7 +439,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'range_min')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single min per well
         result = {}
@@ -368,9 +452,12 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def max(self, nested: bool = False) -> dict:
+    def max(self, nested: bool = False, return_df: bool = False):
         """
         Compute maximum value for this property across all wells.
 
@@ -381,11 +468,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single maximum per well
             - With filters: nested dict grouped by filter values
 
@@ -396,6 +486,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").max()
         {'well_A': {'Zone_1': 0.35, 'Zone_2': 0.42}, ...}
+
+        >>> manager.PHIE.filter("Zone").max(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.35
+        1  well_A  Zone_2     0.42
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -408,7 +503,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'range_max')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single max per well
         result = {}
@@ -417,9 +516,12 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def mean(self, weighted: bool = True, nested: bool = False) -> dict:
+    def mean(self, weighted: bool = True, nested: bool = False, return_df: bool = False):
         """
         Compute mean value for this property across all wells.
 
@@ -433,11 +535,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single mean per well
             - With filters: nested dict grouped by filter values
 
@@ -448,6 +553,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").mean()
         {'well_A': {'Zone_1': 0.17, 'Zone_2': 0.22}, ...}
+
+        >>> manager.PHIE.filter("Zone").mean(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.17
+        1  well_A  Zone_2     0.22
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -462,7 +572,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'mean')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single mean per well
         result = {}
@@ -471,9 +585,13 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            # Only convert to DF if there's nesting (ambiguous properties or nested=True)
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def std(self, weighted: bool = True, nested: bool = False) -> dict:
+    def std(self, weighted: bool = True, nested: bool = False, return_df: bool = False):
         """
         Compute standard deviation for this property across all wells.
 
@@ -487,11 +605,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single std per well
             - With filters: nested dict grouped by filter values
 
@@ -502,6 +623,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").std()
         {'well_A': {'Zone_1': 0.035, 'Zone_2': 0.048}, ...}
+
+        >>> manager.PHIE.filter("Zone").std(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.035
+        1  well_A  Zone_2     0.048
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -516,7 +642,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'std_dev')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single std per well
         result = {}
@@ -525,9 +655,12 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def percentile(self, p: float, weighted: bool = True, nested: bool = False) -> dict:
+    def percentile(self, p: float, weighted: bool = True, nested: bool = False, return_df: bool = False):
         """
         Compute percentile for this property across all wells.
 
@@ -544,11 +677,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single percentile value per well
             - With filters: nested dict grouped by filter values
 
@@ -565,6 +701,11 @@ class _ManagerPropertyProxy:
         >>> # Multiple filters
         >>> manager.PHIE.filter("Zone").filter("NTG_Flag").percentile(90)
         {'well_A': {'Zone_1': {'NTG_0': 0.15, 'NTG_1': 0.25}}, ...}
+
+        >>> manager.PHIE.filter("Zone").percentile(50, return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.17
+        1  well_A  Zone_2     0.22
         """
         # If filters are applied, use grouped statistics (like sums_avg)
         if self._filters:
@@ -585,7 +726,10 @@ class _ManagerPropertyProxy:
                     if extracted is not None:
                         result[well_name] = extracted
 
-            return _sanitize_for_json(result)
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single percentile per well
         result = {}
@@ -594,9 +738,12 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def median(self, weighted: bool = True, nested: bool = False) -> dict:
+    def median(self, weighted: bool = True, nested: bool = False, return_df: bool = False):
         """
         Compute median value (50th percentile) for this property across all wells.
 
@@ -610,11 +757,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single median per well
             - With filters: nested dict grouped by filter values
 
@@ -625,6 +775,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").median()
         {'well_A': {'Zone_1': 0.17, 'Zone_2': 0.21}, ...}
+
+        >>> manager.PHIE.filter("Zone").median(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.17
+        1  well_A  Zone_2     0.21
         """
         # If filters are applied, use grouped statistics (median = p50)
         if self._filters:
@@ -639,7 +794,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'median')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single median per well
         result = {}
@@ -648,9 +807,12 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
 
-    def mode(self, weighted: bool = True, bins: int = 50, nested: bool = False) -> dict:
+    def mode(self, weighted: bool = True, bins: int = 50, nested: bool = False, return_df: bool = False):
         """
         Compute mode (most frequent value) for this property across all wells.
 
@@ -668,11 +830,14 @@ class _ManagerPropertyProxy:
         nested : bool, optional
             If True, always return nested dict with source names (default False)
             If False, only nest when property exists in multiple sources
+        return_df : bool, optional
+            If True, return results as DataFrame instead of dict (default False)
+            Only applies when results are nested (filters or ambiguous properties)
 
         Returns
         -------
-        dict
-            Nested dictionary with well names as keys.
+        dict or pd.DataFrame
+            Nested dictionary with well names as keys, or DataFrame if return_df=True.
             - Without filters: single mode per well
             - With filters: nested dict grouped by filter values
 
@@ -683,6 +848,11 @@ class _ManagerPropertyProxy:
 
         >>> manager.PHIE.filter("Zone").mode()
         {'well_A': {'Zone_1': 0.16, 'Zone_2': 0.20}, ...}
+
+        >>> manager.PHIE.filter("Zone").mode(return_df=True)
+           Well    Group       PHIE
+        0  well_A  Zone_1     0.16
+        1  well_A  Zone_2     0.20
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -697,7 +867,11 @@ class _ManagerPropertyProxy:
                     extracted = self._extract_statistic_from_grouped(well_result, 'mode')
                     if extracted is not None:
                         result[well_name] = extracted
-            return _sanitize_for_json(result)
+
+            result = _sanitize_for_json(result)
+            if return_df and result:
+                return _flatten_to_dataframe(result, self._property_name)
+            return result
 
         # No filters - compute single mode per well
         result = {}
@@ -706,7 +880,121 @@ class _ManagerPropertyProxy:
             if value is not None:
                 result[well_name] = value
 
-        return _sanitize_for_json(result)
+        result = _sanitize_for_json(result)
+        if return_df and result and any(isinstance(v, dict) for v in result.values()):
+            return _flatten_to_dataframe(result, self._property_name)
+        return result
+
+    def stats(self, methods=None, weighted: bool = True, return_df: bool = False):
+        """
+        Compute multiple statistics for this property across all wells.
+
+        Convenient method to get multiple statistics in one call. Returns dict by default,
+        or DataFrame with statistics as columns when return_df=True.
+
+        Parameters
+        ----------
+        methods : str, list of str, or None, optional
+            Statistics to compute. Can be:
+            - Single stat name: 'mean', 'median', 'std', 'min', 'max', 'percentile_50', etc.
+            - List of stat names: ['mean', 'std', 'percentile_10', 'percentile_90']
+            - None: returns all common statistics (default)
+        weighted : bool, optional
+            Whether to use depth-weighted statistics (default True)
+            Applies to mean, std, median, and percentiles
+        return_df : bool, optional
+            If True, return DataFrame with statistics as columns (default False)
+            If False, return nested dict with separate keys for each statistic
+
+        Returns
+        -------
+        dict or pd.DataFrame
+            If return_df=False: {'stat_name': {well_results}, ...}
+            If return_df=True: DataFrame with columns [Well, Group(s), stat1, stat2, ...]
+
+        Examples
+        --------
+        >>> # All statistics
+        >>> manager.PHIE.filter("Zone").stats()
+        {'mean': {...}, 'median': {...}, 'std': {...}, ...}
+
+        >>> # Single statistic
+        >>> manager.PHIE.filter("Zone").stats("mean")
+        {'mean': {'well_A': {'Zone_1': 0.17, ...}, ...}}
+
+        >>> # Multiple statistics
+        >>> manager.PHIE.filter("Zone").stats(["mean", "std", "percentile_50"])
+        {'mean': {...}, 'std': {...}, 'percentile_50': {...}}
+
+        >>> # As DataFrame with stats as columns
+        >>> manager.PHIE.filter("Zone").stats(return_df=True)
+           Well    Group      mean       std       min       max    median       p10       p50       p90
+        0  well_A  Zone_1    0.170     0.042     0.05     0.35     0.168     0.09     0.168     0.24
+        1  well_A  Zone_2    0.220     0.038     0.08     0.42     0.218     0.12     0.218     0.28
+        """
+        # Define default statistics
+        default_methods = ['mean', 'median', 'std', 'min', 'max', 'percentile_10', 'percentile_50', 'percentile_90']
+
+        # Parse methods argument
+        if methods is None:
+            stat_methods = default_methods
+        elif isinstance(methods, str):
+            stat_methods = [methods]
+        elif isinstance(methods, list):
+            stat_methods = methods
+        else:
+            raise ValueError("methods must be None, str, or list of str")
+
+        # Compute each statistic
+        results = {}
+        for method in stat_methods:
+            # Handle percentile_XX format
+            if method.startswith('percentile_'):
+                percentile = int(method.split('_')[1])
+                stat_result = self.percentile(percentile, weighted=weighted, return_df=False)
+                results[f'p{percentile}'] = stat_result
+            elif method == 'mean':
+                results['mean'] = self.mean(weighted=weighted, return_df=False)
+            elif method == 'median':
+                results['median'] = self.median(weighted=weighted, return_df=False)
+            elif method == 'std':
+                results['std'] = self.std(weighted=weighted, return_df=False)
+            elif method == 'min':
+                results['min'] = self.min(return_df=False)
+            elif method == 'max':
+                results['max'] = self.max(return_df=False)
+            elif method == 'mode':
+                results['mode'] = self.mode(weighted=weighted, return_df=False)
+            else:
+                raise ValueError(f"Unknown statistic: {method}")
+
+        if not return_df:
+            return results
+
+        # Convert to DataFrame with statistics as columns
+        # First, flatten each statistic to get rows
+        dfs = []
+        for stat_name, stat_dict in results.items():
+            df = _flatten_to_dataframe(stat_dict, stat_name)
+            if not df.empty:
+                dfs.append(df)
+
+        if not dfs:
+            return pd.DataFrame()
+
+        # Merge all DataFrames on grouping columns
+        # Identify grouping columns (all except the last column which is the stat value)
+        first_df = dfs[0]
+        grouping_cols = list(first_df.columns[:-1])  # All except last column
+
+        # Start with first DataFrame
+        merged = dfs[0]
+
+        # Merge remaining DataFrames
+        for df in dfs[1:]:
+            merged = pd.merge(merged, df, on=grouping_cols, how='outer')
+
+        return merged
 
     def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> '_ManagerPropertyProxy':
         """
