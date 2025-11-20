@@ -1034,20 +1034,44 @@ class Property(PropertyOperationsMixin):
         max_valid_depth = valid_depths.max()
 
         # Find boundaries that fall within the valid data range
+        # Filter to boundaries within valid range first
+        mask = (boundary_depths > min_valid_depth) & (boundary_depths < max_valid_depth)
+        potential_boundaries = boundary_depths[mask]
+
+        if len(potential_boundaries) == 0:
+            # No boundaries in range, return copies
+            return (
+                self.depth.copy(),
+                self.values.copy(),
+                [sp for sp in self.secondary_properties]
+            )
+
+        # Vectorized check if boundaries already exist in depth array
+        # Use searchsorted to find insertion points, then check distances to neighbors
+        # Cache depth array to avoid repeated property access
+        depth_array = self.depth
+        depth_len = len(depth_array)
+        tolerance = 0.001  # 1mm tolerance
+
         boundaries_to_insert = []
-        for bd in boundary_depths:
-            # Check if boundary falls strictly within valid data range
-            if min_valid_depth < bd < max_valid_depth:
-                # Check it's not already a sample point (within 1mm tolerance)
-                # Use rtol=0 to only use absolute tolerance (avoid relative tolerance scaling with depth)
-                # Note: 1mm tolerance to avoid duplicate samples, but still capture boundary changes
-                if not np.any(np.isclose(self.depth, bd, atol=0.001, rtol=0)):
-                    boundaries_to_insert.append(bd)
+        for bd in potential_boundaries:
+            # Find where this boundary would be inserted
+            idx = np.searchsorted(depth_array, bd)
+
+            # Check distance to left and right neighbors
+            is_duplicate = False
+            if idx > 0 and abs(depth_array[idx - 1] - bd) < tolerance:
+                is_duplicate = True
+            if idx < depth_len and abs(depth_array[idx] - bd) < tolerance:
+                is_duplicate = True
+
+            if not is_duplicate:
+                boundaries_to_insert.append(bd)
 
         if not boundaries_to_insert:
             # No boundaries to insert, return copies
             return (
-                self.depth.copy(),
+                depth_array.copy(),
                 self.values.copy(),
                 [sp for sp in self.secondary_properties]
             )
@@ -1055,11 +1079,11 @@ class Property(PropertyOperationsMixin):
         boundaries_to_insert = np.array(sorted(boundaries_to_insert))
 
         # Create new depth grid with boundary samples
-        new_depth = np.sort(np.concatenate([self.depth, boundaries_to_insert]))
+        new_depth = np.sort(np.concatenate([depth_array, boundaries_to_insert]))
 
         # Interpolate main property values at new depths
         new_values = self._resample_to_grid(
-            self.depth,
+            depth_array,
             self.values,
             new_depth,
             method='linear' if self.type == 'continuous' else 'previous'
@@ -1068,15 +1092,18 @@ class Property(PropertyOperationsMixin):
         # Interpolate all existing secondary properties
         new_secondaries = []
         for sp in self.secondary_properties:
+            # Cache sp properties to avoid repeated access
+            sp_depth = sp.depth
+            sp_values = sp.values
             new_sp_values = self._resample_to_grid(
-                sp.depth,
-                sp.values,
+                sp_depth,
+                sp_values,
                 new_depth,
                 method='previous'  # Secondary properties are discrete
             )
             new_secondaries.append(Property(
                 name=sp.name,
-                depth=new_depth.copy(),
+                depth=new_depth.copy(),  # Copy to avoid shared references
                 values=new_sp_values,
                 parent_well=sp.parent_well,
                 unit=sp.unit,
@@ -1353,7 +1380,9 @@ class Property(PropertyOperationsMixin):
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
-        filter_values = current_filter.values[mask]
+        # Cache filter values to avoid repeated property access
+        current_filter_values = current_filter.values
+        filter_values = current_filter_values[mask]
         unique_vals = np.unique(filter_values[~np.isnan(filter_values)])
 
         if len(unique_vals) == 0:
@@ -1362,14 +1391,17 @@ class Property(PropertyOperationsMixin):
 
         # Calculate parent thickness BEFORE subdividing
         # This becomes the gross_thickness for all child groups
-        parent_intervals = compute_intervals(self.depth)
-        parent_valid = mask & ~np.isnan(self.values)
+        # Cache property access to avoid overhead
+        depth_array = self.depth
+        values_array = self.values
+        parent_intervals = compute_intervals(depth_array)
+        parent_valid = mask & ~np.isnan(values_array)
         parent_thickness = float(np.sum(parent_intervals[parent_valid]))
 
         # Group by each unique value
         result = {}
         for val in unique_vals:
-            sub_mask = mask & (current_filter.values == val)
+            sub_mask = mask & (current_filter_values == val)
 
             # Discrete properties are already rounded to integers at load time,
             # so we can directly use integer conversion for label lookup
@@ -1441,14 +1473,18 @@ class Property(PropertyOperationsMixin):
             - samples, thickness, fraction
             - calculation: method indicator
         """
-        values = self.values[mask]
+        # Cache property access to avoid overhead
+        values_array = self.values
+        depth_array = self.depth
+
+        values = values_array[mask]
         valid = values[~np.isnan(values)]
 
         # Compute depth intervals on FULL depth array first, then mask
         # This is critical! Intervals must be computed on full grid so that
         # zone boundary samples get correct weights based on their neighbors
         # in the full sequence, not just within their zone.
-        full_intervals = compute_intervals(self.depth)
+        full_intervals = compute_intervals(depth_array)
         intervals = full_intervals[mask]
         valid_mask_local = ~np.isnan(values)
         valid_intervals = intervals[valid_mask_local]

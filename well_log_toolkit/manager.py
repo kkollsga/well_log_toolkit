@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from .exceptions import LasFileError, PropertyNotFoundError
+from .exceptions import LasFileError, PropertyNotFoundError, PropertyTypeError
 from .las_file import LasFile
 from .well import Well
 from .property import Property
@@ -874,21 +874,8 @@ class _ManagerPropertyProxy:
                     prop = well.get_property(self._property_name, source=source_name)
                     prop = self._apply_operation(prop)
 
-                    # Check if all filter properties exist in this source before applying
-                    skip_source = False
-                    for filter_name, _ in self._filters:
-                        try:
-                            # Try to get filter property from the same source
-                            well.get_property(filter_name, source=source_name)
-                        except (PropertyNotFoundError, KeyError):
-                            # Filter property doesn't exist in this source, skip it
-                            skip_source = True
-                            break
-
-                    if skip_source:
-                        continue
-
                     # Apply all filters (specify source to avoid ambiguity)
+                    # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
                     for filter_name, insert_boundaries in self._filters:
                         if insert_boundaries is not None:
                             prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
@@ -902,9 +889,8 @@ class _ManagerPropertyProxy:
                         precision=precision
                     )
 
-                except (PropertyNotFoundError, AttributeError, KeyError, ValueError) as e:
-                    # Property or filter doesn't exist in this source, skip it
-                    # This includes cases where the main property exists but filter properties don't
+                except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+                    # Property or filter doesn't exist in this source, or filter isn't discrete - skip it
                     pass
 
             return source_results if source_results else None
@@ -940,21 +926,8 @@ class _ManagerPropertyProxy:
                         prop = well.get_property(self._property_name, source=source_name)
                         prop = self._apply_operation(prop)
 
-                        # Check if all filter properties exist in this source before applying
-                        skip_source = False
-                        for filter_name, _ in self._filters:
-                            try:
-                                # Try to get filter property from the same source
-                                well.get_property(filter_name, source=source_name)
-                            except (PropertyNotFoundError, KeyError):
-                                # Filter property doesn't exist in this source, skip it
-                                skip_source = True
-                                break
-
-                        if skip_source:
-                            continue
-
                         # Apply all filters (specify source to avoid ambiguity)
+                        # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
                         for filter_name, insert_boundaries in self._filters:
                             if insert_boundaries is not None:
                                 prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
@@ -969,8 +942,8 @@ class _ManagerPropertyProxy:
                         )
                         source_results[source_name] = result
 
-                    except (PropertyNotFoundError, AttributeError, KeyError, ValueError) as e:
-                        # Property doesn't exist in this source, skip it
+                    except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+                        # Property or filter doesn't exist in this source, or filter isn't discrete - skip it
                         pass
 
                 return source_results if source_results else None
