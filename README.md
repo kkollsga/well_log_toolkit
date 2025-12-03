@@ -10,12 +10,16 @@ Fast, intuitive Python library for petrophysical well log analysis. Load LAS fil
 - **Depth-Weighted Statistics** - Proper averaging for irregular sampling
 - **Multi-Well Statistics** - Cross-well analytics: `manager.PHIE.filter('Zone').percentile(50)`
 - **Multi-Well Management** - Broadcast operations: `manager.PHIE_percent = manager.PHIE * 100`
-- **Project Persistence** - Save/load entire projects with metadata
+- **Well Log Visualization** - Create publication-quality log displays in Jupyter Lab
+- **Project Persistence** - Save/load entire projects with metadata and templates
 
 ## Installation
 
 ```bash
 pip install well-log-toolkit
+
+# With visualization support (matplotlib)
+pip install well-log-toolkit[visualization]
 ```
 
 ## Table of Contents
@@ -23,6 +27,7 @@ pip install well-log-toolkit
 - [1-Minute Tutorial](#1-minute-tutorial) - Get started immediately
 - [Quick Start](#quick-start) - Core workflow in 5 minutes
 - [Core Concepts](#core-concepts) - Essential patterns
+- [Visualization](#visualization) - Create well log displays
 - [Full Documentation](#documentation) - Complete guides
 
 ---
@@ -307,6 +312,398 @@ manager = WellDataManager('my_project/')
 
 ---
 
+## Visualization
+
+Create publication-quality well log displays optimized for Jupyter Lab. Build customizable templates with multiple tracks showing continuous logs, discrete properties, fills, and formation tops.
+
+### Quick Start
+
+```python
+from well_log_toolkit import WellDataManager, Template
+
+# Load data
+manager = WellDataManager()
+manager.load_las("well.las")
+well = manager.well_36_7_5_A
+
+# Create a simple display with default template
+view = well.WellView(depth_range=[2800, 3000])
+view.show()  # Displays inline in Jupyter
+
+# Save to file
+view.save("well_log.png", dpi=300)
+```
+
+### Creating Templates
+
+Templates define the layout and styling of well log displays:
+
+```python
+from well_log_toolkit import Template
+
+# Create template
+template = Template("reservoir")
+
+# Add GR track with colormap fill
+template.add_track(
+    track_type="continuous",
+    logs=[{"name": "GR", "x_range": [0, 150], "color": "black"}],
+    fill={
+        "left": {"track_edge": "left"},
+        "right": {"curve": "GR"},
+        "colormap": "viridis",     # Creates horizontal color bands
+        "color_range": [20, 150],  # GR values map to colormap
+        "alpha": 0.7
+    },
+    title="Gamma Ray"
+)
+
+# Add porosity and saturation track
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "PHIE", "x_range": [0.45, 0], "color": "blue"},
+        {"name": "SW", "x_range": [0, 1], "color": "red"}
+    ],
+    fill={
+        "left": {"curve": "PHIE"},
+        "right": {"value": 0},
+        "color": "lightblue",
+        "alpha": 0.5
+    },
+    title="Porosity & Saturation"
+)
+
+# Add resistivity track (logarithmic scale)
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "ILD", "x_range": [0.2, 2000], "color": "red"},
+        {"name": "ILM", "x_range": [0.2, 2000], "color": "green"}
+    ],
+    title="Resistivity"
+)
+
+# Add facies track (discrete/categorical)
+template.add_track(
+    track_type="discrete",
+    logs=[{"name": "Facies"}],
+    tops={
+        "name": "Well_Tops",
+        "line_style": "--",
+        "line_width": 2.0,
+        "title_size": 9,
+        "title_weight": "bold",
+        "title_orientation": "right"
+    },
+    title="Facies"
+)
+
+# Add depth track
+template.add_track(track_type="depth", width=0.3, title="Depth")
+
+# Save template for reuse
+template.save("reservoir_template.json")
+```
+
+### Using Templates
+
+**Option 1: Pass template directly**
+```python
+view = well.WellView(depth_range=[2800, 3000], template=template)
+view.show()
+```
+
+**Option 2: Store in manager (recommended)**
+```python
+# Store template in manager
+manager.set_template("reservoir", template)
+
+# Use by name in any well
+view = well.WellView(depth_range=[2800, 3000], template="reservoir")
+view.show()
+
+# List all templates
+print(manager.list_templates())  # ['reservoir', 'qc', 'basic']
+
+# Templates are saved with projects
+manager.save("my_project/")  # Saves to my_project/templates/reservoir.json
+```
+
+**Option 3: Load from file**
+```python
+template = Template.load("reservoir_template.json")
+view = well.WellView(depth_range=[2800, 3000], template=template)
+view.show()
+```
+
+### Track Types
+
+**Continuous Tracks** - For log curves (GR, RHOB, NPHI, etc.)
+```python
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "GR", "x_range": [0, 150], "color": "green", "style": "-"},
+        {"name": "CALI", "x_range": [6, 16], "color": "black", "style": "--"}
+    ],
+    title="GR & Caliper"
+)
+```
+
+**Discrete Tracks** - For categorical data (facies, zones)
+```python
+template.add_track(
+    track_type="discrete",
+    logs=[{"name": "Facies"}],
+    title="Lithology"
+)
+```
+
+**Depth Tracks** - Show depth axis
+```python
+template.add_track(track_type="depth", width=0.3)
+```
+
+### Fill Patterns
+
+**Solid Color Fill**
+```python
+fill={
+    "left": {"curve": "PHIE"},
+    "right": {"value": 0},
+    "color": "lightblue",
+    "alpha": 0.5
+}
+```
+
+**Colormap Fill** (horizontal bands colored by curve value)
+```python
+fill={
+    "left": {"track_edge": "left"},
+    "right": {"curve": "GR"},
+    "colormap": "viridis",        # or "inferno", "plasma", "RdYlGn"
+    "color_range": [20, 150],     # GR values map to colors
+    "alpha": 0.7
+}
+# Low GR (20) → dark purple, High GR (150) → bright yellow
+```
+
+**Fill Between Two Curves**
+```python
+fill={
+    "left": {"curve": "RHOB"},
+    "right": {"curve": "NPHI"},
+    "colormap": "RdYlGn",
+    "colormap_curve": "NPHI",     # Use NPHI values for colors
+    "color_range": [0.15, 0.35],
+    "alpha": 0.6
+}
+```
+
+### Formation Tops
+
+Add formation markers to any track:
+
+```python
+template.add_track(
+    track_type="discrete",
+    logs=[{"name": "Facies"}],
+    tops={
+        "name": "Well_Tops",           # Property containing tops
+        "line_style": "--",             # Line style
+        "line_width": 2.0,              # Line thickness
+        "title_size": 9,                # Label font size
+        "title_weight": "bold",         # Font weight
+        "title_orientation": "right",   # Label position (left/center/right)
+        "line_offset": 0.0              # Horizontal offset
+    }
+)
+```
+
+### Template Management
+
+```python
+# Store template
+manager.set_template("reservoir", template)
+
+# Retrieve template
+template = manager.get_template("reservoir")
+
+# List all templates
+templates = manager.list_templates()  # ['reservoir', 'qc', 'basic']
+
+# Remove template
+manager.remove_template("old_template")
+
+# Templates save with projects
+manager.save("my_project/")
+# Creates: my_project/templates/*.json
+
+# Templates load with projects
+manager.load("my_project/")
+print(manager.list_templates())  # All saved templates restored
+```
+
+### Editing Templates
+
+```python
+# Load existing template
+template = manager.get_template("reservoir")
+
+# View tracks
+df = template.list_tracks()
+print(df)
+#    Index       Type           Logs         Title  Width
+# 0      0 continuous          [GR]    Gamma Ray    1.0
+# 1      1 continuous  [PHIE, SW]    Porosity    1.0
+# 2      2      depth            []        Depth    0.3
+
+# Edit track
+template.edit_track(0, title="New Title")
+
+# Remove track
+template.remove_track(2)
+
+# Add new track
+template.add_track(track_type="continuous", logs=[{"name": "RT"}])
+
+# Save changes
+template.save("updated_template.json")
+```
+
+### Customization Options
+
+**Log Styling**
+```python
+logs=[{
+    "name": "GR",
+    "x_range": [0, 150],        # X-axis limits [left, right]
+    "color": "green",           # Line color (name or hex)
+    "style": "-",               # Line style ("-", "--", "-.", ":")
+    "thickness": 1.5,           # Line width
+    "alpha": 0.8                # Transparency (0-1)
+}]
+```
+
+**Figure Settings**
+```python
+view = well.WellView(
+    depth_range=[2800, 3000],
+    template="reservoir",
+    figsize=(12, 10),           # Width x height in inches
+    dpi=100                     # Resolution
+)
+```
+
+**Export Options**
+```python
+# PNG for presentations
+view.save("well_log.png", dpi=300)
+
+# PDF for publications
+view.save("well_log.pdf")
+
+# SVG for editing
+view.save("well_log.svg")
+```
+
+### Complete Example
+
+```python
+from well_log_toolkit import WellDataManager, Template
+
+# Setup
+manager = WellDataManager()
+manager.load_las("well.las")
+
+# Create comprehensive template
+template = Template("petrophysics")
+
+# Track 1: GR with colormap
+template.add_track(
+    track_type="continuous",
+    logs=[{"name": "GR", "x_range": [0, 150], "color": "black"}],
+    fill={
+        "left": {"track_edge": "left"},
+        "right": {"curve": "GR"},
+        "colormap": "viridis",
+        "color_range": [20, 150],
+        "alpha": 0.7
+    },
+    title="Gamma Ray (API)"
+)
+
+# Track 2: Resistivity
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "ILD", "x_range": [0.2, 2000], "color": "red", "thickness": 1.5},
+        {"name": "ILM", "x_range": [0.2, 2000], "color": "green"}
+    ],
+    title="Resistivity (ohmm)"
+)
+
+# Track 3: Density-Neutron
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "RHOB", "x_range": [1.95, 2.95], "color": "red"},
+        {"name": "NPHI", "x_range": [0.45, -0.15], "color": "blue"}
+    ],
+    fill={
+        "left": {"curve": "RHOB"},
+        "right": {"curve": "NPHI"},
+        "colormap": "RdYlGn",
+        "color_range": [-0.15, 0.45],
+        "alpha": 0.5
+    },
+    title="Density-Neutron"
+)
+
+# Track 4: Porosity & Saturation
+template.add_track(
+    track_type="continuous",
+    logs=[
+        {"name": "PHIE", "x_range": [0.45, 0], "color": "blue"},
+        {"name": "SW", "x_range": [0, 1], "color": "red"}
+    ],
+    fill={
+        "left": {"curve": "PHIE"},
+        "right": {"value": 0},
+        "color": "lightblue",
+        "alpha": 0.5
+    },
+    title="PHIE & SW"
+)
+
+# Track 5: Facies with formation tops
+template.add_track(
+    track_type="discrete",
+    logs=[{"name": "Facies"}],
+    tops={
+        "name": "Well_Tops",
+        "line_style": "--",
+        "line_width": 2.0,
+        "title_size": 9,
+        "title_weight": "bold",
+        "title_orientation": "right"
+    },
+    title="Lithofacies"
+)
+
+# Track 6: Depth
+template.add_track(track_type="depth", width=0.3, title="MD (m)")
+
+# Save template and create display
+manager.set_template("petrophysics", template)
+well = manager.well_36_7_5_A
+view = well.WellView(depth_range=[2800, 3200], template="petrophysics")
+view.save("petrophysics_display.png", dpi=300)
+```
+
+---
+
 ## Documentation
 
 ### Quick References
@@ -315,6 +712,7 @@ Jump directly to specific topics:
 
 - **[Managing Wells](#managing-wells)** - Add, remove, access wells
 - **[Manager-Level Statistics](#manager-level-statistics)** - Cross-well analytics
+- **[Visualization](#visualization)** - Create well log displays with templates
 - **[Formation Tops](#formation-tops-setup)** - Load and configure formation tops
 - **[Discrete Properties](#discrete-properties--labels)** - Set up labels for readable output
 - **[Statistics Explained](#understanding-statistics-output)** - What each statistic means
@@ -329,6 +727,9 @@ Jump directly to specific topics:
 ```python
 # Main classes
 from well_log_toolkit import WellDataManager, Well, Property, LasFile
+
+# Visualization (requires matplotlib)
+from well_log_toolkit import Template, WellView
 
 # Statistics functions
 from well_log_toolkit import compute_intervals, mean, sum, std, percentile
@@ -375,6 +776,20 @@ well.Reservoir = (well.PHIE > 0.15) & (well.SW < 0.35)
 ```python
 manager.PHIE_percent = manager.PHIE * 100
 manager.Reservoir = (manager.PHIE > 0.15) & (manager.SW < 0.35)
+```
+
+**Visualize well logs:**
+```python
+# Quick display
+view = well.WellView(depth_range=[2800, 3000])
+view.show()
+
+# With custom template
+template = Template("reservoir")
+template.add_track(track_type="continuous", logs=[{"name": "GR"}])
+manager.set_template("reservoir", template)
+view = well.WellView(template="reservoir")
+view.save("log.png", dpi=300)
 ```
 
 **Save and restore projects:**
@@ -817,10 +1232,15 @@ hc = well.computed.HC_Volume  # Also works
 
 ## Requirements
 
+**Core dependencies:**
 - Python >= 3.9
 - numpy >= 1.20.0
 - pandas >= 1.3.0
 - scipy >= 1.7.0
+
+**Optional dependencies:**
+- matplotlib >= 3.5.0 (for visualization)
+  - Install with: `pip install well-log-toolkit[visualization]`
 
 ## Performance
 

@@ -2,7 +2,7 @@
 Global orchestrator for multi-well analysis.
 """
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 import warnings
 
 import numpy as np
@@ -13,6 +13,9 @@ from .las_file import LasFile
 from .well import Well
 from .property import Property
 from .utils import sanitize_well_name, sanitize_property_name
+
+if TYPE_CHECKING:
+    from .visualization import Template
 
 
 def _sanitize_for_json(obj):
@@ -1376,6 +1379,7 @@ class WellDataManager:
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
         self._project_path: Optional[Path] = None  # Track project path for save()
+        self._templates: dict[str, 'Template'] = {}  # {template_name: Template}
 
         # Load project if provided
         if project is not None:
@@ -1962,7 +1966,8 @@ class WellDataManager:
         Save all wells and their sources to a project folder structure.
 
         Creates a folder for each well (well_xxx format) and exports all sources
-        as LAS files with well name prefix. Also renames LAS files for any sources
+        as LAS files with well name prefix. Also saves templates to a templates/
+        folder at the project root. Also renames LAS files for any sources
         that were renamed using rename_source(), and deletes LAS files for any
         sources that were removed using remove_source(). If path is not provided,
         uses the path from the last load() call.
@@ -1989,6 +1994,9 @@ class WellDataManager:
         #     36_7-5_A_CorePor.las
         #   well_36_7_5_B/
         #     36_7-5_B_Log.las
+        #   templates/
+        #     reservoir.json
+        #     qc.json
         >>>
         >>> # After load(), can save without path
         >>> manager = WellDataManager()
@@ -2015,6 +2023,7 @@ class WellDataManager:
 
         save_path.mkdir(parents=True, exist_ok=True)
 
+        # Save wells
         for well_key, well in self._wells.items():
             # Create well folder (well_key already has well_ prefix)
             well_folder = save_path / well_key
@@ -2029,13 +2038,25 @@ class WellDataManager:
             # Delete sources marked for deletion
             well.delete_marked_sources(well_folder)
 
+        # Save templates
+        if self._templates:
+            templates_folder = save_path / "templates"
+            templates_folder.mkdir(exist_ok=True)
+
+            for template_name, template in self._templates.items():
+                template_file = templates_folder / f"{template_name}.json"
+                template.save(template_file)
+
     def load(self, path: Union[str, Path]) -> 'WellDataManager':
         """
-        Load all wells from a project folder structure.
+        Load all wells and templates from a project folder structure.
 
-        Automatically discovers and loads all LAS files from well folders
-        (well_* format). Stores the project path for subsequent save() calls.
-        Clears any existing wells before loading.
+        Automatically discovers and loads:
+        - All LAS files from well folders (well_* format)
+        - All template JSON files from templates/ folder
+
+        Stores the project path for subsequent save() calls.
+        Clears any existing wells and templates before loading.
 
         Parameters
         ----------
@@ -2052,26 +2073,45 @@ class WellDataManager:
         >>> manager = WellDataManager()
         >>> manager.load("my_project")
         >>> print(manager.wells)  # All wells from project
+        >>> print(manager.list_templates())  # All templates from project
         >>> # ... make changes ...
         >>> manager.save()  # Saves back to "my_project"
 
         >>> # Load clears existing data
-        >>> manager.load("other_project")  # Replaces current wells
+        >>> manager.load("other_project")  # Replaces current wells and templates
         """
         base_path = Path(path)
 
         if not base_path.exists():
             raise FileNotFoundError(f"Project path does not exist: {path}")
 
-        # Clear existing wells before loading new project
+        # Clear existing data before loading new project
         self._wells.clear()
         self._name_mapping.clear()
+        self._templates.clear()
 
         # Store project path for save()
         self._project_path = base_path
 
-        # Find all well folders (well_*)
-        well_folders = sorted(base_path.glob("well_*"))
+        # Load templates if templates folder exists
+        templates_folder = base_path / "templates"
+        if templates_folder.exists() and templates_folder.is_dir():
+            from .visualization import Template
+            template_files = sorted(templates_folder.glob("*.json"))
+            for template_file in template_files:
+                try:
+                    template = Template.load(template_file)
+                    # Use filename (without extension) as template name
+                    template_name = template_file.stem
+                    self._templates[template_name] = template
+                except Exception as e:
+                    warnings.warn(f"Could not load template {template_file.name}: {e}")
+
+        # Find all well folders (well_*) - skip templates folder
+        well_folders = sorted([
+            folder for folder in base_path.glob("well_*")
+            if folder.is_dir() and folder.name != "templates"
+        ])
 
         if not well_folders:
             # Try loading all LAS files directly if no well folders
@@ -2083,11 +2123,10 @@ class WellDataManager:
 
         # Load from well folders
         for well_folder in well_folders:
-            if well_folder.is_dir():
-                # Find all LAS files in this folder
-                las_files = sorted(well_folder.glob("*.las"))
-                for las_file in las_files:
-                    self.load_las(las_file)
+            # Find all LAS files in this folder
+            las_files = sorted(well_folder.glob("*.las"))
+            for las_file in las_files:
+                self.load_las(las_file)
 
         return self
 
@@ -2212,7 +2251,118 @@ class WellDataManager:
         del self._wells[well_key]
         if well.name in self._name_mapping:
             del self._name_mapping[well.name]
-    
+
+    def set_template(self, name: str, template: Union['Template', dict]) -> None:
+        """
+        Store a display template in the manager.
+
+        Templates can be referenced by name when creating WellView displays.
+
+        Parameters
+        ----------
+        name : str
+            Template name for reference
+        template : Union[Template, dict]
+            Template object or dictionary configuration
+
+        Examples
+        --------
+        >>> from well_log_toolkit.visualization import Template
+        >>>
+        >>> # Create and store template
+        >>> template = Template("reservoir")
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{"name": "GR", "x_range": [0, 150], "color": "green"}]
+        ... )
+        >>> manager.set_template("reservoir", template)
+        >>>
+        >>> # Use template in WellView
+        >>> from well_log_toolkit.visualization import WellView
+        >>> view = manager.well_36_7_5_A.WellView(
+        ...     depth_range=[2800, 3000],
+        ...     template="reservoir"
+        ... )
+        """
+        from .visualization import Template
+
+        if isinstance(template, dict):
+            template = Template.from_dict(template)
+        elif not isinstance(template, Template):
+            raise TypeError(f"template must be Template or dict, got {type(template).__name__}")
+
+        self._templates[name] = template
+
+    def get_template(self, name: str) -> 'Template':
+        """
+        Get a stored template by name.
+
+        Parameters
+        ----------
+        name : str
+            Template name
+
+        Returns
+        -------
+        Template
+            The requested template
+
+        Raises
+        ------
+        KeyError
+            If template not found
+
+        Examples
+        --------
+        >>> template = manager.get_template("reservoir")
+        >>> print(template.tracks)
+        """
+        if name not in self._templates:
+            available = ', '.join(self._templates.keys())
+            raise KeyError(
+                f"Template '{name}' not found. "
+                f"Available templates: {available or 'none'}"
+            )
+        return self._templates[name]
+
+    def list_templates(self) -> list[str]:
+        """
+        List all stored template names.
+
+        Returns
+        -------
+        list[str]
+            List of template names
+
+        Examples
+        --------
+        >>> manager.list_templates()
+        ['reservoir', 'qc', 'basic']
+        """
+        return list(self._templates.keys())
+
+    def remove_template(self, name: str) -> None:
+        """
+        Remove a stored template.
+
+        Parameters
+        ----------
+        name : str
+            Template name to remove
+
+        Examples
+        --------
+        >>> manager.remove_template("old_template")
+        """
+        if name in self._templates:
+            del self._templates[name]
+        else:
+            available = ', '.join(self._templates.keys())
+            raise KeyError(
+                f"Template '{name}' not found. "
+                f"Available templates: {available or 'none'}"
+            )
+
     def __repr__(self) -> str:
         """String representation."""
         return f"WellDataManager(wells={len(self._wells)})"

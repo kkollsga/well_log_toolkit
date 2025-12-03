@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "well-log-toolkit"
-version = "0.1.60"
+version = "0.1.61"
 description = "Fast LAS file processing with lazy loading and filtering for well log analysis"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -49,6 +49,9 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+]
+visualization = [
+    "matplotlib>=3.5.0",
 ]
 
 [project.urls]

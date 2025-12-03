@@ -40,7 +40,7 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.60"
+__version__ = "0.1.61"
 
 from .manager import WellDataManager
 from .well import Well
@@ -67,6 +67,7 @@ from .exceptions import (
     WellNameMismatchError,
     DepthAlignmentError,
 )
+from .visualization import Template, WellView
 
 __all__ = [
     # Main classes
@@ -74,6 +75,9 @@ __all__ = [
     "Well",
     "Property",
     "LasFile",
+    # Visualization
+    "Template",
+    "WellView",
     # Utilities
     "sanitize_well_name",
     "sanitize_property_name",

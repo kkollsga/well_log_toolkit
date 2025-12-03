@@ -14,6 +14,7 @@ from .utils import sanitize_property_name, sanitize_well_name, filter_names
 
 if TYPE_CHECKING:
     from .manager import WellDataManager
+    from .visualization import Template, WellView
 
 
 class SourceView:
@@ -2035,6 +2036,64 @@ class Well:
 
                 # Export to file
                 las.export(filepath)
+
+    def WellView(
+        self,
+        depth_range: Optional[tuple[float, float]] = None,
+        template: Optional[Union['Template', dict, str]] = None,
+        figsize: Optional[tuple[float, float]] = None,
+        dpi: int = 100
+    ) -> 'WellView':
+        """
+        Create a well log display for this well.
+
+        Convenience method that creates a WellView object for visualization.
+
+        Parameters
+        ----------
+        depth_range : tuple[float, float], optional
+            Depth interval to display [start_depth, end_depth]
+        template : Union[Template, dict, str], optional
+            Display template (Template object, dict config, or name from manager)
+        figsize : tuple[float, float], optional
+            Figure size (width, height) in inches
+        dpi : int, default 100
+            Figure resolution
+
+        Returns
+        -------
+        WellView
+            Well log display object
+
+        Examples
+        --------
+        >>> # Simple display with default template
+        >>> view = well.WellView(depth_range=[2800, 3000])
+        >>> view.show()
+        >>>
+        >>> # Use stored template from manager
+        >>> view = well.WellView(depth_range=[2800, 3000], template="reservoir")
+        >>> view.show()
+        >>>
+        >>> # Use custom template
+        >>> from well_log_toolkit.visualization import Template
+        >>> template = Template("custom")
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{"name": "GR", "color": "green"}]
+        ... )
+        >>> view = well.WellView(depth_range=[2800, 3000], template=template)
+        >>> view.save("well_log.png", dpi=300)
+        """
+        from .visualization import WellView as WellViewClass
+
+        return WellViewClass(
+            well=self,
+            depth_range=depth_range,
+            template=template,
+            figsize=figsize,
+            dpi=dpi
+        )
 
     def __repr__(self) -> str:
         """String representation."""
