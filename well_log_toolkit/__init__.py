@@ -11,11 +11,11 @@ LasFile : LAS file reader with lazy loading
 Examples
 --------
 >>> from well_log_toolkit import WellDataManager
->>> 
+>>>
 >>> # Load LAS files
 >>> manager = WellDataManager()
 >>> manager.load_las("well1.las").load_las("well2.las")
->>> 
+>>>
 >>> # Access well and properties
 >>> well = manager.well_12_3_2_B
 >>>
@@ -40,7 +40,30 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-__version__ = "0.1.66"
+# Get version from package metadata (installed) or pyproject.toml (development)
+def _get_version():
+    """Get version from installed package metadata or pyproject.toml."""
+    try:
+        # Try to get version from installed package metadata (Python 3.8+)
+        from importlib.metadata import version
+        return version("well-log-toolkit")
+    except Exception:
+        # Fall back to reading from pyproject.toml (for development)
+        try:
+            from pathlib import Path
+            import re
+            pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+            if pyproject_path.exists():
+                content = pyproject_path.read_text()
+                match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+                if match:
+                    return match.group(1)
+        except Exception:
+            pass
+    # Final fallback
+    return "unknown"
+
+__version__ = _get_version()
 
 from .manager import WellDataManager
 from .well import Well

@@ -14,6 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import Normalize
+from matplotlib.patches import Rectangle
 
 if TYPE_CHECKING:
     from .well import Well
@@ -91,7 +92,7 @@ class Template:
         self,
         track_type: str = "continuous",
         logs: Optional[list[dict]] = None,
-        fill: Optional[dict] = None,
+        fill: Optional[Union[dict, list[dict]]] = None,
         tops: Optional[dict] = None,
         width: float = 1.0,
         title: Optional[str] = None
@@ -114,8 +115,8 @@ class Template:
             - style (str): Line style ("-", "--", "-.", ":")
             - thickness (float): Line width
             - alpha (float): Transparency (0-1)
-        fill : dict, optional
-            Fill configuration with keys:
+        fill : Union[dict, list[dict]], optional
+            Fill configuration or list of fill configurations. Each fill dict can contain:
             - left (dict): Left boundary {"curve": name} or {"value": float} or {"track_edge": "left"}
             - right (dict): Right boundary (same format as left)
             - color (str): Fill color name (for solid fills)
@@ -124,6 +125,7 @@ class Template:
             - colormap_curve (str): Curve name to use for colormap values (defaults to left boundary curve)
             - color_range (list): [min, max] values for colormap normalization
             - alpha (float): Transparency (0-1)
+            Multiple fills are drawn in order (first fill is drawn first, then subsequent fills on top)
         tops : dict, optional
             Formation tops configuration with keys:
             - name (str): Property name containing tops
@@ -192,6 +194,32 @@ class Template:
         ...     title="Gamma Ray"
         ... )
         >>>
+        >>> # Add porosity/saturation track with multiple fills
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[
+        ...         {"name": "PHIE", "x_range": [0.45, 0], "color": "blue"},
+        ...         {"name": "SW", "x_range": [0, 1], "color": "red"}
+        ...     ],
+        ...     fill=[
+        ...         # Fill 1: PHIE to zero with light blue
+        ...         {
+        ...             "left": {"curve": "PHIE"},
+        ...             "right": {"value": 0},
+        ...             "color": "lightblue",
+        ...             "alpha": 0.3
+        ...         },
+        ...         # Fill 2: SW to one with light red
+        ...         {
+        ...             "left": {"curve": "SW"},
+        ...             "right": {"value": 1},
+        ...             "color": "lightcoral",
+        ...             "alpha": 0.3
+        ...         }
+        ...     ],
+        ...     title="PHIE & SW"
+        ... )
+        >>>
         >>> # Add discrete facies track
         >>> template.add_track(
         ...     track_type="discrete",
@@ -202,10 +230,18 @@ class Template:
         >>> # Add depth track
         >>> template.add_track(track_type="depth", width=0.3)
         """
+        # Normalize fill to always be a list internally (for backward compatibility)
+        fill_list = None
+        if fill is not None:
+            if isinstance(fill, dict):
+                fill_list = [fill]
+            else:
+                fill_list = fill
+
         track = {
             "type": track_type,
             "logs": logs or [],
-            "fill": fill,
+            "fill": fill_list,
             "tops": tops,
             "width": width,
             "title": title
@@ -263,6 +299,11 @@ class Template:
         """
         if 0 <= index < len(self.tracks):
             for key, value in kwargs.items():
+                # Normalize fill to list format (for backward compatibility)
+                if key == "fill" and value is not None:
+                    if isinstance(value, dict):
+                        value = [value]
+
                 if key in self.tracks[index]:
                     self.tracks[index][key] = value
         else:
@@ -664,66 +705,62 @@ class WellView:
         # Set x-axis to 0-1 for normalized plotting
         ax.set_xlim([0, 1])
 
-        # Handle fill (uses original values for boundary detection)
+        # Remove x-axis tick labels (normalized values are not meaningful to display)
+        ax.tick_params(axis='x', labelbottom=False)
+
+        # Handle fills (uses original values for boundary detection)
+        # fill is now always a list (or None)
         if fill and plotted_curves:
-            # Need to normalize fill boundaries too
-            self._add_fill_normalized(ax, fill, plotted_curves, depth_masked, logs)
+            # Apply each fill in order
+            for fill_config in fill:
+                self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs)
 
         # Invert y-axis (depth increases downward)
         ax.invert_yaxis()
         ax.grid(True, alpha=0.3)
 
-        # Build track title with scale information
-        title_text = self._build_track_header(track.get("title", ""), scale_info)
-        # Compact layout: reduce padding since scale indicators are above the plot
-        ax.set_title(title_text, fontsize=9, fontweight='bold', loc='center', pad=10)
+        # Set track title (just the title, curve info shown in boxed area below)
+        title_text = track.get("title", "")
+        ax.set_title(title_text, fontsize=10, fontweight='bold', loc='center', pad=15)
 
-        # Add visual line indicators for each curve in the header area
-        self._add_curve_indicators(ax, scale_info, logs)
+        # Add visual line indicators with outline box for each curve in the header area
+        self._add_curve_indicators(ax, scale_info, logs, title_text)
 
-    def _build_track_header(self, title: str, scale_info: list[dict]) -> str:
+    def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict], title: str) -> None:
         """
-        Build compact track header with just title and curve names.
+        Add visual line indicators with scale values in an outlined box.
 
-        Scale values are shown on the line indicators, not in the title text.
+        Format for each curve:
+        LogName
+        3.95 ---------------- 1.95
 
-        Format for multiple curves:
-            "Gamma Ray"
-            "GR"
-            "Den"
-        """
-        if not scale_info:
-            return title
-
-        # Build header lines - compact format
-        header_lines = []
-
-        # Add track title if present
-        if title:
-            header_lines.append(title)
-
-        # Add each curve's name (scales shown on visual indicators)
-        for info in scale_info:
-            header_lines.append(info['name'])
-
-        return "\n".join(header_lines)
-
-    def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict]) -> None:
-        """
-        Add visual line indicators with scale values on the sides.
-
-        Format: "3.95 ---------------- 1.95"
-
-        Draws horizontal lines with min value on left, max value on right.
+        All curves are enclosed in a box with outline.
         """
         if not scale_info:
             return
 
-        # Starting y position (above the plot, in axes fraction coordinates)
-        # Compact spacing - one line per curve
+        # Spacing configuration
         y_start = 1.01  # Start just above the plot
-        line_spacing = 0.025  # Compact vertical spacing (increased to prevent overlap)
+        title_spacing = 0.008  # Space between log name and its scale line
+        log_spacing = 0.035  # Space between different logs (title + scale + gap)
 
+        # Calculate total height needed for the box
+        box_height = len(scale_info) * log_spacing
+        box_bottom = y_start
+
+        # Draw outline box around all indicators
+        box = Rectangle(
+            (0.02, box_bottom), 0.96, box_height,
+            transform=ax.get_xaxis_transform(),
+            fill=False,
+            edgecolor='black',
+            linewidth=1.0,
+            clip_on=False,
+            zorder=9
+        )
+        ax.add_patch(box)
+
+        # Draw each curve indicator
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
             log_config = next((log for log in logs if log.get("name") == info['name']), None)
@@ -733,12 +770,27 @@ class WellView:
                 style = log_config.get("style", "-")
                 thickness = log_config.get("thickness", 1.0)
 
-                # Calculate y position for this curve (reverse order so first curve appears at top)
+                # Calculate y positions for this curve (reverse order so first curve appears at top)
                 # First curve in scale_info should be furthest from plot (highest y)
-                y_pos = y_start + ((len(scale_info) - 1 - idx) * line_spacing)
+                base_y = y_start + ((len(scale_info) - 1 - idx) * log_spacing)
 
-                # Draw horizontal line between 0.15 and 0.85 (leaving room for text)
-                ax.plot([0.15, 0.85], [y_pos, y_pos],
+                # Position for log name (above the scale line)
+                name_y = base_y + log_spacing - title_spacing
+                # Position for scale line
+                scale_y = base_y + title_spacing
+
+                # Add log name text centered
+                ax.text(0.5, name_y, info['name'],
+                       transform=ax.get_xaxis_transform(),
+                       ha='center',
+                       va='bottom',
+                       fontsize=8,
+                       fontweight='bold',
+                       clip_on=False,
+                       zorder=11)
+
+                # Draw horizontal line between 0.15 and 0.85 (leaving room for scale values)
+                ax.plot([0.15, 0.85], [scale_y, scale_y],
                        color=color,
                        linestyle=style,
                        linewidth=thickness,
@@ -751,7 +803,7 @@ class WellView:
                 max_val = info['max']
 
                 # Add min value text on left side of line
-                ax.text(0.05, y_pos, f"{min_val:.2f}",
+                ax.text(0.05, scale_y, f"{min_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='left',
                        va='center',
@@ -761,7 +813,7 @@ class WellView:
                        zorder=11)
 
                 # Add max value text on right side of line
-                ax.text(0.95, y_pos, f"{max_val:.2f}",
+                ax.text(0.95, scale_y, f"{max_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='right',
                        va='center',
