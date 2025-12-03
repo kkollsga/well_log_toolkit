@@ -117,8 +117,10 @@ class Template:
             - alpha (float): Transparency (0-1)
         fill : Union[dict, list[dict]], optional
             Fill configuration or list of fill configurations. Each fill dict can contain:
-            - left (dict): Left boundary {"curve": name} or {"value": float} or {"track_edge": "left"}
-            - right (dict): Right boundary (same format as left)
+            - left: Left boundary (string/number or dict)
+              - Simple: "track_edge", "CurveName", or numeric value
+              - Dict: {"curve": name}, {"value": float}, or {"track_edge": "left"}
+            - right: Right boundary (same format as left)
             - color (str): Fill color name (for solid fills)
             - colormap (str): Matplotlib colormap name (e.g., "viridis", "inferno")
               Creates horizontal bands where depth intervals are colored based on curve values
@@ -163,7 +165,7 @@ class Template:
         ...     title="Gamma Ray"
         ... )
         >>>
-        >>> # Add porosity track with fill
+        >>> # Add porosity track with fill (simplified API)
         >>> template.add_track(
         ...     track_type="continuous",
         ...     logs=[{
@@ -172,8 +174,8 @@ class Template:
         ...         "color": "blue"
         ...     }],
         ...     fill={
-        ...         "left": {"curve": "PHIE"},
-        ...         "right": {"value": 0},
+        ...         "left": "PHIE",      # Simple: curve name
+        ...         "right": 0,          # Simple: numeric value
         ...         "color": "lightblue",
         ...         "alpha": 0.5
         ...     },
@@ -185,8 +187,8 @@ class Template:
         ...     track_type="continuous",
         ...     logs=[{"name": "GR", "x_range": [0, 150], "color": "black"}],
         ...     fill={
-        ...         "left": {"track_edge": "left"},
-        ...         "right": {"curve": "GR"},
+        ...         "left": "track_edge",  # Simple: track edge
+        ...         "right": "GR",         # Simple: curve name
         ...         "colormap": "viridis",
         ...         "color_range": [20, 150],
         ...         "alpha": 0.7
@@ -204,15 +206,15 @@ class Template:
         ...     fill=[
         ...         # Fill 1: PHIE to zero with light blue
         ...         {
-        ...             "left": {"curve": "PHIE"},
-        ...             "right": {"value": 0},
+        ...             "left": "PHIE",
+        ...             "right": 0,
         ...             "color": "lightblue",
         ...             "alpha": 0.3
         ...         },
         ...         # Fill 2: SW to one with light red
         ...         {
-        ...             "left": {"curve": "SW"},
-        ...             "right": {"value": 1},
+        ...             "left": "SW",
+        ...             "right": 1,
         ...             "color": "lightcoral",
         ...             "alpha": 0.3
         ...         }
@@ -719,11 +721,8 @@ class WellView:
         ax.invert_yaxis()
         ax.grid(True, alpha=0.3)
 
-        # Set track title (just the title, curve info shown in boxed area below)
+        # Add visual line indicators with outline box and track title for each curve in the header area
         title_text = track.get("title", "")
-        ax.set_title(title_text, fontsize=10, fontweight='bold', loc='center', pad=15)
-
-        # Add visual line indicators with outline box for each curve in the header area
         self._add_curve_indicators(ax, scale_info, logs, title_text)
 
     def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict], title: str) -> None:
@@ -734,19 +733,27 @@ class WellView:
         LogName
         3.95 ---------------- 1.95
 
-        All curves are enclosed in a box with outline.
+        All curves are enclosed in a box with outline, with track title above.
         """
         if not scale_info:
             return
 
         # Spacing configuration
-        y_start = 1.01  # Start just above the plot
+        y_start = 1.0  # Start at the top of the plot (no gap)
         title_spacing = 0.008  # Space between log name and its scale line
         log_spacing = 0.035  # Space between different logs (title + scale + gap)
+        top_padding = 0.01  # Padding inside box above topmost log name
+        bottom_padding = 0.005  # Padding inside box below bottommost scale line
 
-        # Calculate total height needed for the box
-        box_height = len(scale_info) * log_spacing
+        # Calculate positions for logs (first log at top)
+        # Bottommost log (last in list) has its scale line at y_start + bottom_padding
+        # Each log needs log_spacing vertical space
+
+        # Total height needed inside box
+        content_height = len(scale_info) * log_spacing
+        box_height = content_height + top_padding + bottom_padding
         box_bottom = y_start
+        box_top = box_bottom + box_height
 
         # Draw outline box around all indicators
         box = Rectangle(
@@ -760,6 +767,15 @@ class WellView:
         )
         ax.add_patch(box)
 
+        # Add track title above the box
+        if title:
+            title_y = box_top + 0.005  # Small gap above box
+            ax.text(0.5, title_y, title,
+                   transform=ax.get_xaxis_transform(),
+                   ha='center', va='bottom',
+                   fontsize=10, fontweight='bold',
+                   clip_on=False, zorder=11)
+
         # Draw each curve indicator
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
@@ -771,8 +787,10 @@ class WellView:
                 thickness = log_config.get("thickness", 1.0)
 
                 # Calculate y positions for this curve (reverse order so first curve appears at top)
-                # First curve in scale_info should be furthest from plot (highest y)
-                base_y = y_start + ((len(scale_info) - 1 - idx) * log_spacing)
+                # First curve in scale_info should be at top (highest y inside box)
+                # Start from box_bottom + bottom_padding for the bottommost curve
+                curve_from_bottom = (len(scale_info) - 1 - idx)
+                base_y = y_start + bottom_padding + (curve_from_bottom * log_spacing)
 
                 # Position for log name (above the scale line)
                 name_y = base_y + log_spacing - title_spacing
@@ -834,9 +852,36 @@ class WellView:
         Add fill between curves with normalized coordinates.
 
         This version handles fills when curves are normalized to 0-1 scale.
+
+        Boundary specifications support simple string/number values or dict format:
+        - "track_edge": Use track edge on that side (left=0.0, right=1.0)
+        - "<curve_name>": Use curve values
+        - <number>: Use fixed value
+        - {"curve": "<name>"}: Use curve (dict format)
+        - {"value": <num>}: Use fixed value (dict format)
+        - {"track_edge": "left"|"right"}: Use track edge (dict format)
         """
-        left_spec = fill.get("left", {})
-        right_spec = fill.get("right", {})
+        # Helper to normalize boundary spec to dict format
+        def normalize_boundary_spec(spec, side):
+            """Convert simple string/number spec to dict format."""
+            if isinstance(spec, dict):
+                return spec
+            elif isinstance(spec, str):
+                if spec == "track_edge":
+                    return {"track_edge": side}
+                else:
+                    # Assume it's a curve name
+                    return {"curve": spec}
+            elif isinstance(spec, (int, float)):
+                return {"value": spec}
+            else:
+                return {}
+
+        # Normalize boundary specs (support both simple and dict formats)
+        left_raw = fill.get("left", {})
+        right_raw = fill.get("right", {})
+        left_spec = normalize_boundary_spec(left_raw, "left")
+        right_spec = normalize_boundary_spec(right_raw, "right")
 
         # Helper to normalize a value based on x_range
         def normalize_value(value, x_range):
@@ -993,9 +1038,36 @@ class WellView:
 
         For colormap fills, creates horizontal bands where each depth interval
         is colored based on a curve value (e.g., GR from 20-150 maps to colormap).
+
+        Boundary specifications support simple string/number values or dict format:
+        - "track_edge": Use track edge on that side
+        - "<curve_name>": Use curve values
+        - <number>: Use fixed value
+        - {"curve": "<name>"}: Use curve (dict format)
+        - {"value": <num>}: Use fixed value (dict format)
+        - {"track_edge": "left"|"right"}: Use track edge (dict format)
         """
-        left_spec = fill.get("left", {})
-        right_spec = fill.get("right", {})
+        # Helper to normalize boundary spec to dict format
+        def normalize_boundary_spec(spec, side):
+            """Convert simple string/number spec to dict format."""
+            if isinstance(spec, dict):
+                return spec
+            elif isinstance(spec, str):
+                if spec == "track_edge":
+                    return {"track_edge": side}
+                else:
+                    # Assume it's a curve name
+                    return {"curve": spec}
+            elif isinstance(spec, (int, float)):
+                return {"value": spec}
+            else:
+                return {}
+
+        # Normalize boundary specs (support both simple and dict formats)
+        left_raw = fill.get("left", {})
+        right_raw = fill.get("right", {})
+        left_spec = normalize_boundary_spec(left_raw, "left")
+        right_spec = normalize_boundary_spec(right_raw, "right")
 
         # Get left boundary
         if "curve" in left_spec:

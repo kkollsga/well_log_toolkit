@@ -346,8 +346,8 @@ template.add_track(
     track_type="continuous",
     logs=[{"name": "GR", "x_range": [0, 150], "color": "black"}],
     fill={
-        "left": {"track_edge": "left"},
-        "right": {"curve": "GR"},
+        "left": "track_edge",      # Simplified: track edge
+        "right": "GR",             # Simplified: curve name
         "colormap": "viridis",     # Creates horizontal color bands
         "color_range": [20, 150],  # GR values map to colormap
         "alpha": 0.7
@@ -363,8 +363,8 @@ template.add_track(
         {"name": "SW", "x_range": [0, 1], "color": "red"}
     ],
     fill={
-        "left": {"curve": "PHIE"},
-        "right": {"value": 0},
+        "left": "PHIE",            # Simplified: curve name
+        "right": 0,                # Simplified: numeric value
         "color": "lightblue",
         "alpha": 0.5
     },
@@ -467,8 +467,8 @@ template.add_track(track_type="depth", width=0.3)
 **Solid Color Fill**
 ```python
 fill={
-    "left": {"curve": "PHIE"},
-    "right": {"value": 0},
+    "left": "PHIE",         # Simplified: curve name
+    "right": 0,             # Simplified: numeric value
     "color": "lightblue",
     "alpha": 0.5
 }
@@ -477,9 +477,9 @@ fill={
 **Colormap Fill** (horizontal bands colored by curve value)
 ```python
 fill={
-    "left": {"track_edge": "left"},
-    "right": {"curve": "GR"},
-    "colormap": "viridis",        # or "inferno", "plasma", "RdYlGn"
+    "left": "track_edge",   # Simplified: track edge
+    "right": "GR",          # Simplified: curve name
+    "colormap": "viridis",  # or "inferno", "plasma", "RdYlGn"
     "color_range": [20, 150],     # GR values map to colors
     "alpha": 0.7
 }
@@ -489,8 +489,8 @@ fill={
 **Fill Between Two Curves**
 ```python
 fill={
-    "left": {"curve": "RHOB"},
-    "right": {"curve": "NPHI"},
+    "left": "RHOB",         # Simplified: curve name
+    "right": "NPHI",        # Simplified: curve name
     "colormap": "RdYlGn",
     "colormap_curve": "NPHI",     # Use NPHI values for colors
     "color_range": [0.15, 0.35],
@@ -622,8 +622,8 @@ template.add_track(
     track_type="continuous",
     logs=[{"name": "GR", "x_range": [0, 150], "color": "black"}],
     fill={
-        "left": {"track_edge": "left"},
-        "right": {"curve": "GR"},
+        "left": "track_edge",
+        "right": "GR",
         "colormap": "viridis",
         "color_range": [20, 150],
         "alpha": 0.7
@@ -649,8 +649,8 @@ template.add_track(
         {"name": "NPHI", "x_range": [0.45, -0.15], "color": "blue"}
     ],
     fill={
-        "left": {"curve": "RHOB"},
-        "right": {"curve": "NPHI"},
+        "left": "RHOB",
+        "right": "NPHI",
         "colormap": "RdYlGn",
         "color_range": [-0.15, 0.45],
         "alpha": 0.5
@@ -666,8 +666,8 @@ template.add_track(
         {"name": "SW", "x_range": [0, 1], "color": "red"}
     ],
     fill={
-        "left": {"curve": "PHIE"},
-        "right": {"value": 0},
+        "left": "PHIE",
+        "right": 0,
         "color": "lightblue",
         "alpha": 0.5
     },
