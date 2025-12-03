@@ -628,13 +628,9 @@ class WellView:
                 x_min, x_max = x_range[0], x_range[1]
 
                 # Normalize values to 0-1 based on x_range
-                # Handle both normal and reversed scales
-                if x_min < x_max:
-                    # Normal scale: map [x_min, x_max] -> [0, 1]
-                    normalized_values = (values - x_min) / (x_max - x_min)
-                else:
-                    # Reversed scale: map [x_max, x_min] -> [0, 1]
-                    normalized_values = (values - x_max) / (x_min - x_max)
+                # x_range[0] always maps to 0 (left), x_range[1] always maps to 1 (right)
+                # This works for both normal [20, 150] and reversed [3.95, 1.95] scales
+                normalized_values = (values - x_range[0]) / (x_range[1] - x_range[0])
 
                 scale_info.append({
                     'name': prop_name,
@@ -726,7 +722,7 @@ class WellView:
         # Starting y position (above the plot, in axes fraction coordinates)
         # Compact spacing - one line per curve
         y_start = 1.01  # Start just above the plot
-        line_spacing = 0.015  # Compact vertical spacing
+        line_spacing = 0.025  # Compact vertical spacing (increased to prevent overlap)
 
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
@@ -737,8 +733,9 @@ class WellView:
                 style = log_config.get("style", "-")
                 thickness = log_config.get("thickness", 1.0)
 
-                # Calculate y position for this curve
-                y_pos = y_start + (idx * line_spacing)
+                # Calculate y position for this curve (reverse order so first curve appears at top)
+                # First curve in scale_info should be furthest from plot (highest y)
+                y_pos = y_start + ((len(scale_info) - 1 - idx) * line_spacing)
 
                 # Draw horizontal line between 0.15 and 0.85 (leaving room for text)
                 ax.plot([0.15, 0.85], [y_pos, y_pos],
@@ -813,11 +810,8 @@ class WellView:
                 values, _ = plotted_curves[curve_name]
                 x_range = get_x_range(curve_name)
                 if x_range:
-                    x_min, x_max = x_range[0], x_range[1]
-                    if x_min < x_max:
-                        left_values = (values - x_min) / (x_max - x_min)
-                    else:
-                        left_values = (values - x_max) / (x_min - x_max)
+                    # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
+                    left_values = (values - x_range[0]) / (x_range[1] - x_range[0])
                 else:
                     left_values = values
             else:
@@ -847,11 +841,8 @@ class WellView:
                 values, _ = plotted_curves[curve_name]
                 x_range = get_x_range(curve_name)
                 if x_range:
-                    x_min, x_max = x_range[0], x_range[1]
-                    if x_min < x_max:
-                        right_values = (values - x_min) / (x_max - x_min)
-                    else:
-                        right_values = (values - x_max) / (x_min - x_max)
+                    # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
+                    right_values = (values - x_range[0]) / (x_range[1] - x_range[0])
                 else:
                     right_values = values
             else:
