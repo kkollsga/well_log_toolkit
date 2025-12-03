@@ -717,8 +717,7 @@ class WellView:
             for fill_config in fill:
                 self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs)
 
-        # Invert y-axis (depth increases downward)
-        ax.invert_yaxis()
+        # Grid (y-axis will be inverted later in plot() method)
         ax.grid(True, alpha=0.3)
 
         # Add visual line indicators with outline box and track title for each curve in the header area
@@ -740,7 +739,7 @@ class WellView:
 
         # Spacing configuration
         y_start = 1.0  # Start at the top of the plot (no gap)
-        title_spacing = 0.008  # Space between log name and its scale line
+        title_spacing = 0.003  # Space between log name and its scale line (reduced)
         log_spacing = 0.035  # Space between different logs (title + scale + gap)
         top_padding = 0.01  # Padding inside box above topmost log name
         bottom_padding = 0.005  # Padding inside box below bottommost scale line
@@ -755,9 +754,9 @@ class WellView:
         box_bottom = y_start
         box_top = box_bottom + box_height
 
-        # Draw outline box around all indicators
+        # Draw outline box around all indicators (full width to match plot area)
         box = Rectangle(
-            (0.02, box_bottom), 0.96, box_height,
+            (0, box_bottom), 1.0, box_height,
             transform=ax.get_xaxis_transform(),
             fill=False,
             edgecolor='black',
@@ -839,6 +838,85 @@ class WellView:
                        color=color,
                        clip_on=False,
                        zorder=11)
+
+    def _add_discrete_legend(self, ax: plt.Axes, legend_info: list[dict], title: str) -> None:
+        """
+        Add discrete legend in an outlined box above the plot area.
+
+        Parameters
+        ----------
+        ax : plt.Axes
+            The axes to add the legend to
+        legend_info : list[dict]
+            List of dicts with 'label' and 'color' keys
+        title : str
+            Track title
+        """
+        if not legend_info:
+            return
+
+        # Spacing configuration (similar to continuous tracks)
+        y_start = 1.0  # Start at the top of the plot (no gap)
+        item_height = 0.025  # Height for each legend item
+        top_padding = 0.01  # Padding inside box
+        bottom_padding = 0.005  # Padding inside box
+
+        # Calculate box dimensions
+        content_height = len(legend_info) * item_height
+        box_height = content_height + top_padding + bottom_padding
+        box_bottom = y_start
+        box_top = box_bottom + box_height
+
+        # Draw outline box (full width to match plot area)
+        box = Rectangle(
+            (0, box_bottom), 1.0, box_height,
+            transform=ax.get_xaxis_transform(),
+            fill=False,
+            edgecolor='black',
+            linewidth=1.0,
+            clip_on=False,
+            zorder=9
+        )
+        ax.add_patch(box)
+
+        # Add track title above the box
+        if title:
+            title_y = box_top + 0.005  # Small gap above box
+            ax.text(0.5, title_y, title,
+                   transform=ax.get_xaxis_transform(),
+                   ha='center', va='bottom',
+                   fontsize=10, fontweight='bold',
+                   clip_on=False, zorder=11)
+
+        # Draw each legend item
+        for idx, item in enumerate(legend_info):
+            # Calculate y position (top to bottom)
+            item_from_bottom = len(legend_info) - 1 - idx
+            item_y = y_start + bottom_padding + (item_from_bottom * item_height) + (item_height / 2)
+
+            # Draw colored square
+            square_size = 0.08
+            square_x = 0.1
+            square = Rectangle(
+                (square_x - square_size/2, item_y - square_size/2), square_size, square_size*0.8,
+                transform=ax.get_xaxis_transform(),
+                facecolor=item['color'],
+                edgecolor='black',
+                linewidth=0.5,
+                alpha=0.7,
+                clip_on=False,
+                zorder=10
+            )
+            ax.add_patch(square)
+
+            # Add label text
+            ax.text(square_x + square_size/2 + 0.05, item_y, item['label'],
+                   transform=ax.get_xaxis_transform(),
+                   ha='left',
+                   va='center',
+                   fontsize=8,
+                   clip_on=False,
+                   zorder=11)
 
     def _add_fill_normalized(
         self,
@@ -1212,25 +1290,30 @@ class WellView:
             if start_idx is not None:
                 segments.append((start_idx, len(val_mask)-1))
 
-            # Draw segments
-            label = prop.labels.get(int(val), str(int(val))) if prop.labels else str(int(val))
+            # Draw segments (no label - will be in header)
             for start, end in segments:
                 ax.fill_betweenx(
                     depth_masked[start:end+1],
                     0, 1,
                     color=color_map[val],
-                    alpha=0.7,
-                    label=label if start == segments[0][0] else None
+                    alpha=0.7
                 )
 
         # Configure axes
         ax.set_xlim([0, 1])
         ax.set_xticks([])
-        ax.invert_yaxis()
-        ax.legend(loc='upper right', fontsize=8)
+        ax.grid(True, alpha=0.3)
 
-        if track.get("title"):
-            ax.set_title(track["title"], fontsize=10, fontweight='bold')
+        # Add legend header above plot area (similar to continuous tracks)
+        title_text = track.get("title", "")
+        legend_info = []
+        for val in unique_vals:
+            label = prop.labels.get(int(val), str(int(val))) if prop.labels else str(int(val))
+            legend_info.append({
+                'label': label,
+                'color': color_map[val]
+            })
+        self._add_discrete_legend(ax, legend_info, title_text)
 
     def _plot_depth_track(
         self,
@@ -1250,7 +1333,6 @@ class WellView:
         ax.set_xlim([0, 1])
         ax.set_xticks([])
         ax.set_ylabel('Depth (m)', fontsize=10, fontweight='bold')
-        ax.invert_yaxis()
         ax.grid(True, alpha=0.3, axis='y')
 
         if track.get("title"):
@@ -1350,7 +1432,7 @@ class WellView:
             1, n_tracks,
             figsize=self.figsize,
             dpi=self.dpi,
-            gridspec_kw={'width_ratios': widths, 'wspace': 0.05},
+            gridspec_kw={'width_ratios': widths, 'wspace': 0},
             sharey=True
         )
 
@@ -1377,6 +1459,10 @@ class WellView:
             # Remove y-labels for all but first track
             if ax != self.axes[0]:
                 ax.set_ylabel('')
+
+        # Invert y-axis once for all tracks (depth increases downward)
+        # Since sharey=True, this applies to all axes
+        self.axes[0].invert_yaxis()
 
         # Set main title
         self.fig.suptitle(f"Well: {self.well.name}", fontsize=12, fontweight='bold', y=0.995)
