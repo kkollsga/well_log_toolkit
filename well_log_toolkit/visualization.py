@@ -12,9 +12,8 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from matplotlib.collections import PolyCollection
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.colors import Normalize
 
 if TYPE_CHECKING:
     from .well import Well
@@ -593,20 +592,22 @@ class WellView:
         depth: np.ndarray,
         mask: np.ndarray
     ) -> None:
-        """Plot continuous log track."""
+        """
+        Plot continuous log track with standard well log format.
+
+        All curves are normalized to 0-1 scale for plotting, with original
+        scale ranges shown in the track header.
+        """
         logs = track.get("logs", [])
         fill = track.get("fill")
-
-        # Determine x-axis range (use first log's range or auto)
-        if logs and "x_range" in logs[0]:
-            x_range = logs[0]["x_range"]
-            ax.set_xlim(x_range)
 
         # Cache masked depth array (computed once, shared by all logs in this track)
         depth_masked = depth[mask]
 
-        # Plot each log
+        # Plot each log (all normalized to 0-1 scale)
         plotted_curves = {}
+        scale_info = []  # Track scale information for header
+
         for log_config in logs:
             prop_name = log_config.get("name")
             if not prop_name:
@@ -621,29 +622,309 @@ class WellView:
             # Get data (reuse cached depth_masked)
             values = prop.values[mask]
 
+            # Get x_range for normalization
+            if "x_range" in log_config:
+                x_range = log_config["x_range"]
+                x_min, x_max = x_range[0], x_range[1]
+
+                # Normalize values to 0-1 based on x_range
+                # Handle both normal and reversed scales
+                if x_min < x_max:
+                    # Normal scale: map [x_min, x_max] -> [0, 1]
+                    normalized_values = (values - x_min) / (x_max - x_min)
+                else:
+                    # Reversed scale: map [x_max, x_min] -> [0, 1]
+                    normalized_values = (values - x_max) / (x_min - x_max)
+
+                scale_info.append({
+                    'name': prop_name,
+                    'min': x_min,
+                    'max': x_max,
+                    'color': log_config.get("color", "blue")
+                })
+            else:
+                # No x_range specified, use values as-is
+                normalized_values = values
+                scale_info.append({
+                    'name': prop_name,
+                    'min': float(np.nanmin(values)),
+                    'max': float(np.nanmax(values)),
+                    'color': log_config.get("color", "blue")
+                })
+
             # Plot styling
             color = log_config.get("color", "blue")
             style = log_config.get("style", "-")
             thickness = log_config.get("thickness", 1.0)
             alpha = log_config.get("alpha", 1.0)
 
-            # Plot line
-            line, = ax.plot(values, depth_masked, color=color, linestyle=style,
-                           linewidth=thickness, alpha=alpha, label=prop_name)
+            # Plot normalized line
+            ax.plot(normalized_values, depth_masked, color=color, linestyle=style,
+                   linewidth=thickness, alpha=alpha, label=prop_name)
 
+            # Store both original and normalized values
             plotted_curves[prop_name] = (values, depth_masked)
 
-        # Handle fill
+        # Set x-axis to 0-1 for normalized plotting
+        ax.set_xlim([0, 1])
+
+        # Handle fill (uses original values for boundary detection)
         if fill and plotted_curves:
-            self._add_fill(ax, fill, plotted_curves, depth_masked)
+            # Need to normalize fill boundaries too
+            self._add_fill_normalized(ax, fill, plotted_curves, depth_masked, logs)
 
         # Invert y-axis (depth increases downward)
         ax.invert_yaxis()
         ax.grid(True, alpha=0.3)
 
-        # Set title
-        if track.get("title"):
-            ax.set_title(track["title"], fontsize=10, fontweight='bold')
+        # Build track title with scale information
+        title_text = self._build_track_header(track.get("title", ""), scale_info)
+        ax.set_title(title_text, fontsize=9, fontweight='bold', loc='center', pad=20)
+
+        # Add visual line indicators for each curve in the header area
+        self._add_curve_indicators(ax, scale_info, logs)
+
+    def _build_track_header(self, title: str, scale_info: list[dict]) -> str:
+        """
+        Build track header with curve names and scales in vertical stack.
+
+        Format for multiple curves (each curve gets 2 lines):
+            "GR"
+            "20        150"
+            "Den"
+            "3.95      1.95"
+        """
+        if not scale_info:
+            return title
+
+        # Build header lines - each curve gets its own row with name and scale
+        header_lines = []
+
+        # Add track title if present
+        if title:
+            header_lines.append(title)
+
+        # Add each curve's name and scale on separate lines
+        for info in scale_info:
+            # Curve name
+            header_lines.append(info['name'])
+
+            # Scale values: min (left) and max (right)
+            # Use appropriate spacing for readability
+            min_val = info['min']
+            max_val = info['max']
+
+            # Format with sufficient spacing
+            scale_line = f"{min_val:<.2f}      {max_val:>.2f}"
+            header_lines.append(scale_line)
+
+        return "\n".join(header_lines)
+
+    def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict]) -> None:
+        """
+        Add visual line indicators showing curve style and color in the title area.
+
+        Draws small horizontal lines between min/max values using each curve's color and style.
+        """
+        if not scale_info:
+            return
+
+        # Get the axes position to calculate where to draw lines
+        # We'll draw lines in axes coordinates (relative to the plot area)
+
+        # Starting y position (above the plot, in axes fraction coordinates)
+        # Position lines below where the title text appears
+        y_start = 1.0  # Start just above the plot
+
+        # Line spacing (move up for each curve)
+        line_spacing = 0.02  # Small increment per curve line
+
+        for idx, info in enumerate(scale_info):
+            # Find matching log config to get style
+            log_config = next((log for log in logs if log.get("name") == info['name']), None)
+
+            if log_config:
+                color = log_config.get("color", "blue")
+                style = log_config.get("style", "-")
+                thickness = log_config.get("thickness", 1.0)
+
+                # Draw horizontal line between 0.2 and 0.8 in x-axis (normalized coordinates)
+                # This represents the scale line between min and max values
+                y_pos = y_start + (idx * 2 * line_spacing)  # Each curve takes 2 line spaces
+
+                # Draw the scale line
+                ax.plot([0.2, 0.8], [y_pos, y_pos],
+                       color=color,
+                       linestyle=style,
+                       linewidth=thickness,
+                       transform=ax.get_xaxis_transform(),  # x in data coords, y in axes coords
+                       clip_on=False,
+                       zorder=10)
+
+    def _add_fill_normalized(
+        self,
+        ax: plt.Axes,
+        fill: dict,
+        plotted_curves: dict,
+        depth: np.ndarray,
+        logs: list[dict]
+    ) -> None:
+        """
+        Add fill between curves with normalized coordinates.
+
+        This version handles fills when curves are normalized to 0-1 scale.
+        """
+        left_spec = fill.get("left", {})
+        right_spec = fill.get("right", {})
+
+        # Helper to normalize a value based on x_range
+        def normalize_value(value, x_range):
+            if x_range is None:
+                return value
+            x_min, x_max = x_range[0], x_range[1]
+            if x_min < x_max:
+                return (value - x_min) / (x_max - x_min)
+            else:
+                return (value - x_max) / (x_min - x_max)
+
+        # Helper to get x_range for a curve
+        def get_x_range(curve_name):
+            for log in logs:
+                if log.get("name") == curve_name and "x_range" in log:
+                    return log["x_range"]
+            return None
+
+        # Get left boundary (normalized)
+        if "curve" in left_spec:
+            curve_name = left_spec["curve"]
+            if curve_name in plotted_curves:
+                values, _ = plotted_curves[curve_name]
+                x_range = get_x_range(curve_name)
+                if x_range:
+                    x_min, x_max = x_range[0], x_range[1]
+                    if x_min < x_max:
+                        left_values = (values - x_min) / (x_max - x_min)
+                    else:
+                        left_values = (values - x_max) / (x_min - x_max)
+                else:
+                    left_values = values
+            else:
+                warnings.warn(f"Fill left curve '{curve_name}' not found")
+                return
+        elif "value" in left_spec:
+            # For fixed values, need to know which curve's scale to use
+            # Use first curve's x_range if available
+            fixed_val = left_spec["value"]
+            if logs and "x_range" in logs[0]:
+                left_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"]))
+            else:
+                left_values = np.full_like(depth, fixed_val)
+        elif "track_edge" in left_spec:
+            if left_spec["track_edge"] == "left":
+                left_values = np.full_like(depth, 0.0)
+            else:
+                left_values = np.full_like(depth, 1.0)
+        else:
+            warnings.warn("Fill left boundary not properly specified")
+            return
+
+        # Get right boundary (normalized)
+        if "curve" in right_spec:
+            curve_name = right_spec["curve"]
+            if curve_name in plotted_curves:
+                values, _ = plotted_curves[curve_name]
+                x_range = get_x_range(curve_name)
+                if x_range:
+                    x_min, x_max = x_range[0], x_range[1]
+                    if x_min < x_max:
+                        right_values = (values - x_min) / (x_max - x_min)
+                    else:
+                        right_values = (values - x_max) / (x_min - x_max)
+                else:
+                    right_values = values
+            else:
+                warnings.warn(f"Fill right curve '{curve_name}' not found")
+                return
+        elif "value" in right_spec:
+            fixed_val = right_spec["value"]
+            if logs and "x_range" in logs[0]:
+                right_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"]))
+            else:
+                right_values = np.full_like(depth, fixed_val)
+        elif "track_edge" in right_spec:
+            if right_spec["track_edge"] == "left":
+                right_values = np.full_like(depth, 0.0)
+            else:
+                right_values = np.full_like(depth, 1.0)
+        else:
+            warnings.warn("Fill right boundary not properly specified")
+            return
+
+        # Apply fill
+        fill_color = fill.get("color", "lightblue")
+        fill_alpha = fill.get("alpha", 0.3)
+
+        if "colormap" in fill:
+            # Use colormap for fill - creates horizontal bands colored by curve value
+            cmap_name = fill["colormap"]
+
+            # Determine which curve drives the colormap (use original values, not normalized)
+            colormap_curve_name = fill.get("colormap_curve")
+            if colormap_curve_name:
+                if colormap_curve_name in plotted_curves:
+                    colormap_values, _ = plotted_curves[colormap_curve_name]
+                else:
+                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using left boundary")
+                    # Extract original values from normalized left_values
+                    if "curve" in left_spec and left_spec["curve"] in plotted_curves:
+                        colormap_values, _ = plotted_curves[left_spec["curve"]]
+                    else:
+                        warnings.warn("Cannot determine colormap values")
+                        return
+            else:
+                # Default: use left boundary curve's original values
+                if "curve" in left_spec and left_spec["curve"] in plotted_curves:
+                    colormap_values, _ = plotted_curves[left_spec["curve"]]
+                else:
+                    warnings.warn("Cannot determine colormap values (no curve specified)")
+                    return
+
+            # Get color range for normalization
+            color_range = fill.get("color_range", [colormap_values.min(), colormap_values.max()])
+            norm = Normalize(vmin=color_range[0], vmax=color_range[1])
+            cmap = plt.get_cmap(cmap_name)
+
+            # Create horizontal bands - each depth interval gets a color based on the curve value
+            # Use PolyCollection for performance (1000x faster than loop with fill_betweenx)
+            n_intervals = len(depth) - 1
+
+            # Compute color values for each interval (average of adjacent points)
+            color_values = (colormap_values[:-1] + colormap_values[1:]) / 2
+            colors = cmap(norm(color_values))
+
+            # Create polygon vertices for each depth interval (using normalized coordinates)
+            verts = []
+            for i in range(n_intervals):
+                verts.append([
+                    (left_values[i], depth[i]),
+                    (right_values[i], depth[i]),
+                    (right_values[i+1], depth[i+1]),
+                    (left_values[i+1], depth[i+1])
+                ])
+
+            # Create PolyCollection with all polygons at once
+            poly_collection = PolyCollection(
+                verts,
+                facecolors=colors,
+                alpha=fill_alpha,
+                edgecolors='none',
+                linewidths=0
+            )
+            ax.add_collection(poly_collection)
+        else:
+            # Simple solid color fill
+            ax.fill_betweenx(depth, left_values, right_values,
+                            color=fill_color, alpha=fill_alpha)
 
     def _add_fill(
         self,
@@ -973,7 +1254,16 @@ class WellView:
         # Set main title
         self.fig.suptitle(f"Well: {self.well.name}", fontsize=12, fontweight='bold', y=0.995)
 
-        plt.tight_layout()
+        # Apply tight layout (suppress warnings from PolyCollection incompatibility)
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore',
+                                      message='.*not compatible with tight_layout.*',
+                                      category=UserWarning)
+                plt.tight_layout()
+        except Exception:
+            # If tight_layout fails, continue without it
+            pass
 
     def show(self) -> None:
         """
