@@ -17,9 +17,6 @@ Fast, intuitive Python library for petrophysical well log analysis. Load LAS fil
 
 ```bash
 pip install well-log-toolkit
-
-# With visualization support (matplotlib)
-pip install well-log-toolkit[visualization]
 ```
 
 ## Table of Contents
@@ -728,7 +725,7 @@ Jump directly to specific topics:
 # Main classes
 from well_log_toolkit import WellDataManager, Well, Property, LasFile
 
-# Visualization (requires matplotlib)
+# Visualization
 from well_log_toolkit import Template, WellView
 
 # Statistics functions
@@ -1232,15 +1229,11 @@ hc = well.computed.HC_Volume  # Also works
 
 ## Requirements
 
-**Core dependencies:**
 - Python >= 3.9
 - numpy >= 1.20.0
 - pandas >= 1.3.0
 - scipy >= 1.7.0
-
-**Optional dependencies:**
-- matplotlib >= 3.5.0 (for visualization)
-  - Install with: `pip install well-log-toolkit[visualization]`
+- matplotlib >= 3.5.0
 
 ## Performance
 

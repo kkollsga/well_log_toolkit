@@ -3,22 +3,18 @@ Well log visualization for Jupyter Lab.
 
 Provides Template and WellView classes for creating customizable well log displays.
 """
+from __future__ import annotations
 from pathlib import Path
-from typing import Optional, Union, Any, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING
 import json
 import warnings
 
 import numpy as np
 import pandas as pd
-
-try:
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
-    from matplotlib.collections import PolyCollection
-    from matplotlib.colors import LinearSegmentedColormap, Normalize
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 
 if TYPE_CHECKING:
     from .well import Well
@@ -498,12 +494,6 @@ class WellView:
         dpi: int = 100
     ):
         """Initialize WellView."""
-        if not HAS_MATPLOTLIB:
-            raise ImportError(
-                "matplotlib is required for well log visualization. "
-                "Install it with: pip install matplotlib"
-            )
-
         self.well = well
         self.dpi = dpi
 
