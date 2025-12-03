@@ -421,17 +421,16 @@ def mode(
             return np.nan
 
         if is_discrete:
-            # For discrete: sum weights for each unique value
-            unique_vals = np.unique(valid_values)
-            max_weight = 0
-            mode_val = unique_vals[0]
+            # For discrete: sum weights for each unique value (vectorized)
+            unique_vals, inverse_indices = np.unique(valid_values, return_inverse=True)
 
-            for val in unique_vals:
-                val_mask = valid_values == val
-                total_weight = np.sum(valid_weights[val_mask])
-                if total_weight > max_weight:
-                    max_weight = total_weight
-                    mode_val = val
+            # Sum weights for each unique value using bincount
+            # bincount is much faster than looping through unique values
+            weighted_sums = np.bincount(inverse_indices, weights=valid_weights)
+
+            # Find value with maximum weight
+            max_idx = np.argmax(weighted_sums)
+            mode_val = unique_vals[max_idx]
 
             return float(mode_val)
         else:
