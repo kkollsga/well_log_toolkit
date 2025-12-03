@@ -679,65 +679,54 @@ class WellView:
 
         # Build track title with scale information
         title_text = self._build_track_header(track.get("title", ""), scale_info)
-        ax.set_title(title_text, fontsize=9, fontweight='bold', loc='center', pad=20)
+        # Compact layout: reduce padding since scale indicators are above the plot
+        ax.set_title(title_text, fontsize=9, fontweight='bold', loc='center', pad=10)
 
         # Add visual line indicators for each curve in the header area
         self._add_curve_indicators(ax, scale_info, logs)
 
     def _build_track_header(self, title: str, scale_info: list[dict]) -> str:
         """
-        Build track header with curve names and scales in vertical stack.
+        Build compact track header with just title and curve names.
 
-        Format for multiple curves (each curve gets 2 lines):
+        Scale values are shown on the line indicators, not in the title text.
+
+        Format for multiple curves:
+            "Gamma Ray"
             "GR"
-            "20        150"
             "Den"
-            "3.95      1.95"
         """
         if not scale_info:
             return title
 
-        # Build header lines - each curve gets its own row with name and scale
+        # Build header lines - compact format
         header_lines = []
 
         # Add track title if present
         if title:
             header_lines.append(title)
 
-        # Add each curve's name and scale on separate lines
+        # Add each curve's name (scales shown on visual indicators)
         for info in scale_info:
-            # Curve name
             header_lines.append(info['name'])
-
-            # Scale values: min (left) and max (right)
-            # Use appropriate spacing for readability
-            min_val = info['min']
-            max_val = info['max']
-
-            # Format with sufficient spacing
-            scale_line = f"{min_val:<.2f}      {max_val:>.2f}"
-            header_lines.append(scale_line)
 
         return "\n".join(header_lines)
 
     def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict]) -> None:
         """
-        Add visual line indicators showing curve style and color in the title area.
+        Add visual line indicators with scale values on the sides.
 
-        Draws small horizontal lines between min/max values using each curve's color and style.
+        Format: "3.95 ---------------- 1.95"
+
+        Draws horizontal lines with min value on left, max value on right.
         """
         if not scale_info:
             return
 
-        # Get the axes position to calculate where to draw lines
-        # We'll draw lines in axes coordinates (relative to the plot area)
-
         # Starting y position (above the plot, in axes fraction coordinates)
-        # Position lines below where the title text appears
-        y_start = 1.0  # Start just above the plot
-
-        # Line spacing (move up for each curve)
-        line_spacing = 0.02  # Small increment per curve line
+        # Compact spacing - one line per curve
+        y_start = 1.01  # Start just above the plot
+        line_spacing = 0.015  # Compact vertical spacing
 
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
@@ -748,18 +737,41 @@ class WellView:
                 style = log_config.get("style", "-")
                 thickness = log_config.get("thickness", 1.0)
 
-                # Draw horizontal line between 0.2 and 0.8 in x-axis (normalized coordinates)
-                # This represents the scale line between min and max values
-                y_pos = y_start + (idx * 2 * line_spacing)  # Each curve takes 2 line spaces
+                # Calculate y position for this curve
+                y_pos = y_start + (idx * line_spacing)
 
-                # Draw the scale line
-                ax.plot([0.2, 0.8], [y_pos, y_pos],
+                # Draw horizontal line between 0.15 and 0.85 (leaving room for text)
+                ax.plot([0.15, 0.85], [y_pos, y_pos],
                        color=color,
                        linestyle=style,
                        linewidth=thickness,
-                       transform=ax.get_xaxis_transform(),  # x in data coords, y in axes coords
+                       transform=ax.get_xaxis_transform(),
                        clip_on=False,
                        zorder=10)
+
+                # Get scale values
+                min_val = info['min']
+                max_val = info['max']
+
+                # Add min value text on left side of line
+                ax.text(0.05, y_pos, f"{min_val:.2f}",
+                       transform=ax.get_xaxis_transform(),
+                       ha='left',
+                       va='center',
+                       fontsize=7,
+                       color=color,
+                       clip_on=False,
+                       zorder=11)
+
+                # Add max value text on right side of line
+                ax.text(0.95, y_pos, f"{max_val:.2f}",
+                       transform=ax.get_xaxis_transform(),
+                       ha='right',
+                       va='center',
+                       fontsize=7,
+                       color=color,
+                       clip_on=False,
+                       zorder=11)
 
     def _add_fill_normalized(
         self,
