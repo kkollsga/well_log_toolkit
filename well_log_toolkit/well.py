@@ -516,12 +516,16 @@ class Well:
             else:
                 prop_type = curve_meta['type']
 
-            # Get labels and colors if property is discrete
+            # Get labels, colors, styles, and thicknesses if property is discrete
             labels = None
             colors = None
+            styles = None
+            thicknesses = None
             if is_discrete:
                 labels = las.get_discrete_labels(prop_name)
                 colors = las.get_discrete_colors(prop_name)
+                styles = las.get_discrete_styles(prop_name)
+                thicknesses = las.get_discrete_thicknesses(prop_name)
 
             # Sanitize property name for Python attribute access
             sanitized_prop_name = sanitize_property_name(prop_name)
@@ -537,6 +541,8 @@ class Well:
                 null_value=las.null_value,
                 labels=labels,
                 colors=colors,
+                styles=styles,
+                thicknesses=thicknesses,
                 source_las=las,
                 source_name=source_name,
                 original_name=prop_name,

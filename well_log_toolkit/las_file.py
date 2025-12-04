@@ -337,6 +337,144 @@ class LasFile:
 
         return colors if colors else None
 
+    def get_discrete_styles(self, property_name: str) -> Optional[dict[int, str]]:
+        """
+        Extract line style mappings for a discrete property from ~Parameter section.
+
+        Supports two formats:
+        1. Inline: Zone_0 = "NonNet|red|dashed" (style after second pipe separator)
+        2. Separate: Zone_STYLE_0 = "dashed" (for backward compatibility)
+
+        Inline format takes precedence if both exist.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the discrete property
+
+        Returns
+        -------
+        dict[int, str] | None
+            Style mapping {0: 'solid', 1: 'dashed'} or None if no styles found
+
+        Examples
+        --------
+        >>> las = LasFile("well.las")
+        >>> styles = las.get_discrete_styles('Zone')
+        >>> # Returns: {0: 'solid', 1: 'dashed'}
+        """
+        styles = {}
+        prefix = f"{property_name}_"
+        style_prefix = f"{property_name}_STYLE_"
+
+        # First, check for inline styles (e.g., "Label|color|style")
+        for param_name, label_value in self.parameter_info.items():
+            if param_name.startswith(prefix) and not param_name.startswith(style_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(prefix):]
+                try:
+                    value = int(suffix)
+                    # If the label contains a style (e.g., "Label|color|style"), extract the style
+                    if '|' in label_value:
+                        parts = label_value.split('|')
+                        if len(parts) >= 3:
+                            style = parts[2].strip()
+                            if style:  # Only add if style is not empty
+                                styles[value] = style
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        # Second, check for separate style parameters (backward compatibility)
+        # Only add if not already defined by inline format
+        for param_name, style_value in self.parameter_info.items():
+            if param_name.startswith(style_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(style_prefix):]
+                try:
+                    value = int(suffix)
+                    if value not in styles:  # Inline format takes precedence
+                        styles[value] = style_value.strip()
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        return styles if styles else None
+
+    def get_discrete_thicknesses(self, property_name: str) -> Optional[dict[int, float]]:
+        """
+        Extract line thickness mappings for a discrete property from ~Parameter section.
+
+        Supports two formats:
+        1. Inline: Zone_0 = "NonNet|red|dashed|1.5" (thickness after third pipe separator)
+        2. Separate: Zone_THICKNESS_0 = "1.5" (for backward compatibility)
+
+        Inline format takes precedence if both exist.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the discrete property
+
+        Returns
+        -------
+        dict[int, float] | None
+            Thickness mapping {0: 1.5, 1: 2.0} or None if no thicknesses found
+
+        Examples
+        --------
+        >>> las = LasFile("well.las")
+        >>> thicknesses = las.get_discrete_thicknesses('Zone')
+        >>> # Returns: {0: 1.5, 1: 2.0}
+        """
+        thicknesses = {}
+        prefix = f"{property_name}_"
+        thickness_prefix = f"{property_name}_THICKNESS_"
+
+        # First, check for inline thicknesses (e.g., "Label|color|style|thickness")
+        for param_name, label_value in self.parameter_info.items():
+            if param_name.startswith(prefix) and not param_name.startswith(thickness_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(prefix):]
+                try:
+                    value = int(suffix)
+                    # If the label contains a thickness (e.g., "Label|color|style|thickness"), extract it
+                    if '|' in label_value:
+                        parts = label_value.split('|')
+                        if len(parts) >= 4:
+                            thickness_str = parts[3].strip()
+                            if thickness_str:  # Only add if thickness is not empty
+                                try:
+                                    thickness = float(thickness_str)
+                                    thicknesses[value] = thickness
+                                except ValueError:
+                                    # Invalid float value, skip
+                                    pass
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        # Second, check for separate thickness parameters (backward compatibility)
+        # Only add if not already defined by inline format
+        for param_name, thickness_value in self.parameter_info.items():
+            if param_name.startswith(thickness_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(thickness_prefix):]
+                try:
+                    value = int(suffix)
+                    if value not in thicknesses:  # Inline format takes precedence
+                        try:
+                            thickness = float(thickness_value.strip())
+                            thicknesses[value] = thickness
+                        except ValueError:
+                            # Invalid float value, skip
+                            pass
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        return thicknesses if thicknesses else None
+
     def check_depth_compatibility(self, other, well=None) -> dict:
         """
         Check if depth grids are compatible between two LAS files.
@@ -780,6 +918,8 @@ class LasFile:
         null_value: float = -999.25,
         discrete_labels: Optional[dict[str, dict[int, str]]] = None,
         discrete_colors: Optional[dict[str, dict[int, str]]] = None,
+        discrete_styles: Optional[dict[str, dict[int, str]]] = None,
+        discrete_thicknesses: Optional[dict[str, dict[int, float]]] = None,
         template_las: Optional['LasFile'] = None
     ) -> None:
         """
@@ -934,30 +1074,53 @@ class LasFile:
                 if param_key not in skip_params:
                     params_to_write[param_key] = (param_value, f"Preserved from original")
 
-        # Add new discrete labels and colors if provided
+        # Add new discrete labels, colors, styles, and thicknesses if provided
         if discrete_labels:
             # Add list of discrete properties
             discrete_prop_names = ','.join(sorted(discrete_labels.keys()))
             params_to_write['DISCRETE_PROPS'] = (discrete_prop_names, "Discrete properties")
 
             # Add label mappings for each discrete property
-            # If colors are also provided, combine them inline (e.g., "Label|color")
+            # If colors, styles, or thicknesses are also provided, combine them inline
+            # Format: "Label|color|style|thickness"
             for prop_name, label_mapping in sorted(discrete_labels.items()):
                 # Sort by value for consistent output
                 for value in sorted(label_mapping.keys()):
                     label = label_mapping[value]
+                    parts = [label]
+                    desc_parts = ["label"]
+
                     # Check if there's a corresponding color
                     if discrete_colors and prop_name in discrete_colors and value in discrete_colors[prop_name]:
                         color = discrete_colors[prop_name][value]
-                        # Combine label and color inline
-                        combined = f"{label}|{color}"
-                        param_name = f"{prop_name}_{value}"
-                        params_to_write[param_name] = (combined, f"{prop_name} label and color for value {value}")
-                    else:
-                        param_name = f"{prop_name}_{value}"
-                        params_to_write[param_name] = (label, f"{prop_name} label for value {value}")
+                        parts.append(color)
+                        desc_parts.append("color")
 
-        # For properties with colors but no labels, store colors separately (legacy format)
+                    # Check if there's a corresponding style
+                    if discrete_styles and prop_name in discrete_styles and value in discrete_styles[prop_name]:
+                        style = discrete_styles[prop_name][value]
+                        # If we have style but no color, add empty color field
+                        if len(parts) == 1:
+                            parts.append("")
+                        parts.append(style)
+                        desc_parts.append("style")
+
+                    # Check if there's a corresponding thickness
+                    if discrete_thicknesses and prop_name in discrete_thicknesses and value in discrete_thicknesses[prop_name]:
+                        thickness = discrete_thicknesses[prop_name][value]
+                        # If we have thickness but no color/style, add empty fields
+                        while len(parts) < 3:
+                            parts.append("")
+                        parts.append(str(thickness))
+                        desc_parts.append("thickness")
+
+                    # Combine all parts with pipe separator
+                    combined = "|".join(parts)
+                    param_name = f"{prop_name}_{value}"
+                    desc = f"{prop_name} {' and '.join(desc_parts)} for value {value}"
+                    params_to_write[param_name] = (combined, desc)
+
+        # For properties with colors/styles/thicknesses but no labels, store separately (legacy format)
         if discrete_colors:
             for prop_name, color_mapping in sorted(discrete_colors.items()):
                 # Only write separate color params if no labels were defined for this property
@@ -966,6 +1129,24 @@ class LasFile:
                         color = color_mapping[value]
                         param_name = f"{prop_name}_COLOR_{value}"
                         params_to_write[param_name] = (color, f"{prop_name} color for value {value}")
+
+        if discrete_styles:
+            for prop_name, style_mapping in sorted(discrete_styles.items()):
+                # Only write separate style params if no labels were defined for this property
+                if not discrete_labels or prop_name not in discrete_labels:
+                    for value in sorted(style_mapping.keys()):
+                        style = style_mapping[value]
+                        param_name = f"{prop_name}_STYLE_{value}"
+                        params_to_write[param_name] = (style, f"{prop_name} style for value {value}")
+
+        if discrete_thicknesses:
+            for prop_name, thickness_mapping in sorted(discrete_thicknesses.items()):
+                # Only write separate thickness params if no labels were defined for this property
+                if not discrete_labels or prop_name not in discrete_labels:
+                    for value in sorted(thickness_mapping.keys()):
+                        thickness = thickness_mapping[value]
+                        param_name = f"{prop_name}_THICKNESS_{value}"
+                        params_to_write[param_name] = (str(thickness), f"{prop_name} thickness for value {value}")
 
         # Write parameter section if we have any parameters
         if params_to_write:

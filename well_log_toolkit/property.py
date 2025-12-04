@@ -50,6 +50,10 @@ class Property(PropertyOperationsMixin):
         Label mapping for discrete properties (e.g., {0: 'NonNet', 1: 'Net'})
     colors : dict[int, str], optional
         Color mapping for discrete properties (e.g., {0: 'red', 1: 'green'})
+    styles : dict[int, str], optional
+        Line style mapping for discrete properties (e.g., {0: 'solid', 1: 'dashed'})
+    thicknesses : dict[int, float], optional
+        Line thickness mapping for discrete properties (e.g., {0: 1.5, 1: 2.0})
     original_name : str, optional
         Original property name with special characters (from LAS file)
 
@@ -101,6 +105,8 @@ class Property(PropertyOperationsMixin):
         null_value: float = -999.25,
         labels: Optional[dict[int, str]] = None,
         colors: Optional[dict[int, str]] = None,
+        styles: Optional[dict[int, str]] = None,
+        thicknesses: Optional[dict[int, float]] = None,
         source_las: Optional['LasFile'] = None,
         source_name: Optional[str] = None,
         original_name: Optional[str] = None,
@@ -114,6 +120,8 @@ class Property(PropertyOperationsMixin):
         self.description = description
         self._labels = labels  # Internal storage for labels
         self._colors = colors  # Internal storage for colors
+        self._styles = styles  # Internal storage for line styles
+        self._thicknesses = thicknesses  # Internal storage for line thicknesses
         self.source_las = source_las  # Source LAS file this property came from
         self.source_name = source_name  # Source name (file path or external_df)
         self._null_value = null_value
@@ -384,6 +392,58 @@ class Property(PropertyOperationsMixin):
             self._colors = value
             self._mark_source_modified()
 
+    @property
+    def styles(self) -> Optional[dict[int, str]]:
+        """
+        Get the line style mapping for discrete property values.
+
+        Returns
+        -------
+        Optional[dict[int, str]]
+            Mapping of numeric values to line style strings, or None if not defined
+        """
+        return self._styles
+
+    @styles.setter
+    def styles(self, value: Optional[dict[int, str]]) -> None:
+        """
+        Set the line style mapping and mark source as modified.
+
+        Parameters
+        ----------
+        value : Optional[dict[int, str]]
+            Mapping of numeric values to line style strings (e.g., {0: 'solid', 1: 'dashed'})
+        """
+        if value != self._styles:
+            self._styles = value
+            self._mark_source_modified()
+
+    @property
+    def thicknesses(self) -> Optional[dict[int, float]]:
+        """
+        Get the line thickness mapping for discrete property values.
+
+        Returns
+        -------
+        Optional[dict[int, float]]
+            Mapping of numeric values to line thickness floats, or None if not defined
+        """
+        return self._thicknesses
+
+    @thicknesses.setter
+    def thicknesses(self, value: Optional[dict[int, float]]) -> None:
+        """
+        Set the line thickness mapping and mark source as modified.
+
+        Parameters
+        ----------
+        value : Optional[dict[int, float]]
+            Mapping of numeric values to line thickness floats (e.g., {0: 1.5, 1: 2.0})
+        """
+        if value != self._thicknesses:
+            self._thicknesses = value
+            self._mark_source_modified()
+
     def _mark_source_modified(self) -> None:
         """Mark the parent well's source as modified so it gets re-exported on save."""
         if self.parent_well is not None and self.source_name is not None:
@@ -583,6 +643,8 @@ class Property(PropertyOperationsMixin):
                 description=self.description,
                 labels=self.labels.copy() if self.labels else None,
                 colors=self.colors.copy() if self.colors else None,
+                styles=self.styles.copy() if self.styles else None,
+                thicknesses=self.thicknesses.copy() if self.thicknesses else None,
                 source_name='computed',
                 original_name=self.original_name
             )
@@ -601,6 +663,8 @@ class Property(PropertyOperationsMixin):
                 description=f"{self.description} (resampled, insufficient data)",
                 labels=self.labels.copy() if self.labels else None,
                 colors=self.colors.copy() if self.colors else None,
+                styles=self.styles.copy() if self.styles else None,
+                thicknesses=self.thicknesses.copy() if self.thicknesses else None,
                 source_name='computed',
                 original_name=self.original_name
             )
@@ -632,6 +696,8 @@ class Property(PropertyOperationsMixin):
             description=f"{self.description} (resampled)",
             labels=self.labels.copy() if self.labels else None,
             colors=self.colors.copy() if self.colors else None,
+            styles=self.styles.copy() if self.styles else None,
+            thicknesses=self.thicknesses.copy() if self.thicknesses else None,
             source_name='computed',
             original_name=self.original_name
         )
@@ -997,6 +1063,8 @@ class Property(PropertyOperationsMixin):
             null_value=-999.25,
             labels=discrete_prop.labels,
             colors=discrete_prop.colors,
+            styles=discrete_prop.styles,
+            thicknesses=discrete_prop.thicknesses,
             source_las=discrete_prop.source_las,
             source_name=discrete_prop.source_name,
             original_name=discrete_prop.original_name
@@ -1014,6 +1082,8 @@ class Property(PropertyOperationsMixin):
             null_value=-999.25,  # Already cleaned
             labels=self.labels,
             colors=self.colors,
+            styles=self.styles,
+            thicknesses=self.thicknesses,
             source_las=self.source_las,
             source_name=self.source_name,
             original_name=self.original_name
@@ -1852,23 +1922,35 @@ class Property(PropertyOperationsMixin):
         for sec_prop in self.secondary_properties:
             unit_mappings[sec_prop.original_name] = sec_prop.unit
 
-        # Collect discrete labels and colors if store_labels is True (use original names)
+        # Collect discrete labels, colors, styles, and thicknesses if store_labels is True (use original names)
         label_mappings = None
         color_mappings = None
+        style_mappings = None
+        thickness_mappings = None
         if store_labels:
             label_mappings = {}
             color_mappings = {}
+            style_mappings = {}
+            thickness_mappings = {}
             # Check main property
             if self.labels:
                 label_mappings[self.original_name] = self.labels
             if self.colors:
                 color_mappings[self.original_name] = self.colors
+            if self.styles:
+                style_mappings[self.original_name] = self.styles
+            if self.thicknesses:
+                thickness_mappings[self.original_name] = self.thicknesses
             # Check secondary properties
             for sec_prop in self.secondary_properties:
                 if sec_prop.labels:
                     label_mappings[sec_prop.original_name] = sec_prop.labels
                 if sec_prop.colors:
                     color_mappings[sec_prop.original_name] = sec_prop.colors
+                if sec_prop.styles:
+                    style_mappings[sec_prop.original_name] = sec_prop.styles
+                if sec_prop.thicknesses:
+                    thickness_mappings[sec_prop.original_name] = sec_prop.thicknesses
 
         # Export using LasFile static method
         LasFile.export_las(
@@ -1878,7 +1960,9 @@ class Property(PropertyOperationsMixin):
             unit_mappings=unit_mappings,
             null_value=null_value,
             discrete_labels=label_mappings if label_mappings else None,
-            discrete_colors=color_mappings if color_mappings else None
+            discrete_colors=color_mappings if color_mappings else None,
+            discrete_styles=style_mappings if style_mappings else None,
+            discrete_thicknesses=thickness_mappings if thickness_mappings else None
         )
 
     def __repr__(self) -> str:

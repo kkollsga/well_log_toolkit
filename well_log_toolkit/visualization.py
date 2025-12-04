@@ -321,7 +321,9 @@ class Template:
         self,
         property_name: Optional[str] = None,
         tops_dict: Optional[dict[float, str]] = None,
-        colors: Optional[dict[float, str]] = None
+        colors: Optional[dict[float, str]] = None,
+        styles: Optional[dict[float, str]] = None,
+        thicknesses: Optional[dict[float, float]] = None
     ) -> 'Template':
         """
         Add well tops configuration to the template.
@@ -343,6 +345,19 @@ class Template:
             - For property_name: keys are discrete values (integers)
             If not provided and using a discrete property with color mapping,
             those colors will be used.
+        styles : dict[float, str], optional
+            Optional line style mapping for each depth or discrete value.
+            Valid styles: 'solid', 'dashed', 'dotted', 'dashdot'
+            - For tops_dict: keys are depths matching tops_dict keys
+            - For property_name: keys are discrete values (integers)
+            If not provided and using a discrete property with style mapping,
+            those styles will be used.
+        thicknesses : dict[float, float], optional
+            Optional line thickness mapping for each depth or discrete value.
+            - For tops_dict: keys are depths matching tops_dict keys
+            - For property_name: keys are discrete values (integers)
+            If not provided and using a discrete property with thickness mapping,
+            those thicknesses will be used.
 
         Returns
         -------
@@ -383,7 +398,9 @@ class Template:
         tops_config = {
             'property_name': property_name,
             'tops_dict': tops_dict,
-            'colors': colors
+            'colors': colors,
+            'styles': styles,
+            'thicknesses': thicknesses
         }
         self.tops.append(tops_config)
         return self
@@ -890,6 +907,8 @@ class WellView:
         property_name: Optional[str] = None,
         tops_dict: Optional[dict[float, str]] = None,
         colors: Optional[dict[float, str]] = None,
+        styles: Optional[dict[float, str]] = None,
+        thicknesses: Optional[dict[float, float]] = None,
         source: Optional[str] = None
     ) -> 'WellView':
         """
@@ -912,6 +931,15 @@ class WellView:
             Colors can be matplotlib color names, hex codes, or RGB tuples.
             If not provided and using a discrete property with color mapping,
             those colors will be used.
+        styles : dict[float, str], optional
+            Optional line style mapping for each depth or discrete value.
+            Valid styles: 'solid', 'dashed', 'dotted', 'dashdot'
+            If not provided and using a discrete property with style mapping,
+            those styles will be used.
+        thicknesses : dict[float, float], optional
+            Optional line thickness mapping for each depth or discrete value.
+            If not provided and using a discrete property with thickness mapping,
+            those thicknesses will be used.
         source : str, optional
             Source name to get property from (if property_name is specified).
             Only needed if property exists in multiple sources.
@@ -950,6 +978,8 @@ class WellView:
             'property_name': property_name,
             'tops_dict': tops_dict,
             'colors': colors,
+            'styles': styles,
+            'thicknesses': thicknesses,
             'source': source
         }
         self._add_tops_from_config(tops_config)
@@ -964,6 +994,8 @@ class WellView:
         property_name = tops_config.get('property_name')
         tops_dict = tops_config.get('tops_dict')
         colors = tops_config.get('colors')
+        styles = tops_config.get('styles')
+        thicknesses = tops_config.get('thicknesses')
         source = tops_config.get('source')
 
         if property_name is None and tops_dict is None:
@@ -975,6 +1007,8 @@ class WellView:
         # Get tops data
         tops_data = {}  # depth -> formation name
         color_data = {}  # depth -> color
+        style_data = {}  # depth -> line style
+        thickness_data = {}  # depth -> line thickness
 
         if property_name is not None:
             # Load from discrete property
@@ -1026,16 +1060,34 @@ class WellView:
                 elif prop.colors and value in prop.colors:
                     color_data[depth] = prop.colors[value]
 
+                # Get style if available (styles parameter overrides property styles)
+                if styles is not None and value in styles:
+                    style_data[depth] = styles[value]
+                elif prop.styles and value in prop.styles:
+                    style_data[depth] = prop.styles[value]
+
+                # Get thickness if available (thicknesses parameter overrides property thicknesses)
+                if thicknesses is not None and value in thicknesses:
+                    thickness_data[depth] = thicknesses[value]
+                elif prop.thicknesses and value in prop.thicknesses:
+                    thickness_data[depth] = prop.thicknesses[value]
+
         else:
             # Use provided dictionary
             tops_data = tops_dict
             if colors is not None:
                 color_data = colors
+            if styles is not None:
+                style_data = styles
+            if thicknesses is not None:
+                thickness_data = thicknesses
 
         # Store tops for rendering
         self.tops.append({
             'tops': tops_data,
-            'colors': color_data if color_data else None
+            'colors': color_data if color_data else None,
+            'styles': style_data if style_data else None,
+            'thicknesses': thickness_data if thickness_data else None
         })
 
     def _get_depth_mask(self, depth: np.ndarray) -> np.ndarray:
@@ -1067,6 +1119,8 @@ class WellView:
         for tops_group in self.tops:
             tops_data = tops_group['tops']
             colors_data = tops_group['colors']
+            styles_data = tops_group['styles']
+            thicknesses_data = tops_group['thicknesses']
 
             # Draw each top
             for depth, formation_name in tops_data.items():
@@ -1080,9 +1134,21 @@ class WellView:
                 else:
                     color = 'black'  # Default color
 
+                # Get line style for this top
+                if styles_data and depth in styles_data:
+                    linestyle = styles_data[depth]
+                else:
+                    linestyle = 'solid'  # Default style
+
+                # Get line thickness for this top
+                if thicknesses_data and depth in thicknesses_data:
+                    linewidth = thicknesses_data[depth]
+                else:
+                    linewidth = 1.5  # Default thickness
+
                 # Draw line across all non-depth tracks
                 for ax in non_depth_axes:
-                    ax.axhline(y=depth, color=color, linestyle='-', linewidth=1.5, zorder=10)
+                    ax.axhline(y=depth, color=color, linestyle=linestyle, linewidth=linewidth, zorder=10)
 
                 # Add label at the right end (on the rightmost non-depth track)
                 rightmost_ax = non_depth_axes[-1]
