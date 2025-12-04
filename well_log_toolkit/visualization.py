@@ -832,13 +832,14 @@ class WellView:
             for fill_config in fill:
                 self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs, track_log_scale)
 
-        # Grid (y-axis will be inverted later in plot() method)
-        ax.grid(True, alpha=0.3)
-
-        # Add log scale grid lines if track uses log scale
-        # Use the first log's range for grid positioning
+        # Grid setup
         if track_log_scale and scale_info:
+            # For log scale: disable standard x-grid, add custom log grid lines, keep y-grid
+            ax.grid(True, alpha=0.3, axis='y')
             self._add_log_scale_grid(ax, scale_info[0]['min'], scale_info[0]['max'])
+        else:
+            # For linear scale: show standard grid (both x and y)
+            ax.grid(True, alpha=0.3)
 
         # Add visual line indicators with outline box and track title for each curve in the header area
         title_text = track.get("title", "")
