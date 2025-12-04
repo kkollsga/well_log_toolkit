@@ -245,6 +245,11 @@ class LasFile:
         >>> las = LasFile("well.las")
         >>> labels = las.get_discrete_labels('Zone')
         >>> # Returns: {0: 'NonReservoir', 1: 'Reservoir'}
+
+        Notes
+        -----
+        If a label contains a color specification (e.g., "NonNet|red"), only the
+        label part is returned. Use get_discrete_colors() to retrieve colors.
         """
         labels = {}
         prefix = f"{property_name}_"
@@ -256,12 +261,81 @@ class LasFile:
                 suffix = param_name[len(prefix):]
                 try:
                     value = int(suffix)
-                    labels[value] = label_value.strip()
+                    # If the label contains a color (e.g., "Label|color"), extract just the label
+                    if '|' in label_value:
+                        label_only = label_value.split('|')[0].strip()
+                        labels[value] = label_only
+                    else:
+                        labels[value] = label_value.strip()
                 except ValueError:
                     # Not a valid integer suffix, skip
                     continue
 
         return labels if labels else None
+
+    def get_discrete_colors(self, property_name: str) -> Optional[dict[int, str]]:
+        """
+        Extract color mappings for a discrete property from ~Parameter section.
+
+        Supports two formats:
+        1. Inline: Zone_0 = "NonNet|red" (color after pipe separator)
+        2. Separate: Zone_COLOR_0 = "red" (for backward compatibility)
+
+        Inline format takes precedence if both exist.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the discrete property
+
+        Returns
+        -------
+        dict[int, str] | None
+            Color mapping {0: 'red', 1: 'green'} or None if no colors found
+
+        Examples
+        --------
+        >>> las = LasFile("well.las")
+        >>> colors = las.get_discrete_colors('Zone')
+        >>> # Returns: {0: 'red', 1: 'green'}
+        """
+        colors = {}
+        prefix = f"{property_name}_"
+        color_prefix = f"{property_name}_COLOR_"
+
+        # First, check for inline colors (e.g., "Label|color")
+        for param_name, label_value in self.parameter_info.items():
+            if param_name.startswith(prefix) and not param_name.startswith(color_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(prefix):]
+                try:
+                    value = int(suffix)
+                    # If the label contains a color (e.g., "Label|color"), extract the color
+                    if '|' in label_value:
+                        parts = label_value.split('|')
+                        if len(parts) >= 2:
+                            color = parts[1].strip()
+                            if color:  # Only add if color is not empty
+                                colors[value] = color
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        # Second, check for separate color parameters (backward compatibility)
+        # Only add if not already defined by inline format
+        for param_name, color_value in self.parameter_info.items():
+            if param_name.startswith(color_prefix):
+                # Extract the numeric suffix
+                suffix = param_name[len(color_prefix):]
+                try:
+                    value = int(suffix)
+                    if value not in colors:  # Inline format takes precedence
+                        colors[value] = color_value.strip()
+                except ValueError:
+                    # Not a valid integer suffix, skip
+                    continue
+
+        return colors if colors else None
 
     def check_depth_compatibility(self, other, well=None) -> dict:
         """
@@ -705,6 +779,7 @@ class LasFile:
         unit_mappings: Optional[dict[str, str]] = None,
         null_value: float = -999.25,
         discrete_labels: Optional[dict[str, dict[int, str]]] = None,
+        discrete_colors: Optional[dict[str, dict[int, str]]] = None,
         template_las: Optional['LasFile'] = None
     ) -> None:
         """
@@ -727,10 +802,14 @@ class LasFile:
             Label mappings for discrete properties stored in ~Parameter section.
             Format: {'PropertyName': {0: 'Label0', 1: 'Label1'}}
             Example: {'Zone': {0: 'NonReservoir', 1: 'Reservoir'}}
+        discrete_colors : dict[str, dict[int, str]], optional
+            Color mappings for discrete properties stored in ~Parameter section.
+            Format: {'PropertyName': {0: 'red', 1: 'green'}}
+            Example: {'Zone': {0: 'red', 1: 'green'}}
         template_las : LasFile, optional
             Source LAS file to use as template. Preserves original ~Version info,
             ~Well parameters (excluding STRT/STOP/STEP/NULL), and ~Parameter entries
-            not related to discrete labels. This prevents data erosion when updating
+            not related to discrete labels and colors. This prevents data erosion when updating
             existing LAS files.
 
         Raises
@@ -855,19 +934,38 @@ class LasFile:
                 if param_key not in skip_params:
                     params_to_write[param_key] = (param_value, f"Preserved from original")
 
-        # Add new discrete labels if provided
+        # Add new discrete labels and colors if provided
         if discrete_labels:
             # Add list of discrete properties
             discrete_prop_names = ','.join(sorted(discrete_labels.keys()))
             params_to_write['DISCRETE_PROPS'] = (discrete_prop_names, "Discrete properties")
 
             # Add label mappings for each discrete property
+            # If colors are also provided, combine them inline (e.g., "Label|color")
             for prop_name, label_mapping in sorted(discrete_labels.items()):
                 # Sort by value for consistent output
                 for value in sorted(label_mapping.keys()):
                     label = label_mapping[value]
-                    param_name = f"{prop_name}_{value}"
-                    params_to_write[param_name] = (label, f"{prop_name} label for value {value}")
+                    # Check if there's a corresponding color
+                    if discrete_colors and prop_name in discrete_colors and value in discrete_colors[prop_name]:
+                        color = discrete_colors[prop_name][value]
+                        # Combine label and color inline
+                        combined = f"{label}|{color}"
+                        param_name = f"{prop_name}_{value}"
+                        params_to_write[param_name] = (combined, f"{prop_name} label and color for value {value}")
+                    else:
+                        param_name = f"{prop_name}_{value}"
+                        params_to_write[param_name] = (label, f"{prop_name} label for value {value}")
+
+        # For properties with colors but no labels, store colors separately (legacy format)
+        if discrete_colors:
+            for prop_name, color_mapping in sorted(discrete_colors.items()):
+                # Only write separate color params if no labels were defined for this property
+                if not discrete_labels or prop_name not in discrete_labels:
+                    for value in sorted(color_mapping.keys()):
+                        color = color_mapping[value]
+                        param_name = f"{prop_name}_COLOR_{value}"
+                        params_to_write[param_name] = (color, f"{prop_name} color for value {value}")
 
         # Write parameter section if we have any parameters
         if params_to_write:

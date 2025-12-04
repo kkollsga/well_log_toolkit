@@ -48,6 +48,8 @@ class Property(PropertyOperationsMixin):
         Value to treat as null/missing
     labels : dict[int, str], optional
         Label mapping for discrete properties (e.g., {0: 'NonNet', 1: 'Net'})
+    colors : dict[int, str], optional
+        Color mapping for discrete properties (e.g., {0: 'red', 1: 'green'})
     original_name : str, optional
         Original property name with special characters (from LAS file)
 
@@ -71,6 +73,8 @@ class Property(PropertyOperationsMixin):
         Parent well reference
     labels : dict[int, str] | None
         Label mapping for discrete values
+    colors : dict[int, str] | None
+        Color mapping for discrete values
     source_las : LasFile | None
         Source LAS file this property came from
     source : str | None
@@ -96,6 +100,7 @@ class Property(PropertyOperationsMixin):
         description: str = '',
         null_value: float = -999.25,
         labels: Optional[dict[int, str]] = None,
+        colors: Optional[dict[int, str]] = None,
         source_las: Optional['LasFile'] = None,
         source_name: Optional[str] = None,
         original_name: Optional[str] = None,
@@ -108,6 +113,7 @@ class Property(PropertyOperationsMixin):
         self._type = prop_type  # Internal storage for type
         self.description = description
         self._labels = labels  # Internal storage for labels
+        self._colors = colors  # Internal storage for colors
         self.source_las = source_las  # Source LAS file this property came from
         self.source_name = source_name  # Source name (file path or external_df)
         self._null_value = null_value
@@ -352,6 +358,32 @@ class Property(PropertyOperationsMixin):
             self._labels = value
             self._mark_source_modified()
 
+    @property
+    def colors(self) -> Optional[dict[int, str]]:
+        """
+        Get the color mapping for discrete property values.
+
+        Returns
+        -------
+        Optional[dict[int, str]]
+            Mapping of numeric values to color strings, or None if not defined
+        """
+        return self._colors
+
+    @colors.setter
+    def colors(self, value: Optional[dict[int, str]]) -> None:
+        """
+        Set the color mapping and mark source as modified.
+
+        Parameters
+        ----------
+        value : Optional[dict[int, str]]
+            Mapping of numeric values to color strings (e.g., {0: 'red', 1: 'green'})
+        """
+        if value != self._colors:
+            self._colors = value
+            self._mark_source_modified()
+
     def _mark_source_modified(self) -> None:
         """Mark the parent well's source as modified so it gets re-exported on save."""
         if self.parent_well is not None and self.source_name is not None:
@@ -550,6 +582,7 @@ class Property(PropertyOperationsMixin):
                 prop_type=self.type,
                 description=self.description,
                 labels=self.labels.copy() if self.labels else None,
+                colors=self.colors.copy() if self.colors else None,
                 source_name='computed',
                 original_name=self.original_name
             )
@@ -567,6 +600,7 @@ class Property(PropertyOperationsMixin):
                 prop_type=self.type,
                 description=f"{self.description} (resampled, insufficient data)",
                 labels=self.labels.copy() if self.labels else None,
+                colors=self.colors.copy() if self.colors else None,
                 source_name='computed',
                 original_name=self.original_name
             )
@@ -597,6 +631,7 @@ class Property(PropertyOperationsMixin):
             prop_type=self.type,
             description=f"{self.description} (resampled)",
             labels=self.labels.copy() if self.labels else None,
+            colors=self.colors.copy() if self.colors else None,
             source_name='computed',
             original_name=self.original_name
         )
@@ -961,6 +996,7 @@ class Property(PropertyOperationsMixin):
             description=discrete_prop.description,
             null_value=-999.25,
             labels=discrete_prop.labels,
+            colors=discrete_prop.colors,
             source_las=discrete_prop.source_las,
             source_name=discrete_prop.source_name,
             original_name=discrete_prop.original_name
@@ -977,6 +1013,7 @@ class Property(PropertyOperationsMixin):
             description=self.description,
             null_value=-999.25,  # Already cleaned
             labels=self.labels,
+            colors=self.colors,
             source_las=self.source_las,
             source_name=self.source_name,
             original_name=self.original_name
@@ -1111,6 +1148,7 @@ class Property(PropertyOperationsMixin):
                 description=sp.description,
                 null_value=-999.25,
                 labels=sp.labels,
+                colors=sp.colors,
                 source_las=sp.source_las,
                 source_name=sp.source_name,
                 original_name=sp.original_name
@@ -1814,17 +1852,23 @@ class Property(PropertyOperationsMixin):
         for sec_prop in self.secondary_properties:
             unit_mappings[sec_prop.original_name] = sec_prop.unit
 
-        # Collect discrete labels if store_labels is True (use original names)
+        # Collect discrete labels and colors if store_labels is True (use original names)
         label_mappings = None
+        color_mappings = None
         if store_labels:
             label_mappings = {}
+            color_mappings = {}
             # Check main property
             if self.labels:
                 label_mappings[self.original_name] = self.labels
+            if self.colors:
+                color_mappings[self.original_name] = self.colors
             # Check secondary properties
             for sec_prop in self.secondary_properties:
                 if sec_prop.labels:
                     label_mappings[sec_prop.original_name] = sec_prop.labels
+                if sec_prop.colors:
+                    color_mappings[sec_prop.original_name] = sec_prop.colors
 
         # Export using LasFile static method
         LasFile.export_las(
@@ -1833,7 +1877,8 @@ class Property(PropertyOperationsMixin):
             df=df,
             unit_mappings=unit_mappings,
             null_value=null_value,
-            discrete_labels=label_mappings if label_mappings else None
+            discrete_labels=label_mappings if label_mappings else None,
+            discrete_colors=color_mappings if color_mappings else None
         )
 
     def __repr__(self) -> str:

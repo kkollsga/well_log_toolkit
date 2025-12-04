@@ -115,7 +115,9 @@ class Template:
             - scale (str): Optional override for this log's scale ("log" or "linear")
               If not specified, uses the track's log_scale setting
             - color (str): Line color
-            - style (str): Line style ("-", "--", "-.", ":")
+            - style (str): Line style - supports both matplotlib codes and friendly names:
+              Matplotlib: "-" (solid), "--" (dashed), "-." (dashdot), ":" (dotted)
+              Friendly: "solid", "dashed", "dashdot", "dotted"
             - thickness (float): Line width
             - alpha (float): Transparency (0-1)
         fill : Union[dict, list[dict]], optional
@@ -165,7 +167,7 @@ class Template:
         ...         "name": "GR",
         ...         "x_range": [0, 150],
         ...         "color": "green",
-        ...         "style": "-",
+        ...         "style": "solid",  # or "-", both work
         ...         "thickness": 1.0
         ...     }],
         ...     title="Gamma Ray"
@@ -191,6 +193,16 @@ class Template:
         ...         {"name": "GR", "x_range": [0, 150], "scale": "linear", "color": "green"}  # Override to linear
         ...     ],
         ...     log_scale=True  # Default for track is log scale
+        ... )
+        >>>
+        >>> # Add track with different line styles
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[
+        ...         {"name": "RHOB", "x_range": [1.95, 2.95], "color": "red", "style": "solid", "thickness": 1.5},
+        ...         {"name": "NPHI", "x_range": [0.45, -0.15], "color": "blue", "style": "dashed", "thickness": 2.0}
+        ...     ],
+        ...     title="Density & Neutron"
         ... )
         >>>
         >>> # Add porosity track with fill (simplified API)
@@ -684,6 +696,7 @@ class WellView:
         self.figsize = figsize
         self.fig = None
         self.axes = []
+        self.tops = []  # List of well tops to draw across all tracks
 
     def _create_default_template(self) -> Template:
         """Create a simple default template with all continuous properties."""
@@ -719,9 +732,194 @@ class WellView:
 
         return template
 
+    def add_tops(
+        self,
+        property_name: Optional[str] = None,
+        tops_dict: Optional[dict[float, str]] = None,
+        colors: Optional[dict[float, str]] = None,
+        source: Optional[str] = None
+    ) -> 'WellView':
+        """
+        Add well tops to the view that span across all tracks (except depth track).
+
+        Tops can be specified either from a discrete property in the well or
+        as a dictionary mapping depths to formation names.
+
+        Parameters
+        ----------
+        property_name : str, optional
+            Name of discrete property in well containing tops data.
+            The property should have depth values where formations start.
+        tops_dict : dict[float, str], optional
+            Dictionary mapping depth values to formation names.
+            Example: {2850.0: 'Formation A', 2920.5: 'Formation B'}
+        colors : dict[float, str], optional
+            Optional color mapping for each depth. If provided, must have same keys
+            as tops_dict or match values in the discrete property.
+            Colors can be matplotlib color names, hex codes, or RGB tuples.
+            If not provided and using a discrete property with color mapping,
+            those colors will be used.
+        source : str, optional
+            Source name to get property from (if property_name is specified).
+            Only needed if property exists in multiple sources.
+
+        Returns
+        -------
+        WellView
+            Self for method chaining
+
+        Examples
+        --------
+        >>> # Add tops from discrete property
+        >>> view = WellView(well, template=template)
+        >>> view.add_tops(property_name='Zone')
+        >>> view.show()
+        >>>
+        >>> # Add tops manually with custom colors
+        >>> view.add_tops(
+        ...     tops_dict={2850.0: 'Reservoir', 2920.5: 'Seal'},
+        ...     colors={2850.0: 'yellow', 2920.5: 'gray'}
+        ... )
+        >>>
+        >>> # Add tops from discrete property, overriding colors
+        >>> view.add_tops(
+        ...     property_name='Formation',
+        ...     colors={0: 'red', 1: 'green', 2: 'blue'}  # Map discrete values to colors
+        ... )
+
+        Notes
+        -----
+        Tops are drawn as horizontal lines spanning all tracks (except depth track).
+        Formation names are displayed at the right end of each line, floating above it.
+        """
+        if property_name is None and tops_dict is None:
+            raise ValueError("Must provide either 'property_name' or 'tops_dict'")
+
+        if property_name is not None and tops_dict is not None:
+            raise ValueError("Cannot specify both 'property_name' and 'tops_dict'")
+
+        # Get tops data
+        tops_data = {}  # depth -> formation name
+        color_data = {}  # depth -> color
+
+        if property_name is not None:
+            # Load from discrete property
+            try:
+                prop = self.well.get_property(property_name, source=source)
+            except KeyError:
+                available = ', '.join(self.well.properties)
+                raise ValueError(
+                    f"Property '{property_name}' not found in well. "
+                    f"Available properties: {available}"
+                )
+
+            if prop.type != 'discrete':
+                raise ValueError(
+                    f"Property '{property_name}' must be discrete type, got '{prop.type}'"
+                )
+
+            # Extract unique depths and their values
+            valid_mask = ~np.isnan(prop.values)
+            if not np.any(valid_mask):
+                raise ValueError(f"Property '{property_name}' has no valid data")
+
+            # Find where values change (formation boundaries)
+            valid_depth = prop.depth[valid_mask]
+            valid_values = prop.values[valid_mask]
+
+            # Get boundaries where value changes
+            boundaries = [0]  # Start with first point
+            for i in range(1, len(valid_values)):
+                if valid_values[i] != valid_values[i-1]:
+                    boundaries.append(i)
+
+            # Build tops dictionary
+            for idx in boundaries:
+                depth = float(valid_depth[idx])
+                value = int(valid_values[idx])
+
+                # Get label if available
+                if prop.labels and value in prop.labels:
+                    formation_name = prop.labels[value]
+                else:
+                    formation_name = f"Zone {value}"
+
+                tops_data[depth] = formation_name
+
+                # Get color if available (colors parameter overrides property colors)
+                if colors is not None and value in colors:
+                    color_data[depth] = colors[value]
+                elif prop.colors and value in prop.colors:
+                    color_data[depth] = prop.colors[value]
+
+        else:
+            # Use provided dictionary
+            tops_data = tops_dict
+            if colors is not None:
+                color_data = colors
+
+        # Store tops for rendering
+        self.tops.append({
+            'tops': tops_data,
+            'colors': color_data if color_data else None
+        })
+
+        return self
+
     def _get_depth_mask(self, depth: np.ndarray) -> np.ndarray:
         """Get boolean mask for depth range."""
         return (depth >= self.depth_range[0]) & (depth <= self.depth_range[1])
+
+    def _draw_cross_track_tops(self) -> None:
+        """
+        Draw well tops that span across all tracks (except depth track).
+
+        Tops are drawn as horizontal lines with formation names displayed
+        at the right end, floating above the line.
+        """
+        # Identify which tracks are depth tracks (skip those)
+        non_depth_axes = []
+        for ax, track in zip(self.axes, self.template.tracks):
+            if track.get("type", "continuous") != "depth":
+                non_depth_axes.append(ax)
+
+        if not non_depth_axes:
+            return  # No tracks to draw tops on
+
+        # For each tops group
+        for tops_group in self.tops:
+            tops_data = tops_group['tops']
+            colors_data = tops_group['colors']
+
+            # Draw each top
+            for depth, formation_name in tops_data.items():
+                # Skip tops outside depth range
+                if depth < self.depth_range[0] or depth > self.depth_range[1]:
+                    continue
+
+                # Get color for this top
+                if colors_data and depth in colors_data:
+                    color = colors_data[depth]
+                else:
+                    color = 'black'  # Default color
+
+                # Draw line across all non-depth tracks
+                for ax in non_depth_axes:
+                    ax.axhline(y=depth, color=color, linestyle='-', linewidth=1.5, zorder=10)
+
+                # Add label at the right end (on the rightmost non-depth track)
+                rightmost_ax = non_depth_axes[-1]
+                rightmost_ax.text(
+                    1.0, depth,  # x=1.0 is at the right edge of the axes
+                    formation_name,
+                    transform=rightmost_ax.get_yaxis_transform(),  # x in axes coords, y in data coords
+                    ha='right', va='bottom',
+                    fontsize=8,
+                    color=color,
+                    bbox=dict(facecolor='white', edgecolor=color, boxstyle='round,pad=0.3', alpha=0.9),
+                    zorder=11,
+                    clip_on=False  # Allow label to extend beyond axes
+                )
 
     def _plot_continuous_track(
         self,
@@ -808,7 +1006,15 @@ class WellView:
 
             # Plot styling
             color = log_config.get("color", "blue")
-            style = log_config.get("style", "-")
+            style_raw = log_config.get("style", "-")
+            # Support both matplotlib codes and friendly names
+            style_map = {
+                "solid": "-",
+                "dashed": "--",
+                "dashdot": "-.",
+                "dotted": ":"
+            }
+            style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
             thickness = log_config.get("thickness", 1.0)
             alpha = log_config.get("alpha", 1.0)
 
@@ -931,7 +1137,15 @@ class WellView:
 
             if log_config:
                 color = log_config.get("color", "blue")
-                style = log_config.get("style", "-")
+                style_raw = log_config.get("style", "-")
+                # Support both matplotlib codes and friendly names
+                style_map = {
+                    "solid": "-",
+                    "dashed": "--",
+                    "dashdot": "-.",
+                    "dotted": ":"
+                }
+                style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
                 thickness = log_config.get("thickness", 1.0)
 
                 # Calculate y positions for this curve (stack from bottom up)
@@ -1679,6 +1893,10 @@ class WellView:
             # Remove y-labels for all but first track
             if ax != self.axes[0]:
                 ax.set_ylabel('')
+
+        # Draw cross-track tops (span all tracks except depth track)
+        if self.tops:
+            self._draw_cross_track_tops()
 
         # Invert y-axis once for all tracks (depth increases downward)
         # Since sharey=True, this applies to all axes
