@@ -1725,7 +1725,13 @@ class WellView:
                     return
 
             # Get color range for normalization
-            color_range = fill.get("color_range", [colormap_values.min(), colormap_values.max()])
+            # Check if we have valid values
+            valid_mask = ~np.isnan(colormap_values)
+            if not np.any(valid_mask):
+                warnings.warn(f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.")
+                return
+
+            color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
             norm = Normalize(vmin=color_range[0], vmax=color_range[1])
             cmap = plt.get_cmap(cmap_name)
 
@@ -1876,7 +1882,13 @@ class WellView:
                     return
 
             # Get color range for normalization
-            color_range = fill.get("color_range", [colormap_values.min(), colormap_values.max()])
+            # Check if we have valid values
+            valid_mask = ~np.isnan(colormap_values)
+            if not np.any(valid_mask):
+                warnings.warn(f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.")
+                return
+
+            color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
             norm = Normalize(vmin=color_range[0], vmax=color_range[1])
             cmap = plt.get_cmap(cmap_name)
 
