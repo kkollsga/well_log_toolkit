@@ -396,6 +396,81 @@ class _ManagerPropertyProxy:
         if count > 0:
             print(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
 
+    @property
+    def colors(self):
+        """Get colors from first well with this property."""
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                return prop.colors
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        return None
+
+    @colors.setter
+    def colors(self, value: dict):
+        """Set colors for this property in all wells."""
+        count = 0
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                prop.colors = value
+                count += 1
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        if count > 0:
+            print(f"✓ Set colors for property '{self._property_name}' in {count} well(s)")
+
+    @property
+    def styles(self):
+        """Get styles from first well with this property."""
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                return prop.styles
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        return None
+
+    @styles.setter
+    def styles(self, value: dict):
+        """Set styles for this property in all wells."""
+        count = 0
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                prop.styles = value
+                count += 1
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        if count > 0:
+            print(f"✓ Set styles for property '{self._property_name}' in {count} well(s)")
+
+    @property
+    def thicknesses(self):
+        """Get thicknesses from first well with this property."""
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                return prop.thicknesses
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        return None
+
+    @thicknesses.setter
+    def thicknesses(self, value: dict):
+        """Set thicknesses for this property in all wells."""
+        count = 0
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+                prop.thicknesses = value
+                count += 1
+            except (AttributeError, PropertyNotFoundError):
+                pass
+        if count > 0:
+            print(f"✓ Set thicknesses for property '{self._property_name}' in {count} well(s)")
+
     def min(self, nested: bool = False, return_df: bool = False):
         """
         Compute minimum value for this property across all wells.
