@@ -1984,8 +1984,8 @@ class Well:
                 # Update the LAS data
                 original_las.set_data(pd.DataFrame(las_data))
 
-                # Sync discrete labels from Property objects to LAS parameter_info
-                # This ensures user-modified labels are persisted to the LAS file
+                # Sync discrete metadata from Property objects to LAS parameter_info
+                # This ensures user-modified labels, colors, styles, and thicknesses are persisted
                 discrete_props = []
                 for prop_name, prop in source_data['properties'].items():
                     if prop.type == 'discrete' and prop.labels:
@@ -2003,6 +2003,24 @@ class Well:
                         ]
                         for key in keys_to_remove:
                             del original_las.parameter_info[key]
+
+                    # Sync colors mapping
+                    if prop.type == 'discrete' and prop.colors:
+                        for value, color in prop.colors.items():
+                            param_name = f"{prop.original_name}_{value}_COLOR"
+                            original_las.parameter_info[param_name] = color
+
+                    # Sync styles mapping
+                    if prop.type == 'discrete' and prop.styles:
+                        for value, style in prop.styles.items():
+                            param_name = f"{prop.original_name}_{value}_STYLE"
+                            original_las.parameter_info[param_name] = style
+
+                    # Sync thicknesses mapping
+                    if prop.type == 'discrete' and prop.thicknesses:
+                        for value, thickness in prop.thicknesses.items():
+                            param_name = f"{prop.original_name}_{value}_THICKNESS"
+                            original_las.parameter_info[param_name] = str(thickness)
 
                 # Update DISCRETE_PROPS list
                 if discrete_props:
@@ -2023,6 +2041,9 @@ class Well:
                 unit_mappings = {'DEPT': 'm'}
                 type_mappings = {}
                 label_mappings = {}
+                color_mappings = {}
+                style_mappings = {}
+                thickness_mappings = {}
 
                 for prop_name, prop in source_data['properties'].items():
                     data[prop.original_name] = prop.values
@@ -2030,6 +2051,12 @@ class Well:
                     type_mappings[prop.original_name] = prop.type
                     if prop.labels:
                         label_mappings[prop.original_name] = prop.labels
+                    if prop.colors:
+                        color_mappings[prop.original_name] = prop.colors
+                    if prop.styles:
+                        style_mappings[prop.original_name] = prop.styles
+                    if prop.thicknesses:
+                        thickness_mappings[prop.original_name] = prop.thicknesses
 
                 df = pd.DataFrame(data)
 
@@ -2040,7 +2067,10 @@ class Well:
                     source_name=source_name,
                     unit_mappings=unit_mappings,
                     type_mappings=type_mappings,
-                    label_mappings=label_mappings if label_mappings else None
+                    label_mappings=label_mappings if label_mappings else None,
+                    color_mappings=color_mappings if color_mappings else None,
+                    style_mappings=style_mappings if style_mappings else None,
+                    thickness_mappings=thickness_mappings if thickness_mappings else None
                 )
 
                 # Export to file
