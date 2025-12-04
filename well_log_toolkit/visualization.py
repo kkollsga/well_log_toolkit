@@ -87,6 +87,7 @@ class Template:
         """Initialize template."""
         self.name = name
         self.tracks = tracks if tracks is not None else []
+        self.tops = []  # List of well tops configurations
 
     def add_track(
         self,
@@ -316,6 +317,77 @@ class Template:
             raise IndexError(f"Track index {index} out of range (0-{len(self.tracks)-1})")
         return self
 
+    def add_tops(
+        self,
+        property_name: Optional[str] = None,
+        tops_dict: Optional[dict[float, str]] = None,
+        colors: Optional[dict[float, str]] = None
+    ) -> 'Template':
+        """
+        Add well tops configuration to the template.
+
+        Tops added to the template will be displayed in all WellViews created from
+        this template. They span across all tracks (except depth track).
+
+        Parameters
+        ----------
+        property_name : str, optional
+            Name of discrete property in well containing tops data.
+            The property name will be resolved when the template is used with a well.
+        tops_dict : dict[float, str], optional
+            Dictionary mapping depth values to formation names.
+            Example: {2850.0: 'Formation A', 2920.5: 'Formation B'}
+        colors : dict[float, str], optional
+            Optional color mapping for each depth or discrete value.
+            - For tops_dict: keys are depths matching tops_dict keys
+            - For property_name: keys are discrete values (integers)
+            If not provided and using a discrete property with color mapping,
+            those colors will be used.
+
+        Returns
+        -------
+        Template
+            Self for method chaining
+
+        Examples
+        --------
+        >>> # Add tops from discrete property (resolved when used with well)
+        >>> template = Template("my_template")
+        >>> template.add_track(...)
+        >>> template.add_tops(property_name="Formations")
+        >>>
+        >>> # Add manual tops with colors
+        >>> template.add_tops(
+        ...     tops_dict={2850.0: 'Reservoir', 2920.5: 'Seal'},
+        ...     colors={2850.0: 'yellow', 2920.5: 'gray'}
+        ... )
+        >>>
+        >>> # Add tops from discrete property with color overrides
+        >>> template.add_tops(
+        ...     property_name='Zone',
+        ...     colors={0: 'red', 1: 'green', 2: 'blue'}  # Map discrete values
+        ... )
+
+        Notes
+        -----
+        Tops are drawn as horizontal lines spanning all tracks (except depth track).
+        Formation names are displayed at the right end of each line, floating above it.
+        """
+        if property_name is None and tops_dict is None:
+            raise ValueError("Must provide either 'property_name' or 'tops_dict'")
+
+        if property_name is not None and tops_dict is not None:
+            raise ValueError("Cannot specify both 'property_name' and 'tops_dict'")
+
+        # Store tops configuration
+        tops_config = {
+            'property_name': property_name,
+            'tops_dict': tops_dict,
+            'colors': colors
+        }
+        self.tops.append(tops_config)
+        return self
+
     def edit_track(self, index: int, **kwargs) -> 'Template':
         """
         Edit track at specified index.
@@ -450,7 +522,9 @@ class Template:
         filepath = Path(filepath)
         with open(filepath, 'r') as f:
             data = json.load(f)
-        return cls(name=data.get("name", "loaded"), tracks=data.get("tracks", []))
+        template = cls(name=data.get("name", "loaded"), tracks=data.get("tracks", []))
+        template.tops = data.get("tops", [])
+        return template
 
     def to_dict(self) -> dict:
         """
@@ -465,11 +539,12 @@ class Template:
         --------
         >>> config = template.to_dict()
         >>> print(config.keys())
-        dict_keys(['name', 'tracks'])
+        dict_keys(['name', 'tracks', 'tops'])
         """
         return {
             "name": self.name,
-            "tracks": self.tracks
+            "tracks": self.tracks,
+            "tops": self.tops
         }
 
     @classmethod
@@ -489,10 +564,12 @@ class Template:
 
         Examples
         --------
-        >>> config = {"name": "test", "tracks": [...]}
+        >>> config = {"name": "test", "tracks": [...], "tops": [...]}
         >>> template = Template.from_dict(config)
         """
-        return cls(name=data.get("name", "unnamed"), tracks=data.get("tracks", []))
+        template = cls(name=data.get("name", "unnamed"), tracks=data.get("tracks", []))
+        template.tops = data.get("tops", [])
+        return template
 
     def __repr__(self) -> str:
         """String representation."""
@@ -697,6 +774,11 @@ class WellView:
         self.fig = None
         self.axes = []
         self.tops = []  # List of well tops to draw across all tracks
+        self.temp_tracks = []  # List of temporary tracks (not in template)
+
+        # Load tops from template
+        for tops_config in self.template.tops:
+            self._add_tops_from_config(tops_config)
 
     def _create_default_template(self) -> Template:
         """Create a simple default template with all continuous properties."""
@@ -732,6 +814,77 @@ class WellView:
 
         return template
 
+    def add_track(
+        self,
+        track_type: str = "continuous",
+        logs: Optional[list[dict]] = None,
+        fill: Optional[Union[dict, list[dict]]] = None,
+        width: float = 1.0,
+        title: Optional[str] = None,
+        log_scale: bool = False
+    ) -> 'WellView':
+        """
+        Add a temporary track to this view (not saved to template).
+
+        This allows adding tracks to a specific view without modifying the
+        underlying template. Temporary tracks are appended after template tracks.
+
+        Parameters
+        ----------
+        track_type : {"continuous", "discrete", "depth"}, default "continuous"
+            Type of track
+        logs : list[dict], optional
+            List of log configurations (same format as Template.add_track)
+        fill : Union[dict, list[dict]], optional
+            Fill configuration or list of fills
+        width : float, default 1.0
+            Relative width of track
+        title : str, optional
+            Track title
+        log_scale : bool, default False
+            Use logarithmic scale for the track
+
+        Returns
+        -------
+        WellView
+            Self for method chaining
+
+        Examples
+        --------
+        >>> # Create view with template, then add temporary track
+        >>> view = WellView(well, template=template)
+        >>> view.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{"name": "TEMP_LOG", "x_range": [0, 100], "color": "orange"}],
+        ...     title="Temporary"
+        ... )
+        >>> view.show()
+
+        Notes
+        -----
+        Temporary tracks are not saved to the template and only exist for this view.
+        If you want to reuse tracks across multiple views, add them to the template instead.
+        """
+        # Normalize fill to list format
+        fill_list = None
+        if fill is not None:
+            if isinstance(fill, dict):
+                fill_list = [fill]
+            else:
+                fill_list = fill
+
+        track = {
+            "type": track_type,
+            "logs": logs or [],
+            "fill": fill_list,
+            "tops": None,
+            "width": width,
+            "title": title,
+            "log_scale": log_scale
+        }
+        self.temp_tracks.append(track)
+        return self
+
     def add_tops(
         self,
         property_name: Optional[str] = None,
@@ -740,7 +893,7 @@ class WellView:
         source: Optional[str] = None
     ) -> 'WellView':
         """
-        Add well tops to the view that span across all tracks (except depth track).
+        Add temporary well tops to this view (not saved to template).
 
         Tops can be specified either from a discrete property in the well or
         as a dictionary mapping depths to formation names.
@@ -791,7 +944,28 @@ class WellView:
         -----
         Tops are drawn as horizontal lines spanning all tracks (except depth track).
         Formation names are displayed at the right end of each line, floating above it.
+        Temporary tops are not saved to the template.
         """
+        tops_config = {
+            'property_name': property_name,
+            'tops_dict': tops_dict,
+            'colors': colors,
+            'source': source
+        }
+        self._add_tops_from_config(tops_config)
+        return self
+
+    def _add_tops_from_config(self, tops_config: dict) -> None:
+        """
+        Internal method to add tops from a configuration dict.
+
+        This is used both for loading tops from templates and for adding temporary tops.
+        """
+        property_name = tops_config.get('property_name')
+        tops_dict = tops_config.get('tops_dict')
+        colors = tops_config.get('colors')
+        source = tops_config.get('source')
+
         if property_name is None and tops_dict is None:
             raise ValueError("Must provide either 'property_name' or 'tops_dict'")
 
@@ -864,22 +1038,25 @@ class WellView:
             'colors': color_data if color_data else None
         })
 
-        return self
-
     def _get_depth_mask(self, depth: np.ndarray) -> np.ndarray:
         """Get boolean mask for depth range."""
         return (depth >= self.depth_range[0]) & (depth <= self.depth_range[1])
 
-    def _draw_cross_track_tops(self) -> None:
+    def _draw_cross_track_tops(self, all_tracks: list[dict]) -> None:
         """
         Draw well tops that span across all tracks (except depth track).
 
         Tops are drawn as horizontal lines with formation names displayed
         at the right end, floating above the line.
+
+        Parameters
+        ----------
+        all_tracks : list[dict]
+            Combined list of template tracks and temporary tracks
         """
         # Identify which tracks are depth tracks (skip those)
         non_depth_axes = []
-        for ax, track in zip(self.axes, self.template.tracks):
+        for ax, track in zip(self.axes, all_tracks):
             if track.get("type", "continuous") != "depth":
                 non_depth_axes.append(ax)
 
@@ -1858,9 +2035,12 @@ class WellView:
         depth = first_prop.depth
         mask = self._get_depth_mask(depth)
 
+        # Combine template tracks with temporary tracks
+        all_tracks = self.template.tracks + self.temp_tracks
+
         # Create figure with subplots
-        n_tracks = len(self.template.tracks)
-        widths = [track.get("width", 1.0) for track in self.template.tracks]
+        n_tracks = len(all_tracks)
+        widths = [track.get("width", 1.0) for track in all_tracks]
 
         self.fig, self.axes = plt.subplots(
             1, n_tracks,
@@ -1875,7 +2055,7 @@ class WellView:
             self.axes = [self.axes]
 
         # Plot each track
-        for ax, track in zip(self.axes, self.template.tracks):
+        for ax, track in zip(self.axes, all_tracks):
             track_type = track.get("type", "continuous")
 
             if track_type == "continuous":
@@ -1896,7 +2076,7 @@ class WellView:
 
         # Draw cross-track tops (span all tracks except depth track)
         if self.tops:
-            self._draw_cross_track_tops()
+            self._draw_cross_track_tops(all_tracks)
 
         # Invert y-axis once for all tracks (depth increases downward)
         # Since sharey=True, this applies to all axes
@@ -1985,8 +2165,13 @@ class WellView:
 
     def __repr__(self) -> str:
         """String representation."""
+        total_tracks = len(self.template.tracks) + len(self.temp_tracks)
+        track_info = f"tracks={total_tracks}"
+        if self.temp_tracks:
+            track_info += f" ({len(self.template.tracks)} template + {len(self.temp_tracks)} temp)"
+
         return (
             f"WellView(well='{self.well.name}', "
             f"depth_range={self.depth_range}, "
-            f"tracks={len(self.template.tracks)})"
+            f"{track_info})"
         )
