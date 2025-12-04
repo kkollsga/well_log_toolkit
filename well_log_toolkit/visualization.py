@@ -1247,19 +1247,24 @@ class WellView:
                 if colormap_curve_name in plotted_curves:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
-                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using left boundary")
-                    # Extract original values from normalized left_values
+                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using boundary curves")
+                    # Try left boundary curve first, then right boundary curve
                     if "curve" in left_spec and left_spec["curve"] in plotted_curves:
                         colormap_values, _ = plotted_curves[left_spec["curve"]]
+                    elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
+                        colormap_values, _ = plotted_curves[right_spec["curve"]]
                     else:
                         warnings.warn("Cannot determine colormap values")
                         return
             else:
-                # Default: use left boundary curve's original values
+                # Default: use left boundary curve's original values if available,
+                # otherwise try right boundary curve
                 if "curve" in left_spec and left_spec["curve"] in plotted_curves:
                     colormap_values, _ = plotted_curves[left_spec["curve"]]
+                elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
+                    colormap_values, _ = plotted_curves[right_spec["curve"]]
                 else:
-                    warnings.warn("Cannot determine colormap values (no curve specified)")
+                    warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
                     return
 
             # Get color range for normalization
@@ -1388,17 +1393,30 @@ class WellView:
             cmap_name = fill["colormap"]
 
             # Determine which curve drives the colormap
-            # Can be explicitly specified, or defaults to left boundary if it's a curve
+            # Can be explicitly specified, or defaults to boundary curves
             colormap_curve_name = fill.get("colormap_curve")
             if colormap_curve_name:
                 if colormap_curve_name in plotted_curves:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
-                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using left boundary")
-                    colormap_values = left_values
+                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using boundary curves")
+                    # Try left boundary curve first, then right boundary curve
+                    if "curve" in left_spec and left_spec["curve"] in plotted_curves:
+                        colormap_values, _ = plotted_curves[left_spec["curve"]]
+                    elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
+                        colormap_values, _ = plotted_curves[right_spec["curve"]]
+                    else:
+                        warnings.warn("Cannot determine colormap values")
+                        return
             else:
-                # Default: use left boundary values for colormapping
-                colormap_values = left_values
+                # Default: use left boundary curve if available, otherwise right boundary curve
+                if "curve" in left_spec and left_spec["curve"] in plotted_curves:
+                    colormap_values, _ = plotted_curves[left_spec["curve"]]
+                elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
+                    colormap_values, _ = plotted_curves[right_spec["curve"]]
+                else:
+                    warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
+                    return
 
             # Get color range for normalization
             color_range = fill.get("color_range", [colormap_values.min(), colormap_values.max()])
