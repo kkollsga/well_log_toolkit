@@ -545,7 +545,7 @@ class WellView:
     HEADER_TITLE_SPACING = 0.0015  # Space between log name and scale line
     HEADER_LOG_SPACING = 0.025  # Vertical space per log
     HEADER_TOP_PADDING = 0.01  # Padding above content in header box
-    HEADER_BOTTOM_PADDING = 0.005  # Padding below content in header box
+    HEADER_BOTTOM_PADDING = 0.01  # Padding below content in header box
 
     def __init__(
         self,
@@ -1526,6 +1526,11 @@ class WellView:
         # Invert y-axis once for all tracks (depth increases downward)
         # Since sharey=True, this applies to all axes
         self.axes[0].invert_yaxis()
+
+        # Set exact y-axis limits to match depth_range without padding
+        # Since sharey=True, this applies to all axes
+        self.axes[0].set_ylim(self.depth_range[1], self.depth_range[0])
+        self.axes[0].margins(y=0)
 
         # Set main title
         self.fig.suptitle(f"Well: {self.well.name}", fontsize=12, fontweight='bold', y=0.995)
