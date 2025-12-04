@@ -2042,7 +2042,8 @@ class Well:
         depth_range: Optional[tuple[float, float]] = None,
         template: Optional[Union['Template', dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
-        dpi: int = 100
+        dpi: int = 100,
+        header_config: Optional[dict] = None
     ) -> 'WellView':
         """
         Create a well log display for this well.
@@ -2059,6 +2060,13 @@ class Well:
             Figure size (width, height) in inches
         dpi : int, default 100
             Figure resolution
+        header_config : dict, optional
+            Header styling configuration. Supported keys:
+            - header_box_top (float): Fixed top position of header boxes
+            - header_title_spacing (float): Vertical space between log name and scale line
+            - header_log_spacing (float): Vertical space allocated per log
+            - header_top_padding (float): Padding above content in header box
+            - header_bottom_padding (float): Padding below content in header box
 
         Returns
         -------
@@ -2084,6 +2092,13 @@ class Well:
         ... )
         >>> view = well.WellView(depth_range=[2800, 3000], template=template)
         >>> view.save("well_log.png", dpi=300)
+        >>>
+        >>> # Customize header spacing
+        >>> view = well.WellView(
+        ...     depth_range=[2800, 3000],
+        ...     template=template,
+        ...     header_config={"header_log_spacing": 0.04}
+        ... )
         """
         from .visualization import WellView as WellViewClass
 
@@ -2092,7 +2107,8 @@ class Well:
             depth_range=depth_range,
             template=template,
             figsize=figsize,
-            dpi=dpi
+            dpi=dpi,
+            header_config=header_config
         )
 
     def __repr__(self) -> str:
