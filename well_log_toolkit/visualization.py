@@ -111,6 +111,8 @@ class Template:
             List of log configurations. Each dict can contain:
             - name (str): Property name
             - x_range (list[float, float]): Min and max x-axis values [left, right]
+            - log_scale (bool): Use logarithmic scale for normalization (default: False)
+              When True, values are normalized using log10 and vertical grid lines are added
             - color (str): Line color
             - style (str): Line style ("-", "--", "-.", ":")
             - thickness (float): Line width
@@ -163,6 +165,18 @@ class Template:
         ...         "thickness": 1.0
         ...     }],
         ...     title="Gamma Ray"
+        ... )
+        >>>
+        >>> # Add resistivity track with log scale
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{
+        ...         "name": "RES",
+        ...         "x_range": [0.2, 2000],
+        ...         "log_scale": True,
+        ...         "color": "red"
+        ...     }],
+        ...     title="Resistivity"
         ... )
         >>>
         >>> # Add porosity track with fill (simplified API)
@@ -736,16 +750,27 @@ class WellView:
                 x_range = log_config["x_range"]
                 x_min, x_max = x_range[0], x_range[1]
 
+                # Check if log scale is enabled
+                log_scale = log_config.get("log_scale", False)
+
                 # Normalize values to 0-1 based on x_range
                 # x_range[0] always maps to 0 (left), x_range[1] always maps to 1 (right)
-                # This works for both normal [20, 150] and reversed [3.95, 1.95] scales
-                normalized_values = (values - x_range[0]) / (x_range[1] - x_range[0])
+                if log_scale:
+                    # Log scale normalization
+                    # Clip values to avoid log(0) or log(negative)
+                    values_clipped = np.clip(values, max(x_min, 1e-10), x_max)
+                    normalized_values = (np.log10(values_clipped) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
+                else:
+                    # Linear scale normalization (default)
+                    # This works for both normal [20, 150] and reversed [3.95, 1.95] scales
+                    normalized_values = (values - x_range[0]) / (x_range[1] - x_range[0])
 
                 scale_info.append({
                     'name': prop_name,
                     'min': x_min,
                     'max': x_max,
-                    'color': log_config.get("color", "blue")
+                    'color': log_config.get("color", "blue"),
+                    'log_scale': log_scale
                 })
             else:
                 # No x_range specified, use values as-is
@@ -754,7 +779,8 @@ class WellView:
                     'name': prop_name,
                     'min': float(np.nanmin(values)),
                     'max': float(np.nanmax(values)),
-                    'color': log_config.get("color", "blue")
+                    'color': log_config.get("color", "blue"),
+                    'log_scale': False
                 })
 
             # Plot styling
@@ -786,9 +812,44 @@ class WellView:
         # Grid (y-axis will be inverted later in plot() method)
         ax.grid(True, alpha=0.3)
 
+        # Add log scale grid lines if first log uses log scale
+        if scale_info and scale_info[0].get('log_scale', False):
+            self._add_log_scale_grid(ax, scale_info[0]['min'], scale_info[0]['max'])
+
         # Add visual line indicators with outline box and track title for each curve in the header area
         title_text = track.get("title", "")
         self._add_curve_indicators(ax, scale_info, logs, title_text)
+
+    def _add_log_scale_grid(self, ax: plt.Axes, x_min: float, x_max: float) -> None:
+        """
+        Add vertical grid lines for log scale.
+
+        For a range like 1-100, shows: 1,2,3,4,5,6,7,8,9,10,20,30,40,50,60,70,80,90,100
+        """
+        # Generate log scale grid positions
+        grid_values = []
+
+        # Determine the order of magnitude range
+        log_min = np.floor(np.log10(x_min))
+        log_max = np.ceil(np.log10(x_max))
+
+        # For each decade, add 1,2,3,4,5,6,7,8,9 * 10^n
+        for decade_exp in range(int(log_min), int(log_max) + 1):
+            decade = 10 ** decade_exp
+            for multiplier in range(1, 10):
+                value = multiplier * decade
+                if x_min <= value <= x_max:
+                    grid_values.append(value)
+
+            # Also add the next power of 10 if it's within range
+            next_decade = 10 ** (decade_exp + 1)
+            if x_min <= next_decade <= x_max and next_decade not in grid_values:
+                grid_values.append(next_decade)
+
+        # Normalize grid values to 0-1 using log scale
+        for value in grid_values:
+            normalized_x = (np.log10(value) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
+            ax.axvline(x=normalized_x, color='gray', linestyle='-', linewidth=0.5, alpha=0.4)
 
     def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict], title: str) -> None:
         """
@@ -881,7 +942,7 @@ class WellView:
                 min_val = info['min']
                 max_val = info['max']
 
-                # Add min value text on left side of line
+                # Add min value text on left side of line (with white background)
                 ax.text(0.05, scale_y, f"{min_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='left',
@@ -889,9 +950,10 @@ class WellView:
                        fontsize=7,
                        color=color,
                        clip_on=False,
-                       zorder=11)
+                       zorder=11,
+                       bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.3', alpha=1.0))
 
-                # Add max value text on right side of line
+                # Add max value text on right side of line (with white background)
                 ax.text(0.95, scale_y, f"{max_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='right',
@@ -899,7 +961,8 @@ class WellView:
                        fontsize=7,
                        color=color,
                        clip_on=False,
-                       zorder=11)
+                       zorder=11,
+                       bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.3', alpha=1.0))
 
     def _add_discrete_legend(self, ax: plt.Axes, legend_info: list[dict], title: str) -> None:
         """
@@ -1023,31 +1086,42 @@ class WellView:
         right_spec = normalize_boundary_spec(right_raw, "right")
 
         # Helper to normalize a value based on x_range
-        def normalize_value(value, x_range):
+        def normalize_value(value, x_range, log_scale=False):
             if x_range is None:
                 return value
             x_min, x_max = x_range[0], x_range[1]
-            if x_min < x_max:
-                return (value - x_min) / (x_max - x_min)
+            if log_scale:
+                # Log scale normalization
+                value_clipped = np.clip(value, max(x_min, 1e-10), x_max)
+                return (np.log10(value_clipped) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
             else:
-                return (value - x_max) / (x_min - x_max)
+                # Linear scale normalization
+                if x_min < x_max:
+                    return (value - x_min) / (x_max - x_min)
+                else:
+                    return (value - x_max) / (x_min - x_max)
 
-        # Helper to get x_range for a curve
-        def get_x_range(curve_name):
+        # Helper to get x_range and log_scale for a curve
+        def get_curve_info(curve_name):
             for log in logs:
                 if log.get("name") == curve_name and "x_range" in log:
-                    return log["x_range"]
-            return None
+                    return log["x_range"], log.get("log_scale", False)
+            return None, False
 
         # Get left boundary (normalized)
         if "curve" in left_spec:
             curve_name = left_spec["curve"]
             if curve_name in plotted_curves:
                 values, _ = plotted_curves[curve_name]
-                x_range = get_x_range(curve_name)
+                x_range, log_scale = get_curve_info(curve_name)
                 if x_range:
-                    # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
-                    left_values = (values - x_range[0]) / (x_range[1] - x_range[0])
+                    # Normalize using appropriate scale
+                    if log_scale:
+                        values_clipped = np.clip(values, max(x_range[0], 1e-10), x_range[1])
+                        left_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (np.log10(x_range[1]) - np.log10(x_range[0]))
+                    else:
+                        # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
+                        left_values = (values - x_range[0]) / (x_range[1] - x_range[0])
                 else:
                     left_values = values
             else:
@@ -1058,7 +1132,8 @@ class WellView:
             # Use first curve's x_range if available
             fixed_val = left_spec["value"]
             if logs and "x_range" in logs[0]:
-                left_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"]))
+                log_scale = logs[0].get("log_scale", False)
+                left_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
                 left_values = np.full_like(depth, fixed_val)
         elif "track_edge" in left_spec:
@@ -1075,10 +1150,15 @@ class WellView:
             curve_name = right_spec["curve"]
             if curve_name in plotted_curves:
                 values, _ = plotted_curves[curve_name]
-                x_range = get_x_range(curve_name)
+                x_range, log_scale = get_curve_info(curve_name)
                 if x_range:
-                    # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
-                    right_values = (values - x_range[0]) / (x_range[1] - x_range[0])
+                    # Normalize using appropriate scale
+                    if log_scale:
+                        values_clipped = np.clip(values, max(x_range[0], 1e-10), x_range[1])
+                        right_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (np.log10(x_range[1]) - np.log10(x_range[0]))
+                    else:
+                        # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
+                        right_values = (values - x_range[0]) / (x_range[1] - x_range[0])
                 else:
                     right_values = values
             else:
@@ -1087,7 +1167,8 @@ class WellView:
         elif "value" in right_spec:
             fixed_val = right_spec["value"]
             if logs and "x_range" in logs[0]:
-                right_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"]))
+                log_scale = logs[0].get("log_scale", False)
+                right_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
                 right_values = np.full_like(depth, fixed_val)
         elif "track_edge" in right_spec:
