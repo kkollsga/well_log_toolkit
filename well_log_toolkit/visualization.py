@@ -738,21 +738,17 @@ class WellView:
             return
 
         # Spacing configuration
-        y_start = 1.0  # Start at the top of the plot (no gap)
-        title_spacing = 0.003  # Space between log name and its scale line (reduced)
+        box_top = 1.15  # Fixed top position for alignment across all tracks
+        title_spacing = 0.0015  # Space between log name and its scale line (minimal)
         log_spacing = 0.035  # Space between different logs (title + scale + gap)
         top_padding = 0.01  # Padding inside box above topmost log name
         bottom_padding = 0.005  # Padding inside box below bottommost scale line
 
         # Calculate positions for logs (first log at top)
-        # Bottommost log (last in list) has its scale line at y_start + bottom_padding
-        # Each log needs log_spacing vertical space
-
         # Total height needed inside box
         content_height = len(scale_info) * log_spacing
         box_height = content_height + top_padding + bottom_padding
-        box_bottom = y_start
-        box_top = box_bottom + box_height
+        box_bottom = box_top - box_height
 
         # Draw outline box around all indicators (full width to match plot area)
         box = Rectangle(
@@ -789,7 +785,7 @@ class WellView:
                 # First curve in scale_info should be at top (highest y inside box)
                 # Start from box_bottom + bottom_padding for the bottommost curve
                 curve_from_bottom = (len(scale_info) - 1 - idx)
-                base_y = y_start + bottom_padding + (curve_from_bottom * log_spacing)
+                base_y = box_bottom + bottom_padding + (curve_from_bottom * log_spacing)
 
                 # Position for log name (above the scale line)
                 name_y = base_y + log_spacing - title_spacing
@@ -855,17 +851,16 @@ class WellView:
         if not legend_info:
             return
 
-        # Spacing configuration (similar to continuous tracks)
-        y_start = 1.0  # Start at the top of the plot (no gap)
-        item_height = 0.025  # Height for each legend item
+        # Spacing configuration (aligned with continuous tracks)
+        box_top = 1.15  # Fixed top position for alignment across all tracks
+        item_height = 0.022  # Height for each legend item (compact)
         top_padding = 0.01  # Padding inside box
         bottom_padding = 0.005  # Padding inside box
 
         # Calculate box dimensions
         content_height = len(legend_info) * item_height
         box_height = content_height + top_padding + bottom_padding
-        box_bottom = y_start
-        box_top = box_bottom + box_height
+        box_bottom = box_top - box_height
 
         # Draw outline box (full width to match plot area)
         box = Rectangle(
@@ -888,33 +883,32 @@ class WellView:
                    fontsize=10, fontweight='bold',
                    clip_on=False, zorder=11)
 
-        # Draw each legend item
+        # Draw each legend item (compact format with color as background)
         for idx, item in enumerate(legend_info):
             # Calculate y position (top to bottom)
             item_from_bottom = len(legend_info) - 1 - idx
-            item_y = y_start + bottom_padding + (item_from_bottom * item_height) + (item_height / 2)
+            item_y = box_bottom + bottom_padding + (item_from_bottom * item_height) + (item_height / 2)
 
-            # Draw colored square
-            square_size = 0.08
-            square_x = 0.1
-            square = Rectangle(
-                (square_x - square_size/2, item_y - square_size/2), square_size, square_size*0.8,
+            # Draw colored rectangle as background (full width)
+            color_rect = Rectangle(
+                (0.05, item_y - item_height/2), 0.9, item_height * 0.85,
                 transform=ax.get_xaxis_transform(),
                 facecolor=item['color'],
-                edgecolor='black',
-                linewidth=0.5,
+                edgecolor='none',
                 alpha=0.7,
                 clip_on=False,
                 zorder=10
             )
-            ax.add_patch(square)
+            ax.add_patch(color_rect)
 
-            # Add label text
-            ax.text(square_x + square_size/2 + 0.05, item_y, item['label'],
+            # Add label text (centered on colored background)
+            ax.text(0.5, item_y, item['label'],
                    transform=ax.get_xaxis_transform(),
-                   ha='left',
+                   ha='center',
                    va='center',
                    fontsize=8,
+                   fontweight='bold',
+                   color='white',
                    clip_on=False,
                    zorder=11)
 
@@ -1265,11 +1259,13 @@ class WellView:
         # Cache masked depth array
         depth_masked = depth[mask]
 
-        # Get data
-        values = prop.values[mask]
+        # Get data and round to integers (discrete values must be integers)
+        # Keep as float to preserve NaN values
+        raw_values = prop.values[mask]
+        values = np.where(np.isnan(raw_values), np.nan, np.round(raw_values))
 
-        # Get unique values and create color mapping
-        unique_vals = np.unique(values[~np.isnan(values)])
+        # Get unique values and create color mapping (NaN values filtered out)
+        unique_vals = np.unique(values[~np.isnan(values)]).astype(int)
         colors = DEFAULT_COLORS[:len(unique_vals)]
         color_map = dict(zip(unique_vals, colors))
 
