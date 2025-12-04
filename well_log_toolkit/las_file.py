@@ -1237,15 +1237,55 @@ class LasFile:
         for curve_name, curve_meta in self.curves.items():
             unit_mappings[curve_name] = curve_meta.get('unit', '')
 
-        # Collect discrete labels from parameter section
+        # Collect discrete metadata from parameter section
         discrete_labels = None
+        discrete_colors = None
+        discrete_styles = None
+        discrete_thicknesses = None
         discrete_props = self.discrete_properties
         if discrete_props:
             discrete_labels = {}
+            discrete_colors = {}
+            discrete_styles = {}
+            discrete_thicknesses = {}
             for prop_name in discrete_props:
+                # Collect labels
                 labels = self.get_discrete_labels(prop_name)
                 if labels:
                     discrete_labels[prop_name] = labels
+
+                # Collect colors
+                colors = {}
+                for key, value in self.parameter_info.items():
+                    if key.startswith(f"{prop_name}_") and key.endswith("_COLOR"):
+                        # Extract discrete value from key like "Well_Tops_0_COLOR"
+                        value_str = key[len(prop_name)+1:-6]  # Remove prefix and "_COLOR" suffix
+                        if value_str.isdigit():
+                            colors[int(value_str)] = value
+                if colors:
+                    discrete_colors[prop_name] = colors
+
+                # Collect styles
+                styles = {}
+                for key, value in self.parameter_info.items():
+                    if key.startswith(f"{prop_name}_") and key.endswith("_STYLE"):
+                        # Extract discrete value from key like "Well_Tops_0_STYLE"
+                        value_str = key[len(prop_name)+1:-6]  # Remove prefix and "_STYLE" suffix
+                        if value_str.isdigit():
+                            styles[int(value_str)] = value
+                if styles:
+                    discrete_styles[prop_name] = styles
+
+                # Collect thicknesses
+                thicknesses = {}
+                for key, value in self.parameter_info.items():
+                    if key.startswith(f"{prop_name}_") and key.endswith("_THICKNESS"):
+                        # Extract discrete value from key like "Well_Tops_0_THICKNESS"
+                        value_str = key[len(prop_name)+1:-10]  # Remove prefix and "_THICKNESS" suffix
+                        if value_str.isdigit():
+                            thicknesses[int(value_str)] = float(value)
+                if thicknesses:
+                    discrete_thicknesses[prop_name] = thicknesses
 
         # Use static method to do the actual export, passing self as template
         LasFile.export_las(
@@ -1255,6 +1295,9 @@ class LasFile:
             unit_mappings=unit_mappings,
             null_value=null_value,
             discrete_labels=discrete_labels,
+            discrete_colors=discrete_colors if discrete_colors else None,
+            discrete_styles=discrete_styles if discrete_styles else None,
+            discrete_thicknesses=discrete_thicknesses if discrete_thicknesses else None,
             template_las=self
         )
 
