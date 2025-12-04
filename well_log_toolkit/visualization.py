@@ -512,7 +512,8 @@ class Template:
         filepath = Path(filepath)
         data = {
             "name": self.name,
-            "tracks": self.tracks
+            "tracks": self.tracks,
+            "tops": self.tops
         }
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
