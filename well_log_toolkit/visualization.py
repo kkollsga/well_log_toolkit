@@ -1099,6 +1099,11 @@ class WellView:
             warnings.warn("Fill right boundary not properly specified")
             return
 
+        # Handle crossover - collapse fill where left is to the right of right
+        # This prevents fill from appearing when curves cross over
+        crossover_mask = left_values > right_values
+        left_values = np.where(crossover_mask, right_values, left_values)
+
         # Apply fill
         fill_color = fill.get("color", "lightblue")
         fill_alpha = fill.get("alpha", 0.3)
@@ -1239,6 +1244,11 @@ class WellView:
         else:
             warnings.warn("Fill right boundary not properly specified")
             return
+
+        # Handle crossover - collapse fill where left is to the right of right
+        # This prevents fill from appearing when curves cross over
+        crossover_mask = left_values > right_values
+        left_values = np.where(crossover_mask, right_values, left_values)
 
         # Apply fill
         fill_color = fill.get("color", "lightblue")
