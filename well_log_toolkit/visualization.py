@@ -1158,7 +1158,7 @@ class WellView:
                     transform=rightmost_ax.get_yaxis_transform(),  # x in axes coords, y in data coords
                     ha='right', va='bottom',
                     fontsize=8,
-                    color=color,
+                    color='#333333',  # Dark grey text color
                     bbox=dict(facecolor='white', edgecolor=color, boxstyle='round,pad=0.3', alpha=0.9),
                     zorder=11,
                     clip_on=False  # Allow label to extend beyond axes
