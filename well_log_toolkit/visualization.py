@@ -482,6 +482,19 @@ class WellView:
     dpi : int, default 100
         Figure resolution
 
+    Class Attributes
+    ----------------
+    HEADER_BOX_TOP : float
+        Fixed top position of header boxes for alignment across tracks
+    HEADER_TITLE_SPACING : float
+        Vertical space between log name and its scale line in continuous tracks
+    HEADER_LOG_SPACING : float
+        Vertical space allocated per log in continuous tracks
+    HEADER_TOP_PADDING : float
+        Padding inside header box above content
+    HEADER_BOTTOM_PADDING : float
+        Padding inside header box below content
+
     Attributes
     ----------
     well : Well
@@ -527,17 +540,70 @@ class WellView:
     >>> view.save("well_log.png", dpi=300)
     """
 
+    # Class-level configuration for header styling (easily customizable)
+    HEADER_BOX_TOP = 1.15  # Fixed top position of header boxes
+    HEADER_TITLE_SPACING = 0.0015  # Space between log name and scale line
+    HEADER_LOG_SPACING = 0.035  # Vertical space per log
+    HEADER_TOP_PADDING = 0.01  # Padding above content in header box
+    HEADER_BOTTOM_PADDING = 0.005  # Padding below content in header box
+
     def __init__(
         self,
         well: 'Well',
         depth_range: Optional[tuple[float, float]] = None,
         template: Optional[Union[Template, dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
-        dpi: int = 100
+        dpi: int = 100,
+        header_config: Optional[dict] = None
     ):
-        """Initialize WellView."""
+        """
+        Initialize WellView.
+
+        Parameters
+        ----------
+        well : Well
+            Well object containing log data
+        depth_range : tuple[float, float], optional
+            Depth interval to display
+        template : Union[Template, dict, str], optional
+            Display template configuration
+        figsize : tuple[float, float], optional
+            Figure size in inches
+        dpi : int, default 100
+            Figure resolution
+        header_config : dict, optional
+            Header styling configuration. Supported keys:
+            - header_box_top (float): Fixed top position of header boxes
+            - header_title_spacing (float): Vertical space between log name and scale line
+            - header_log_spacing (float): Vertical space allocated per log
+            - header_top_padding (float): Padding above content in header box
+            - header_bottom_padding (float): Padding below content in header box
+            If None or keys omitted, uses class defaults.
+
+        Examples
+        --------
+        >>> # Use default header styling
+        >>> view1 = WellView(well, template=template)
+        >>>
+        >>> # Customize header spacing
+        >>> view2 = WellView(
+        ...     well,
+        ...     template=template,
+        ...     header_config={"header_log_spacing": 0.04, "header_title_spacing": 0.005}
+        ... )
+        """
         self.well = well
         self.dpi = dpi
+
+        # Header configuration (use provided values or fall back to class defaults)
+        if header_config is None:
+            header_config = {}
+
+        self.header_box_top = header_config.get('header_box_top', self.HEADER_BOX_TOP)
+        self.header_title_spacing = header_config.get('header_title_spacing', self.HEADER_TITLE_SPACING)
+        self.header_log_spacing = header_config.get('header_log_spacing', self.HEADER_LOG_SPACING)
+        self.header_top_padding = header_config.get('header_top_padding', self.HEADER_TOP_PADDING)
+        self.header_bottom_padding = header_config.get('header_bottom_padding', self.HEADER_BOTTOM_PADDING)
 
         # Handle template parameter
         if isinstance(template, str):
@@ -733,22 +799,20 @@ class WellView:
         3.95 ---------------- 1.95
 
         All curves are enclosed in a box with outline, with track title above.
+        Curves stack from bottom up; if they don't fit, they clip outside the box.
         """
         if not scale_info:
             return
 
-        # Spacing configuration
-        box_top = 1.15  # Fixed top position for alignment across all tracks
-        title_spacing = 0.0015  # Space between log name and its scale line (minimal)
-        log_spacing = 0.035  # Space between different logs (title + scale + gap)
-        top_padding = 0.01  # Padding inside box above topmost log name
-        bottom_padding = 0.005  # Padding inside box below bottommost scale line
+        # Use instance configuration for spacing
+        box_top = self.header_box_top
+        title_spacing = self.header_title_spacing
+        log_spacing = self.header_log_spacing
+        bottom_padding = self.header_bottom_padding
 
-        # Calculate positions for logs (first log at top)
-        # Total height needed inside box
-        content_height = len(scale_info) * log_spacing
-        box_height = content_height + top_padding + bottom_padding
-        box_bottom = box_top - box_height
+        # Box dimensions (fixed height between top and 1.0)
+        box_bottom = 1.0  # Bottom aligns with plot area top
+        box_height = box_top - box_bottom
 
         # Draw outline box around all indicators (full width to match plot area)
         box = Rectangle(
@@ -771,7 +835,7 @@ class WellView:
                    fontsize=10, fontweight='bold',
                    clip_on=False, zorder=11)
 
-        # Draw each curve indicator
+        # Draw each curve indicator (stacked from bottom up)
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
             log_config = next((log for log in logs if log.get("name") == info['name']), None)
@@ -781,16 +845,15 @@ class WellView:
                 style = log_config.get("style", "-")
                 thickness = log_config.get("thickness", 1.0)
 
-                # Calculate y positions for this curve (reverse order so first curve appears at top)
-                # First curve in scale_info should be at top (highest y inside box)
-                # Start from box_bottom + bottom_padding for the bottommost curve
-                curve_from_bottom = (len(scale_info) - 1 - idx)
-                base_y = box_bottom + bottom_padding + (curve_from_bottom * log_spacing)
+                # Calculate y positions for this curve (stack from bottom up)
+                # First curve (idx=0) starts from bottom of box + padding
+                # Subsequent curves stack above
+                base_y = box_bottom + bottom_padding + (idx * log_spacing)
 
+                # Position for scale line (at base)
+                scale_y = base_y
                 # Position for log name (above the scale line)
-                name_y = base_y + log_spacing - title_spacing
-                # Position for scale line
-                scale_y = base_y + title_spacing
+                name_y = base_y + title_spacing
 
                 # Add log name text centered
                 ax.text(0.5, name_y, info['name'],
@@ -851,16 +914,14 @@ class WellView:
         if not legend_info:
             return
 
-        # Spacing configuration (aligned with continuous tracks)
-        box_top = 1.15  # Fixed top position for alignment across all tracks
+        # Use instance configuration (aligned with continuous tracks)
+        box_top = self.header_box_top
         item_height = 0.022  # Height for each legend item (compact)
-        top_padding = 0.01  # Padding inside box
-        bottom_padding = 0.005  # Padding inside box
+        bottom_padding = self.header_bottom_padding
 
-        # Calculate box dimensions
-        content_height = len(legend_info) * item_height
-        box_height = content_height + top_padding + bottom_padding
-        box_bottom = box_top - box_height
+        # Box dimensions (fixed height between top and 1.0)
+        box_bottom = 1.0  # Bottom aligns with plot area top
+        box_height = box_top - box_bottom
 
         # Draw outline box (full width to match plot area)
         box = Rectangle(
@@ -883,11 +944,11 @@ class WellView:
                    fontsize=10, fontweight='bold',
                    clip_on=False, zorder=11)
 
-        # Draw each legend item (compact format with color as background)
+        # Draw each legend item (stacked from bottom up)
         for idx, item in enumerate(legend_info):
-            # Calculate y position (top to bottom)
-            item_from_bottom = len(legend_info) - 1 - idx
-            item_y = box_bottom + bottom_padding + (item_from_bottom * item_height) + (item_height / 2)
+            # Calculate y position (stack from bottom up)
+            # First item (idx=0) starts from bottom of box + padding
+            item_y = box_bottom + bottom_padding + (idx * item_height) + (item_height / 2)
 
             # Draw colored rectangle as background (full width)
             color_rect = Rectangle(
@@ -901,14 +962,14 @@ class WellView:
             )
             ax.add_patch(color_rect)
 
-            # Add label text (centered on colored background)
+            # Add label text (centered on colored background, black font)
             ax.text(0.5, item_y, item['label'],
                    transform=ax.get_xaxis_transform(),
                    ha='center',
                    va='center',
                    fontsize=8,
                    fontweight='bold',
-                   color='white',
+                   color='black',
                    clip_on=False,
                    zorder=11)
 
