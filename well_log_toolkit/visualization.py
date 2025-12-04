@@ -1959,8 +1959,22 @@ class WellView:
 
         # Get unique values and create color mapping (NaN values filtered out)
         unique_vals = np.unique(values[~np.isnan(values)]).astype(int)
-        colors = DEFAULT_COLORS[:len(unique_vals)]
-        color_map = dict(zip(unique_vals, colors))
+
+        # Create color mapping - check property colors first, then fall back to defaults
+        if prop.colors:
+            # Use property's custom colors for values that have them
+            color_map = {}
+            for val in unique_vals:
+                if val in prop.colors:
+                    color_map[val] = prop.colors[val]
+                else:
+                    # Fall back to default color if this value doesn't have a custom color
+                    default_idx = list(unique_vals).index(val) % len(DEFAULT_COLORS)
+                    color_map[val] = DEFAULT_COLORS[default_idx]
+        else:
+            # No custom colors defined, use defaults
+            colors = DEFAULT_COLORS[:len(unique_vals)]
+            color_map = dict(zip(unique_vals, colors))
 
         # Plot as colored bars
         for val in unique_vals:
