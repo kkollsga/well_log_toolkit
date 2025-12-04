@@ -117,10 +117,20 @@ class Template:
               If not specified, uses the track's log_scale setting
             - color (str): Line color
             - style (str): Line style - supports both matplotlib codes and friendly names:
-              Matplotlib: "-" (solid), "--" (dashed), "-." (dashdot), ":" (dotted)
-              Friendly: "solid", "dashed", "dashdot", "dotted"
+              Matplotlib: "-" (solid), "--" (dashed), "-." (dashdot), ":" (dotted), "none" (no line)
+              Friendly: "solid", "dashed", "dashdot", "dotted", "none"
+              Use "none" to show only markers without a connecting line
             - thickness (float): Line width
             - alpha (float): Transparency (0-1)
+            - marker (str): Marker style for data points (disabled by default). Supports:
+              Matplotlib codes: "o", "s", "D", "^", "v", "<", ">", "+", "x", "*", "p", "h", ".", ",", "|", "_"
+              Friendly names: "circle", "square", "diamond", "triangle_up", "triangle_down",
+              "triangle_left", "triangle_right", "plus", "cross", "star", "pentagon", "hexagon",
+              "point", "pixel", "vline", "hline"
+            - marker_size (float): Size of markers (default: 6)
+            - marker_outline_color (str): Marker edge color (defaults to 'color')
+            - marker_fill (str): Marker fill color (optional). If not specified, markers are unfilled
+            - marker_interval (int): Show every nth marker (default: 1, shows all markers)
         fill : Union[dict, list[dict]], optional
             Fill configuration or list of fill configurations. Each fill dict can contain:
             - left: Left boundary (string/number or dict)
@@ -204,6 +214,38 @@ class Template:
         ...         {"name": "NPHI", "x_range": [0.45, -0.15], "color": "blue", "style": "dashed", "thickness": 2.0}
         ...     ],
         ...     title="Density & Neutron"
+        ... )
+        >>>
+        >>> # Add track with markers (line + markers)
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{
+        ...         "name": "PERM",
+        ...         "x_range": [0.1, 1000],
+        ...         "color": "green",
+        ...         "style": "solid",
+        ...         "marker": "circle",
+        ...         "marker_size": 4,
+        ...         "marker_fill": "lightgreen"
+        ...     }],
+        ...     title="Permeability",
+        ...     log_scale=True
+        ... )
+        >>>
+        >>> # Add track with markers only (no line)
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[{
+        ...         "name": "SAMPLE_POINTS",
+        ...         "x_range": [0, 100],
+        ...         "color": "red",
+        ...         "style": "none",
+        ...         "marker": "diamond",
+        ...         "marker_size": 8,
+        ...         "marker_outline_color": "darkred",
+        ...         "marker_fill": "yellow"
+        ...     }],
+        ...     title="Sample Locations"
         ... )
         >>>
         >>> # Add porosity track with fill (simplified API)
@@ -1256,15 +1298,65 @@ class WellView:
                 "solid": "-",
                 "dashed": "--",
                 "dashdot": "-.",
-                "dotted": ":"
+                "dotted": ":",
+                "none": ""
             }
             style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
             thickness = log_config.get("thickness", 1.0)
             alpha = log_config.get("alpha", 1.0)
 
-            # Plot normalized line
-            ax.plot(normalized_values, depth_masked, color=color, linestyle=style,
-                   linewidth=thickness, alpha=alpha, label=prop_name)
+            # Marker configuration
+            marker = log_config.get("marker", None)
+            marker_size = log_config.get("marker_size", 6)
+            marker_outline_color = log_config.get("marker_outline_color", color)
+            marker_fill = log_config.get("marker_fill", None)
+            marker_interval = log_config.get("marker_interval", 1)
+
+            # Convert friendly marker names to matplotlib codes
+            marker_map = {
+                "circle": "o",
+                "square": "s",
+                "diamond": "D",
+                "triangle_up": "^",
+                "triangle_down": "v",
+                "triangle_left": "<",
+                "triangle_right": ">",
+                "plus": "+",
+                "cross": "x",
+                "star": "*",
+                "pentagon": "p",
+                "hexagon": "h",
+                "point": ".",
+                "pixel": ",",
+                "vline": "|",
+                "hline": "_"
+            }
+            if marker:
+                marker = marker_map.get(marker.lower() if isinstance(marker, str) else marker, marker)
+
+            # Plot normalized line (skip if style is "none" or empty)
+            if style and style != "":
+                ax.plot(normalized_values, depth_masked, color=color, linestyle=style,
+                       linewidth=thickness, alpha=alpha, label=prop_name)
+
+            # Plot markers if specified
+            if marker:
+                # Apply marker interval (only plot every nth marker)
+                marker_mask = np.zeros(len(normalized_values), dtype=bool)
+                marker_mask[::marker_interval] = True
+
+                # Determine marker face color
+                if marker_fill is not None:
+                    markerfacecolor = marker_fill
+                else:
+                    markerfacecolor = 'none'  # Unfilled markers
+
+                ax.plot(normalized_values[marker_mask], depth_masked[marker_mask],
+                       marker=marker, markersize=marker_size,
+                       markeredgecolor=marker_outline_color,
+                       markerfacecolor=markerfacecolor,
+                       linestyle='',  # No connecting line for markers
+                       alpha=alpha)
 
             # Store both original and normalized values
             plotted_curves[prop_name] = (values, depth_masked)
@@ -1387,10 +1479,39 @@ class WellView:
                     "solid": "-",
                     "dashed": "--",
                     "dashdot": "-.",
-                    "dotted": ":"
+                    "dotted": ":",
+                    "none": ""
                 }
                 style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
                 thickness = log_config.get("thickness", 1.0)
+
+                # Marker configuration (for legend display)
+                marker = log_config.get("marker", None)
+                marker_size = log_config.get("marker_size", 6)
+                marker_outline_color = log_config.get("marker_outline_color", color)
+                marker_fill = log_config.get("marker_fill", None)
+
+                # Convert friendly marker names to matplotlib codes
+                marker_map = {
+                    "circle": "o",
+                    "square": "s",
+                    "diamond": "D",
+                    "triangle_up": "^",
+                    "triangle_down": "v",
+                    "triangle_left": "<",
+                    "triangle_right": ">",
+                    "plus": "+",
+                    "cross": "x",
+                    "star": "*",
+                    "pentagon": "p",
+                    "hexagon": "h",
+                    "point": ".",
+                    "pixel": ",",
+                    "vline": "|",
+                    "hline": "_"
+                }
+                if marker:
+                    marker = marker_map.get(marker.lower() if isinstance(marker, str) else marker, marker)
 
                 # Calculate y positions for this curve (stack from bottom up)
                 # First curve (idx=0) starts from bottom of box + padding
@@ -1413,13 +1534,39 @@ class WellView:
                        zorder=11)
 
                 # Draw horizontal line between 0.15 and 0.85 (leaving room for scale values)
-                ax.plot([0.15, 0.85], [scale_y, scale_y],
-                       color=color,
-                       linestyle=style,
-                       linewidth=thickness,
-                       transform=ax.get_xaxis_transform(),
-                       clip_on=False,
-                       zorder=10)
+                # Only draw line if style is not "none" or empty
+                if style and style != "":
+                    ax.plot([0.15, 0.85], [scale_y, scale_y],
+                           color=color,
+                           linestyle=style,
+                           linewidth=thickness,
+                           transform=ax.get_xaxis_transform(),
+                           clip_on=False,
+                           zorder=10)
+
+                # Draw markers in legend if specified
+                # Place two markers: one halfway between edge and center, one halfway between center and other edge
+                if marker:
+                    # Determine marker face color
+                    if marker_fill is not None:
+                        markerfacecolor = marker_fill
+                    else:
+                        markerfacecolor = 'none'  # Unfilled markers
+
+                    # First marker position: halfway between left edge (0.15) and center (0.5)
+                    marker_x1 = 0.15 + (0.5 - 0.15) / 2  # = 0.325
+                    # Second marker position: halfway between center (0.5) and right edge (0.85)
+                    marker_x2 = 0.5 + (0.85 - 0.5) / 2   # = 0.675
+
+                    ax.plot([marker_x1, marker_x2], [scale_y, scale_y],
+                           marker=marker,
+                           markersize=marker_size,
+                           markeredgecolor=marker_outline_color,
+                           markerfacecolor=markerfacecolor,
+                           linestyle='',  # No connecting line
+                           transform=ax.get_xaxis_transform(),
+                           clip_on=False,
+                           zorder=11)
 
                 # Get scale values
                 min_val = info['min']
