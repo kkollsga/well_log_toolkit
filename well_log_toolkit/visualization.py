@@ -95,7 +95,8 @@ class Template:
         fill: Optional[Union[dict, list[dict]]] = None,
         tops: Optional[dict] = None,
         width: float = 1.0,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        log_scale: bool = False
     ) -> 'Template':
         """
         Add a track to the template.
@@ -111,8 +112,8 @@ class Template:
             List of log configurations. Each dict can contain:
             - name (str): Property name
             - x_range (list[float, float]): Min and max x-axis values [left, right]
-            - log_scale (bool): Use logarithmic scale for normalization (default: False)
-              When True, values are normalized using log10 and vertical grid lines are added
+            - scale (str): Optional override for this log's scale ("log" or "linear")
+              If not specified, uses the track's log_scale setting
             - color (str): Line color
             - style (str): Line style ("-", "--", "-.", ":")
             - thickness (float): Line width
@@ -144,6 +145,9 @@ class Template:
             Relative width of track (used for layout proportions)
         title : str, optional
             Track title to display at top
+        log_scale : bool, default False
+            Use logarithmic scale for the entire track. Individual logs can override
+            this with the "scale" parameter ("log" or "linear")
 
         Returns
         -------
@@ -173,10 +177,20 @@ class Template:
         ...     logs=[{
         ...         "name": "RES",
         ...         "x_range": [0.2, 2000],
-        ...         "log_scale": True,
         ...         "color": "red"
         ...     }],
-        ...     title="Resistivity"
+        ...     title="Resistivity",
+        ...     log_scale=True  # Apply log scale to entire track
+        ... )
+        >>>
+        >>> # Add track with mixed scales (one log overrides track setting)
+        >>> template.add_track(
+        ...     track_type="continuous",
+        ...     logs=[
+        ...         {"name": "ILD", "x_range": [0.2, 2000], "color": "red"},  # Uses track log_scale
+        ...         {"name": "GR", "x_range": [0, 150], "scale": "linear", "color": "green"}  # Override to linear
+        ...     ],
+        ...     log_scale=True  # Default for track is log scale
         ... )
         >>>
         >>> # Add porosity track with fill (simplified API)
@@ -260,7 +274,8 @@ class Template:
             "fill": fill_list,
             "tops": tops,
             "width": width,
-            "title": title
+            "title": title,
+            "log_scale": log_scale
         }
         self.tracks.append(track)
         return self
@@ -723,6 +738,7 @@ class WellView:
         """
         logs = track.get("logs", [])
         fill = track.get("fill")
+        track_log_scale = track.get("log_scale", False)  # Track-level log scale setting
 
         # Cache masked depth array (computed once, shared by all logs in this track)
         depth_masked = depth[mask]
@@ -750,8 +766,15 @@ class WellView:
                 x_range = log_config["x_range"]
                 x_min, x_max = x_range[0], x_range[1]
 
-                # Check if log scale is enabled
-                log_scale = log_config.get("log_scale", False)
+                # Determine scale for this log: use track setting unless overridden
+                log_scale_override = log_config.get("scale")
+                if log_scale_override == "log":
+                    log_scale = True
+                elif log_scale_override == "linear":
+                    log_scale = False
+                else:
+                    # Use track-level setting
+                    log_scale = track_log_scale
 
                 # Normalize values to 0-1 based on x_range
                 # x_range[0] always maps to 0 (left), x_range[1] always maps to 1 (right)
@@ -807,13 +830,14 @@ class WellView:
         if fill and plotted_curves:
             # Apply each fill in order
             for fill_config in fill:
-                self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs)
+                self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs, track_log_scale)
 
         # Grid (y-axis will be inverted later in plot() method)
         ax.grid(True, alpha=0.3)
 
-        # Add log scale grid lines if first log uses log scale
-        if scale_info and scale_info[0].get('log_scale', False):
+        # Add log scale grid lines if track uses log scale
+        # Use the first log's range for grid positioning
+        if track_log_scale and scale_info:
             self._add_log_scale_grid(ax, scale_info[0]['min'], scale_info[0]['max'])
 
         # Add visual line indicators with outline box and track title for each curve in the header area
@@ -1048,7 +1072,8 @@ class WellView:
         fill: dict,
         plotted_curves: dict,
         depth: np.ndarray,
-        logs: list[dict]
+        logs: list[dict],
+        track_log_scale: bool
     ) -> None:
         """
         Add fill between curves with normalized coordinates.
@@ -1105,7 +1130,15 @@ class WellView:
         def get_curve_info(curve_name):
             for log in logs:
                 if log.get("name") == curve_name and "x_range" in log:
-                    return log["x_range"], log.get("log_scale", False)
+                    # Determine scale: check for override, otherwise use track setting
+                    scale_override = log.get("scale")
+                    if scale_override == "log":
+                        log_scale = True
+                    elif scale_override == "linear":
+                        log_scale = False
+                    else:
+                        log_scale = track_log_scale
+                    return log["x_range"], log_scale
             return None, False
 
         # Get left boundary (normalized)
@@ -1132,7 +1165,14 @@ class WellView:
             # Use first curve's x_range if available
             fixed_val = left_spec["value"]
             if logs and "x_range" in logs[0]:
-                log_scale = logs[0].get("log_scale", False)
+                # Get scale from first log (with track default)
+                scale_override = logs[0].get("scale")
+                if scale_override == "log":
+                    log_scale = True
+                elif scale_override == "linear":
+                    log_scale = False
+                else:
+                    log_scale = track_log_scale
                 left_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
                 left_values = np.full_like(depth, fixed_val)
@@ -1167,7 +1207,14 @@ class WellView:
         elif "value" in right_spec:
             fixed_val = right_spec["value"]
             if logs and "x_range" in logs[0]:
-                log_scale = logs[0].get("log_scale", False)
+                # Get scale from first log (with track default)
+                scale_override = logs[0].get("scale")
+                if scale_override == "log":
+                    log_scale = True
+                elif scale_override == "linear":
+                    log_scale = False
+                else:
+                    log_scale = track_log_scale
                 right_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
                 right_values = np.full_like(depth, fixed_val)
