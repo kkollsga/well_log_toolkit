@@ -541,9 +541,9 @@ class WellView:
     """
 
     # Class-level configuration for header styling (easily customizable)
-    HEADER_BOX_TOP = 1.15  # Fixed top position of header boxes
+    HEADER_BOX_TOP = 1.1  # Fixed top position of header boxes
     HEADER_TITLE_SPACING = 0.0015  # Space between log name and scale line
-    HEADER_LOG_SPACING = 0.035  # Vertical space per log
+    HEADER_LOG_SPACING = 0.025  # Vertical space per log
     HEADER_TOP_PADDING = 0.01  # Padding above content in header box
     HEADER_BOTTOM_PADDING = 0.005  # Padding below content in header box
 
@@ -804,6 +804,9 @@ class WellView:
         if not scale_info:
             return
 
+        # Limit to first 4 logs for simplicity
+        scale_info = scale_info[:4]
+
         # Use instance configuration for spacing
         box_top = self.header_box_top
         title_spacing = self.header_title_spacing
@@ -826,17 +829,7 @@ class WellView:
         )
         ax.add_patch(box)
 
-        # Create clipping path for content inside the box
-        clip_box = Rectangle(
-            (0, box_bottom), 1.0, box_height,
-            transform=ax.get_xaxis_transform(),
-            fill=False,
-            edgecolor='none',
-            clip_on=False
-        )
-        ax.add_patch(clip_box)
-
-        # Add track title above the box (not clipped)
+        # Add track title above the box
         if title:
             title_y = box_top + 0.005  # Small gap above box
             ax.text(0.5, title_y, title,
@@ -845,7 +838,7 @@ class WellView:
                    fontsize=10, fontweight='bold',
                    clip_on=False, zorder=11)
 
-        # Draw each curve indicator (stacked from bottom up, clipped to box)
+        # Draw each curve indicator (stacked from bottom up)
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
             log_config = next((log for log in logs if log.get("name") == info['name']), None)
@@ -865,8 +858,8 @@ class WellView:
                 # Position for log name (above the scale line)
                 name_y = base_y + title_spacing
 
-                # Add log name text centered (clipped to box)
-                txt = ax.text(0.5, name_y, info['name'],
+                # Add log name text centered
+                ax.text(0.5, name_y, info['name'],
                        transform=ax.get_xaxis_transform(),
                        ha='center',
                        va='bottom',
@@ -874,24 +867,22 @@ class WellView:
                        fontweight='bold',
                        clip_on=False,
                        zorder=11)
-                txt.set_clip_path(clip_box)
 
                 # Draw horizontal line between 0.15 and 0.85 (leaving room for scale values)
-                line = ax.plot([0.15, 0.85], [scale_y, scale_y],
+                ax.plot([0.15, 0.85], [scale_y, scale_y],
                        color=color,
                        linestyle=style,
                        linewidth=thickness,
                        transform=ax.get_xaxis_transform(),
                        clip_on=False,
-                       zorder=10)[0]
-                line.set_clip_path(clip_box)
+                       zorder=10)
 
                 # Get scale values
                 min_val = info['min']
                 max_val = info['max']
 
-                # Add min value text on left side of line (clipped to box)
-                txt_min = ax.text(0.05, scale_y, f"{min_val:.2f}",
+                # Add min value text on left side of line
+                ax.text(0.05, scale_y, f"{min_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='left',
                        va='center',
@@ -899,10 +890,9 @@ class WellView:
                        color=color,
                        clip_on=False,
                        zorder=11)
-                txt_min.set_clip_path(clip_box)
 
-                # Add max value text on right side of line (clipped to box)
-                txt_max = ax.text(0.95, scale_y, f"{max_val:.2f}",
+                # Add max value text on right side of line
+                ax.text(0.95, scale_y, f"{max_val:.2f}",
                        transform=ax.get_xaxis_transform(),
                        ha='right',
                        va='center',
@@ -910,7 +900,6 @@ class WellView:
                        color=color,
                        clip_on=False,
                        zorder=11)
-                txt_max.set_clip_path(clip_box)
 
     def _add_discrete_legend(self, ax: plt.Axes, legend_info: list[dict], title: str) -> None:
         """
@@ -927,6 +916,9 @@ class WellView:
         """
         if not legend_info:
             return
+
+        # Limit to first 4 items for simplicity
+        legend_info = legend_info[:4]
 
         # Use instance configuration (aligned with continuous tracks)
         box_top = self.header_box_top
@@ -949,17 +941,7 @@ class WellView:
         )
         ax.add_patch(box)
 
-        # Create clipping path for content inside the box
-        clip_box = Rectangle(
-            (0, box_bottom), 1.0, box_height,
-            transform=ax.get_xaxis_transform(),
-            fill=False,
-            edgecolor='none',
-            clip_on=False
-        )
-        ax.add_patch(clip_box)
-
-        # Add track title above the box (not clipped)
+        # Add track title above the box
         if title:
             title_y = box_top + 0.005  # Small gap above box
             ax.text(0.5, title_y, title,
@@ -968,13 +950,13 @@ class WellView:
                    fontsize=10, fontweight='bold',
                    clip_on=False, zorder=11)
 
-        # Draw each legend item (stacked from bottom up, clipped to box)
+        # Draw each legend item (stacked from bottom up)
         for idx, item in enumerate(legend_info):
             # Calculate y position (stack from bottom up)
             # First item (idx=0) starts from bottom of box + padding
             item_y = box_bottom + bottom_padding + (idx * item_height) + (item_height / 2)
 
-            # Draw colored rectangle as background (full width, clipped to box)
+            # Draw colored rectangle as background (full width)
             color_rect = Rectangle(
                 (0.05, item_y - item_height/2), 0.9, item_height * 0.85,
                 transform=ax.get_xaxis_transform(),
@@ -984,11 +966,10 @@ class WellView:
                 clip_on=False,
                 zorder=10
             )
-            color_rect.set_clip_path(clip_box)
             ax.add_patch(color_rect)
 
-            # Add label text (centered on colored background, black font, clipped to box)
-            txt = ax.text(0.5, item_y, item['label'],
+            # Add label text (centered on colored background, black font)
+            ax.text(0.5, item_y, item['label'],
                    transform=ax.get_xaxis_transform(),
                    ha='center',
                    va='center',
@@ -997,7 +978,6 @@ class WellView:
                    color='black',
                    clip_on=False,
                    zorder=11)
-            txt.set_clip_path(clip_box)
 
     def _add_fill_normalized(
         self,
