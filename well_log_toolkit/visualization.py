@@ -26,6 +26,91 @@ DEFAULT_COLORS = [
 ]
 
 
+def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: int = 2000) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Downsample depth and values arrays for efficient plotting while preserving curve shape.
+
+    Uses a min-max preservation strategy: for each bin, keeps both the min and max values
+    to preserve peaks and troughs that would be visible in the plot.
+
+    Parameters
+    ----------
+    depth : np.ndarray
+        Depth array
+    values : np.ndarray
+        Values array
+    max_points : int, default 2000
+        Maximum number of points to return
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Downsampled (depth, values) arrays
+    """
+    n_points = len(depth)
+
+    # If already small enough, return as-is
+    if n_points <= max_points:
+        return depth, values
+
+    # Calculate bin size to achieve target point count
+    # We'll keep 2 points per bin (min and max), so need max_points/2 bins
+    n_bins = max_points // 2
+    bin_size = n_points // n_bins
+
+    # Preallocate output arrays
+    out_depth = np.empty(n_bins * 2, dtype=depth.dtype)
+    out_values = np.empty(n_bins * 2, dtype=values.dtype)
+
+    out_idx = 0
+    for i in range(n_bins):
+        start_idx = i * bin_size
+        end_idx = start_idx + bin_size if i < n_bins - 1 else n_points
+
+        # Get slice for this bin
+        bin_depths = depth[start_idx:end_idx]
+        bin_values = values[start_idx:end_idx]
+
+        # Find indices of min and max values (ignore NaN)
+        valid_mask = ~np.isnan(bin_values)
+        if not np.any(valid_mask):
+            # All NaN in this bin, just take first two points
+            out_depth[out_idx] = bin_depths[0]
+            out_values[out_idx] = bin_values[0]
+            out_idx += 1
+            if len(bin_depths) > 1:
+                out_depth[out_idx] = bin_depths[1]
+                out_values[out_idx] = bin_values[1]
+                out_idx += 1
+            continue
+
+        valid_values = bin_values[valid_mask]
+        valid_depths = bin_depths[valid_mask]
+
+        # Get min and max indices in the valid data
+        min_idx = np.argmin(valid_values)
+        max_idx = np.argmax(valid_values)
+
+        # Store in order they appear in depth (to maintain curve continuity)
+        if min_idx < max_idx:
+            out_depth[out_idx] = valid_depths[min_idx]
+            out_values[out_idx] = valid_values[min_idx]
+            out_idx += 1
+            out_depth[out_idx] = valid_depths[max_idx]
+            out_values[out_idx] = valid_values[max_idx]
+            out_idx += 1
+        else:
+            out_depth[out_idx] = valid_depths[max_idx]
+            out_values[out_idx] = valid_values[max_idx]
+            out_idx += 1
+            out_depth[out_idx] = valid_depths[min_idx]
+            out_values[out_idx] = valid_values[min_idx]
+            out_idx += 1
+
+    # Trim to actual size
+    return out_depth[:out_idx], out_values[:out_idx]
+
+
 class Template:
     """
     Template for well log display configuration.
@@ -1358,6 +1443,9 @@ class WellView:
                 values = prop.values[mask]
                 curve_depth = depth_masked
 
+            # Downsample for plotting performance (preserves curve shape)
+            curve_depth, values = _downsample_for_plotting(curve_depth, values, max_points=2000)
+
             # Get x_range for normalization
             if "x_range" in log_config:
                 x_range = log_config["x_range"]
@@ -1450,7 +1538,7 @@ class WellView:
             # Plot normalized line (skip if style is "none" or empty)
             if style and style != "":
                 ax.plot(normalized_values, curve_depth, color=color, linestyle=style,
-                       linewidth=thickness, alpha=alpha, label=prop_name)
+                       linewidth=thickness, alpha=alpha, label=prop_name, rasterized=True)
 
             # Plot markers if specified
             if marker:
@@ -2026,7 +2114,7 @@ class WellView:
         else:
             # Simple solid color fill
             ax.fill_betweenx(depth, left_values, right_values,
-                            color=fill_color, alpha=fill_alpha)
+                            color=fill_color, alpha=fill_alpha, rasterized=True)
 
     def _add_fill(
         self,
@@ -2184,7 +2272,7 @@ class WellView:
         else:
             # Simple solid color fill
             ax.fill_betweenx(depth, left_values, right_values,
-                            color=fill_color, alpha=fill_alpha)
+                            color=fill_color, alpha=fill_alpha, rasterized=True)
 
     def _plot_discrete_track(
         self,
@@ -2297,7 +2385,8 @@ class WellView:
                     [clipped_start, clipped_end],
                     0, 1,
                     color=color_map.get(val, DEFAULT_COLORS[0]),
-                    alpha=0.7
+                    alpha=0.7,
+                    rasterized=True
                 )
 
         # Configure axes
