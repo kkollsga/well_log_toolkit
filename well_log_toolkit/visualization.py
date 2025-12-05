@@ -1345,8 +1345,18 @@ class WellView:
                 warnings.warn(f"Could not get property '{prop_name}': {e}")
                 continue
 
-            # Get data (reuse cached depth_masked)
-            values = prop.values[mask]
+            # Check if property has its own depth array (different from reference depth)
+            if prop.depth is not None and len(prop.depth) != len(depth):
+                # Property has its own depth grid (e.g., formation tops)
+                # Create mask for this property's depth array
+                prop_mask = self._get_depth_mask(prop.depth)
+                values = prop.values[prop_mask]
+                # Use property's depth for plotting this curve
+                curve_depth = prop.depth[prop_mask]
+            else:
+                # Property shares the same depth grid as reference
+                values = prop.values[mask]
+                curve_depth = depth_masked
 
             # Get x_range for normalization
             if "x_range" in log_config:
@@ -1439,7 +1449,7 @@ class WellView:
 
             # Plot normalized line (skip if style is "none" or empty)
             if style and style != "":
-                ax.plot(normalized_values, depth_masked, color=color, linestyle=style,
+                ax.plot(normalized_values, curve_depth, color=color, linestyle=style,
                        linewidth=thickness, alpha=alpha, label=prop_name)
 
             # Plot markers if specified
@@ -1454,7 +1464,7 @@ class WellView:
                 else:
                     markerfacecolor = 'none'  # Unfilled markers
 
-                ax.plot(normalized_values[marker_mask], depth_masked[marker_mask],
+                ax.plot(normalized_values[marker_mask], curve_depth[marker_mask],
                        marker=marker, markersize=marker_size,
                        markeredgecolor=marker_outline_color,
                        markerfacecolor=markerfacecolor,
@@ -1462,7 +1472,7 @@ class WellView:
                        alpha=alpha)
 
             # Store both original and normalized values
-            plotted_curves[prop_name] = (values, depth_masked)
+            plotted_curves[prop_name] = (values, curve_depth)
 
         # Set x-axis to 0-1 for normalized plotting
         ax.set_xlim([0, 1])
@@ -2200,12 +2210,20 @@ class WellView:
             warnings.warn(f"Could not get property '{prop_name}': {e}")
             return
 
-        # Cache masked depth array
-        depth_masked = depth[mask]
+        # Check if property has its own depth array (different from reference depth)
+        if prop.depth is not None and len(prop.depth) != len(depth):
+            # Property has its own depth grid (e.g., formation tops)
+            # Create mask for this property's depth array
+            prop_mask = self._get_depth_mask(prop.depth)
+            depth_masked = prop.depth[prop_mask]
+            raw_values = prop.values[prop_mask]
+        else:
+            # Property shares the same depth grid as reference
+            depth_masked = depth[mask]
+            raw_values = prop.values[mask]
 
         # Get data and round to integers (discrete values must be integers)
         # Keep as float to preserve NaN values
-        raw_values = prop.values[mask]
         values = np.where(np.isnan(raw_values), np.nan, np.round(raw_values))
 
         # Get unique values and create color mapping (NaN values filtered out)
