@@ -1895,6 +1895,15 @@ class WellView:
         - {"value": <num>}: Use fixed value (dict format)
         - {"track_edge": "left"|"right"}: Use track edge (dict format)
         """
+        # Get reference depth from first curve in plotted_curves (downsampled)
+        # All curves should share the same downsampled depth grid
+        if not plotted_curves:
+            return
+
+        # Use depth from first plotted curve (which is downsampled)
+        first_curve_data = next(iter(plotted_curves.values()))
+        _, depth_for_fill = first_curve_data
+        n_points = len(depth_for_fill)
         # Helper to normalize boundary spec to dict format
         def normalize_boundary_spec(spec, side):
             """Convert simple string/number spec to dict format."""
@@ -1980,14 +1989,14 @@ class WellView:
                     log_scale = False
                 else:
                     log_scale = track_log_scale
-                left_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
+                left_values = np.full(n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
-                left_values = np.full_like(depth, fixed_val)
+                left_values = np.full(n_points, fixed_val)
         elif "track_edge" in left_spec:
             if left_spec["track_edge"] == "left":
-                left_values = np.full_like(depth, 0.0)
+                left_values = np.full(n_points, 0.0)
             else:
-                left_values = np.full_like(depth, 1.0)
+                left_values = np.full(n_points, 1.0)
         else:
             warnings.warn("Fill left boundary not properly specified")
             return
@@ -2022,14 +2031,14 @@ class WellView:
                     log_scale = False
                 else:
                     log_scale = track_log_scale
-                right_values = np.full_like(depth, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
+                right_values = np.full(n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
             else:
-                right_values = np.full_like(depth, fixed_val)
+                right_values = np.full(n_points, fixed_val)
         elif "track_edge" in right_spec:
             if right_spec["track_edge"] == "left":
-                right_values = np.full_like(depth, 0.0)
+                right_values = np.full(n_points, 0.0)
             else:
-                right_values = np.full_like(depth, 1.0)
+                right_values = np.full(n_points, 1.0)
         else:
             warnings.warn("Fill right boundary not properly specified")
             return
@@ -2086,7 +2095,7 @@ class WellView:
 
             # Create horizontal bands - each depth interval gets a color based on the curve value
             # Use PolyCollection for performance (1000x faster than loop with fill_betweenx)
-            n_intervals = len(depth) - 1
+            n_intervals = n_points - 1
 
             # Compute color values for each interval (average of adjacent points)
             color_values = (colormap_values[:-1] + colormap_values[1:]) / 2
@@ -2096,10 +2105,10 @@ class WellView:
             verts = []
             for i in range(n_intervals):
                 verts.append([
-                    (left_values[i], depth[i]),
-                    (right_values[i], depth[i]),
-                    (right_values[i+1], depth[i+1]),
-                    (left_values[i+1], depth[i+1])
+                    (left_values[i], depth_for_fill[i]),
+                    (right_values[i], depth_for_fill[i]),
+                    (right_values[i+1], depth_for_fill[i+1]),
+                    (left_values[i+1], depth_for_fill[i+1])
                 ])
 
             # Create PolyCollection with all polygons at once
@@ -2113,7 +2122,7 @@ class WellView:
             ax.add_collection(poly_collection)
         else:
             # Simple solid color fill
-            ax.fill_betweenx(depth, left_values, right_values,
+            ax.fill_betweenx(depth_for_fill, left_values, right_values,
                             color=fill_color, alpha=fill_alpha, rasterized=True)
 
     def _add_fill(
@@ -2271,7 +2280,7 @@ class WellView:
             ax.add_collection(poly_collection)
         else:
             # Simple solid color fill
-            ax.fill_betweenx(depth, left_values, right_values,
+            ax.fill_betweenx(depth_for_fill, left_values, right_values,
                             color=fill_color, alpha=fill_alpha, rasterized=True)
 
     def _plot_discrete_track(
