@@ -964,17 +964,16 @@ class WellView:
 
         # Calculate range and padding
         depth_range = max_depth - min_depth
-        padding = depth_range * 0.05
+
+        # Use 5% of 50m as padding if range is less than 50m, otherwise 5% of actual range
+        if depth_range < 50.0:
+            padding = 50.0 * 0.05  # 2.5m
+        else:
+            padding = depth_range * 0.05
 
         # Apply padding
         range_top = min_depth - padding
         range_bottom = max_depth + padding
-
-        # Ensure minimum range of 50m
-        calculated_range = range_bottom - range_top
-        if calculated_range < 50.0:
-            # Extend bottom to ensure 50m range
-            range_bottom = range_top + 50.0
 
         return (float(range_top), float(range_bottom))
 
