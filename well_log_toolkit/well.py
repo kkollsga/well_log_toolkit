@@ -2079,6 +2079,7 @@ class Well:
     def WellView(
         self,
         depth_range: Optional[tuple[float, float]] = None,
+        tops: Optional[list[str]] = None,
         template: Optional[Union['Template', dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
         dpi: int = 100,
@@ -2092,7 +2093,14 @@ class Well:
         Parameters
         ----------
         depth_range : tuple[float, float], optional
-            Depth interval to display [start_depth, end_depth]
+            Depth interval to display [start_depth, end_depth].
+            Mutually exclusive with `tops` parameter.
+        tops : list[str], optional
+            List of formation top names to display. The depth range will be calculated
+            automatically from the minimum and maximum depths of these tops, with 5%
+            padding added (minimum range of 50m).
+            Mutually exclusive with `depth_range` parameter.
+            Requires that formation tops have been loaded in the well or added to the template.
         template : Union[Template, dict, str], optional
             Display template (Template object, dict config, or name from manager)
         figsize : tuple[float, float], optional
@@ -2122,6 +2130,10 @@ class Well:
         >>> view = well.WellView(depth_range=[2800, 3000], template="reservoir")
         >>> view.show()
         >>>
+        >>> # Use formation tops to auto-calculate range
+        >>> view = well.WellView(tops=["Top_Brent", "Top_Statfjord"], template="reservoir")
+        >>> view.show()
+        >>>
         >>> # Use custom template
         >>> from well_log_toolkit.visualization import Template
         >>> template = Template("custom")
@@ -2144,6 +2156,7 @@ class Well:
         return WellViewClass(
             well=self,
             depth_range=depth_range,
+            tops=tops,
             template=template,
             figsize=figsize,
             dpi=dpi,
