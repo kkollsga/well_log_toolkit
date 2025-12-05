@@ -950,17 +950,12 @@ class WellView:
             if not found:
                 not_found.append(top_name)
 
-        # Check if all tops were found
-        if not_found:
+        # Only raise error if NONE of the tops were found
+        if not tops_depths:
             available_tops = list(set(all_tops_data.values()))
             raise ValueError(
-                f"Formation tops not found: {not_found}. "
+                f"None of the specified formation tops were found: {tops_list}. "
                 f"Available tops: {available_tops}"
-            )
-
-        if not tops_depths:
-            raise ValueError(
-                f"No depths found for specified tops: {tops_list}"
             )
 
         # Calculate min and max depths
