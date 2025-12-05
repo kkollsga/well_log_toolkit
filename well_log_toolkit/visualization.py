@@ -2245,29 +2245,25 @@ class WellView:
             colors = DEFAULT_COLORS[:len(unique_vals)]
             color_map = dict(zip(unique_vals, colors))
 
-        # Plot as colored bars
-        for val in unique_vals:
-            val_mask = (values == val)
-            # Create continuous segments
-            segments = []
-            start_idx = None
+        # For discrete data, the value at depth[i] represents the zone from depth[i] to depth[i+1]
+        # This works universally for both sparse data (formation tops) and dense data (NTG curves)
+        # Sort by depth to ensure proper ordering
+        sorted_indices = np.argsort(depth_masked)
+        sorted_depths = depth_masked[sorted_indices]
+        sorted_values = values[sorted_indices]
 
-            for i, is_val in enumerate(val_mask):
-                if is_val and start_idx is None:
-                    start_idx = i
-                elif not is_val and start_idx is not None:
-                    segments.append((start_idx, i-1))
-                    start_idx = None
+        # Draw a colored band from each depth to the next
+        for i in range(len(sorted_depths) - 1):
+            if not np.isnan(sorted_values[i]):
+                val = int(sorted_values[i])
+                depth_top = sorted_depths[i]
+                depth_bottom = sorted_depths[i + 1]
 
-            if start_idx is not None:
-                segments.append((start_idx, len(val_mask)-1))
-
-            # Draw segments (no label - will be in header)
-            for start, end in segments:
+                # Create a filled rectangle from this depth to the next
                 ax.fill_betweenx(
-                    depth_masked[start:end+1],
+                    [depth_top, depth_bottom],
                     0, 1,
-                    color=color_map[val],
+                    color=color_map.get(val, DEFAULT_COLORS[0]),
                     alpha=0.7
                 )
 
