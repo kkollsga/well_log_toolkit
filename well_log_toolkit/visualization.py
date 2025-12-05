@@ -2210,24 +2210,31 @@ class WellView:
             warnings.warn(f"Could not get property '{prop_name}': {e}")
             return
 
-        # Check if property has its own depth array (different from reference depth)
+        # For discrete data, we need ALL depth/value pairs (not masked) to properly
+        # determine which zone is active at the depth range boundaries
         if prop.depth is not None and len(prop.depth) != len(depth):
             # Property has its own depth grid (e.g., formation tops)
-            # Create mask for this property's depth array
-            prop_mask = self._get_depth_mask(prop.depth)
-            depth_masked = prop.depth[prop_mask]
-            raw_values = prop.values[prop_mask]
+            all_depths = prop.depth
+            all_values = prop.values
         else:
             # Property shares the same depth grid as reference
-            depth_masked = depth[mask]
-            raw_values = prop.values[mask]
+            all_depths = depth
+            all_values = prop.values
 
-        # Get data and round to integers (discrete values must be integers)
-        # Keep as float to preserve NaN values
-        values = np.where(np.isnan(raw_values), np.nan, np.round(raw_values))
+        # Get depth range for clipping
+        depth_range_top = self.depth_range[0]
+        depth_range_bottom = self.depth_range[1]
 
-        # Get unique values and create color mapping (NaN values filtered out)
-        unique_vals = np.unique(values[~np.isnan(values)]).astype(int)
+        # Round to integers (discrete values must be integers)
+        all_values = np.where(np.isnan(all_values), np.nan, np.round(all_values))
+
+        # Sort by depth
+        sorted_indices = np.argsort(all_depths)
+        sorted_depths = all_depths[sorted_indices]
+        sorted_values = all_values[sorted_indices]
+
+        # Get unique values for color mapping (NaN values filtered out)
+        unique_vals = np.unique(sorted_values[~np.isnan(sorted_values)]).astype(int)
 
         # Create color mapping - check property colors first, then fall back to defaults
         if prop.colors:
@@ -2246,22 +2253,48 @@ class WellView:
             color_map = dict(zip(unique_vals, colors))
 
         # For discrete data, the value at depth[i] represents the zone from depth[i] to depth[i+1]
-        # This works universally for both sparse data (formation tops) and dense data (NTG curves)
-        # Sort by depth to ensure proper ordering
-        sorted_indices = np.argsort(depth_masked)
-        sorted_depths = depth_masked[sorted_indices]
-        sorted_values = values[sorted_indices]
+        # Build segments, then clip to depth range
+        if len(sorted_depths) > 0:
+            segments = []  # List of (depth_start, depth_end, value) tuples
+            current_val = None
+            segment_start = None
 
-        # Draw a colored band from each depth to the next
-        for i in range(len(sorted_depths) - 1):
-            if not np.isnan(sorted_values[i]):
-                val = int(sorted_values[i])
-                depth_top = sorted_depths[i]
-                depth_bottom = sorted_depths[i + 1]
+            for i in range(len(sorted_depths)):
+                val = sorted_values[i]
 
-                # Create a filled rectangle from this depth to the next
+                if np.isnan(val):
+                    # End current segment if we hit NaN
+                    if segment_start is not None:
+                        segments.append((segment_start, sorted_depths[i], current_val))
+                        segment_start = None
+                        current_val = None
+                else:
+                    val = int(val)
+                    if val != current_val:
+                        # Value changed - end current segment and start new one
+                        if segment_start is not None:
+                            segments.append((segment_start, sorted_depths[i], current_val))
+                        segment_start = sorted_depths[i]
+                        current_val = val
+                    # else: value same as current, keep extending segment
+
+            # Close the last segment (extends beyond the data to bottom of well)
+            if segment_start is not None:
+                # Last segment extends to infinity - we'll use a very large depth
+                segments.append((segment_start, np.inf, current_val))
+
+            # Draw segments, clipping to depth range
+            for depth_start, depth_end, val in segments:
+                # Check if segment overlaps with depth range
+                if depth_end < depth_range_top or depth_start > depth_range_bottom:
+                    continue  # Segment outside range
+
+                # Clip segment to depth range
+                clipped_start = max(depth_start, depth_range_top)
+                clipped_end = min(depth_end, depth_range_bottom)
+
                 ax.fill_betweenx(
-                    [depth_top, depth_bottom],
+                    [clipped_start, clipped_end],
                     0, 1,
                     color=color_map.get(val, DEFAULT_COLORS[0]),
                     alpha=0.7
