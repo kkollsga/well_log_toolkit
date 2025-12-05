@@ -2121,6 +2121,7 @@ class WellView:
                 color_threshold = max(color_threshold, 0.01)
 
                 # Bin intervals using adaptive threshold
+                # IMPORTANT: Keep all vertices to preserve curve shape, only merge colors
                 bin_start_idx = 0
                 bin_color = colors[0]
 
@@ -2130,12 +2131,16 @@ class WellView:
 
                     if color_diff > color_threshold:
                         # Significant color change - close current bin and start new one
-                        binned_verts.append([
-                            (left_values[bin_start_idx], depth_for_fill[bin_start_idx]),
-                            (right_values[bin_start_idx], depth_for_fill[bin_start_idx]),
-                            (right_values[i], depth_for_fill[i]),
-                            (left_values[i], depth_for_fill[i])
-                        ])
+                        # Create polygon with ALL vertices from bin_start_idx to i (preserves curve shape)
+                        poly_verts = []
+                        # Top edge: left to right along the curve
+                        for j in range(bin_start_idx, i + 1):
+                            poly_verts.append((left_values[j], depth_for_fill[j]))
+                        # Right edge: top to bottom
+                        for j in range(i, bin_start_idx - 1, -1):
+                            poly_verts.append((right_values[j], depth_for_fill[j]))
+
+                        binned_verts.append(poly_verts)
                         binned_colors.append(bin_color)
 
                         # Start new bin
@@ -2143,12 +2148,12 @@ class WellView:
                         bin_color = colors[i]
 
                 # Close final bin
-                binned_verts.append([
-                    (left_values[bin_start_idx], depth_for_fill[bin_start_idx]),
-                    (right_values[bin_start_idx], depth_for_fill[bin_start_idx]),
-                    (right_values[n_intervals], depth_for_fill[n_intervals]),
-                    (left_values[n_intervals], depth_for_fill[n_intervals])
-                ])
+                poly_verts = []
+                for j in range(bin_start_idx, n_intervals + 1):
+                    poly_verts.append((left_values[j], depth_for_fill[j]))
+                for j in range(n_intervals, bin_start_idx - 1, -1):
+                    poly_verts.append((right_values[j], depth_for_fill[j]))
+                binned_verts.append(poly_verts)
                 binned_colors.append(bin_color)
             else:
                 # Too few intervals already - don't bin
