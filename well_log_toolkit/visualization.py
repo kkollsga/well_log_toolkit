@@ -33,19 +33,14 @@ def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: 
     Uses a min-max preservation strategy: for each bin, keeps both the min and max values
     to preserve peaks and troughs that would be visible in the plot.
 
-    Adaptively adjusts target points based on depth range (zoom level):
-    - Targets 15 points per meter of depth (good visual quality)
-    - Caps at max_points for very large depth ranges
-    - No downsampling if data is already sparse enough
-
     Parameters
     ----------
     depth : np.ndarray
-        Depth array (already clipped to visible range)
+        Depth array
     values : np.ndarray
         Values array
     max_points : int, default 2000
-        Maximum number of points to return (used as cap for large ranges)
+        Maximum number of points to return
 
     Returns
     -------
@@ -54,32 +49,13 @@ def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: 
     """
     n_points = len(depth)
 
-    if n_points <= 2:
-        return depth, values
-
-    # Calculate depth range (zoom level)
-    depth_range = depth[-1] - depth[0]
-    if depth_range <= 0:
-        return depth, values
-
-    # Adaptive target: 15 points per meter (balances quality and performance)
-    # This naturally scales with zoom level:
-    # - 10m range → 150 points
-    # - 100m range → 1500 points
-    # - 1000m range → 2000 points (capped)
-    points_per_meter = 15
-    adaptive_target = int(depth_range * points_per_meter)
-
-    # Cap at max_points for very large ranges
-    target_points = min(adaptive_target, max_points)
-
-    # Don't downsample if we're already below target
-    if n_points <= target_points:
+    # If already small enough, return as-is
+    if n_points <= max_points:
         return depth, values
 
     # Calculate bin size to achieve target point count
-    # We'll keep 2 points per bin (min and max), so need target_points/2 bins
-    n_bins = target_points // 2
+    # We'll keep 2 points per bin (min and max), so need max_points/2 bins
+    n_bins = max_points // 2
     bin_size = n_points // n_bins
 
     # Preallocate output arrays
