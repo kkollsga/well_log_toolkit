@@ -377,6 +377,33 @@ view.show()  # Displays inline in Jupyter
 view.save("well_log.png", dpi=300)
 ```
 
+#### Auto-Calculate Depth Range from Tops
+
+Instead of manually specifying depth ranges, let WellView automatically calculate the range from formation tops:
+
+```python
+# Load formation tops
+manager.load_tops(tops_df, well_col='Well', discrete_col='Surface', depth_col='MD')
+
+# Add tops to template
+template = Template("reservoir")
+template.add_tops(property_name='Zone')
+
+# Auto-calculate depth range from specific tops
+view = well.WellView(
+    tops=['Top_Brent', 'Top_Statfjord'],  # Specify which tops to show
+    template=template
+)
+view.show()
+# Automatically shows Top_Brent to Top_Statfjord with 5% padding (min 50m range)
+```
+
+**How it works:**
+- Finds the minimum and maximum depths of specified tops
+- Adds 5% padding above and below
+- Ensures minimum range of 50 meters
+- Perfect for focusing on specific intervals without manual depth calculations
+
 ### Building Templates
 
 Templates define the layout and styling of well log displays. Think of a template as a blueprint that can be reused across multiple wells.
@@ -1285,7 +1312,7 @@ from well_log_toolkit import WellDataManager, Well, Property, LasFile
 - `export_sources(directory)` - Export each source
 - `rename_source(old, new)` - Rename source
 - `remove_source(name)` - Remove source
-- `WellView(depth_range, template, ...)` - Create visualization
+- `WellView(depth_range=None, tops=None, template, ...)` - Create visualization
 
 **Property** - Single measurement or computed value
 - `filter(discrete_property)` - Filter by discrete property
@@ -1388,7 +1415,12 @@ manager.Reservoir = (manager.PHIE > 0.15) & (manager.SW < 0.35)
 ### Quick Visualization
 
 ```python
+# With depth range
 view = well.WellView(depth_range=[2800, 3000])
+view.show()
+
+# Auto-calculate from tops
+view = well.WellView(tops=['Top_Brent', 'Top_Statfjord'])
 view.show()
 ```
 
@@ -1555,6 +1587,53 @@ logs=[{
     "marker": "diamond",
     "marker_size": 10
 }]
+```
+
+### Tops Parameter Error
+
+**Problem:** No formation tops loaded
+
+```python
+view = well.WellView(tops=['Top_Brent', 'Top_Statfjord'])
+# ValueError: No formation tops have been loaded
+```
+
+**Solution:** Add tops to template or view first
+
+```python
+# Option 1: Add tops to template
+template = Template("reservoir")
+template.add_tops(property_name='Zone')
+view = well.WellView(tops=['Top_Brent', 'Top_Statfjord'], template=template)
+
+# Option 2: Add tops to view
+view = well.WellView(template=template)
+view.add_tops(property_name='Zone')
+# Note: Can't use tops parameter if tops aren't in template
+
+# Option 3: Use depth_range instead
+view = well.WellView(depth_range=[2800, 3000], template=template)
+```
+
+**Problem:** Specified tops not found
+
+```python
+view = well.WellView(tops=['Top_Missing'])
+# ValueError: Formation tops not found: ['Top_Missing']
+```
+
+**Solution:** Check available tops
+
+```python
+# Load and check tops
+manager.load_tops(tops_df, well_col='Well', discrete_col='Surface', depth_col='MD')
+
+# Check what tops are available
+zone = well.get_property('Zone')
+print(zone.labels)  # {0: 'Top_Brent', 1: 'Top_Statfjord', ...}
+
+# Use correct names
+view = well.WellView(tops=['Top_Brent', 'Top_Statfjord'], template=template)
 ```
 
 ---

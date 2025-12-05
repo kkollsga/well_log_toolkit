@@ -705,14 +705,19 @@ class WellView:
     ... )
     >>> template.add_track(track_type="depth")
     >>>
-    >>> # Display well log
+    >>> # Display well log with depth range
     >>> view = WellView(well, depth_range=[2800, 3000], template=template)
     >>> view.show()
     >>>
+    >>> # Or auto-calculate from formation tops
+    >>> template.add_tops(property_name='Zone')
+    >>> view2 = WellView(well, tops=['Top_Brent', 'Top_Statfjord'], template=template)
+    >>> view2.show()
+    >>>
     >>> # Or use template from manager
     >>> manager.set_template("reservoir", template)
-    >>> view2 = WellView(well, depth_range=[3000, 3200], template="reservoir")
-    >>> view2.show()
+    >>> view3 = WellView(well, depth_range=[3000, 3200], template="reservoir")
+    >>> view3.show()
     >>>
     >>> # Save figure
     >>> view.save("well_log.png", dpi=300)
@@ -729,6 +734,7 @@ class WellView:
         self,
         well: 'Well',
         depth_range: Optional[tuple[float, float]] = None,
+        tops: Optional[list[str]] = None,
         template: Optional[Union[Template, dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
         dpi: int = 100,
@@ -742,7 +748,14 @@ class WellView:
         well : Well
             Well object containing log data
         depth_range : tuple[float, float], optional
-            Depth interval to display
+            Depth interval to display [top, bottom].
+            Mutually exclusive with `tops` parameter.
+        tops : list[str], optional
+            List of formation top names to display. The depth range will be calculated
+            automatically from the minimum and maximum depths of these tops, with 5%
+            padding added (minimum range of 50m).
+            Mutually exclusive with `depth_range` parameter.
+            Requires that formation tops have been loaded in the well or added to the template.
         template : Union[Template, dict, str], optional
             Display template configuration
         figsize : tuple[float, float], optional
@@ -760,16 +773,26 @@ class WellView:
 
         Examples
         --------
-        >>> # Use default header styling
-        >>> view1 = WellView(well, template=template)
+        >>> # Use depth range
+        >>> view1 = WellView(well, depth_range=[2800, 3000], template=template)
+        >>>
+        >>> # Use formation tops to auto-calculate range
+        >>> view2 = WellView(well, tops=['Top_Brent', 'Top_Statfjord'], template=template)
         >>>
         >>> # Customize header spacing
-        >>> view2 = WellView(
+        >>> view3 = WellView(
         ...     well,
         ...     template=template,
         ...     header_config={"header_log_spacing": 0.04, "header_title_spacing": 0.005}
         ... )
         """
+        # Validate mutually exclusive parameters
+        if depth_range is not None and tops is not None:
+            raise ValueError(
+                "Parameters 'depth_range' and 'tops' are mutually exclusive. "
+                "Provide one or the other, not both."
+            )
+
         self.well = well
         self.dpi = dpi
 
@@ -814,8 +837,19 @@ class WellView:
                 f"template must be Template, dict, or str, got {type(template).__name__}"
             )
 
+        # Initialize tops list (will be populated from template later)
+        self.tops = []
+        self.temp_tracks = []
+
+        # Load tops from template (needed for tops-based depth range calculation)
+        for tops_config in self.template.tops:
+            self._add_tops_from_config(tops_config)
+
         # Determine depth range
-        if depth_range is None:
+        if tops is not None:
+            # Calculate depth range from specified tops
+            self.depth_range = self._calculate_depth_range_from_tops(tops)
+        elif depth_range is None:
             # Use full depth range from first property
             if not well.properties:
                 raise ValueError("Well has no properties to display")
@@ -833,12 +867,6 @@ class WellView:
         self.figsize = figsize
         self.fig = None
         self.axes = []
-        self.tops = []  # List of well tops to draw across all tracks
-        self.temp_tracks = []  # List of temporary tracks (not in template)
-
-        # Load tops from template
-        for tops_config in self.template.tops:
-            self._add_tops_from_config(tops_config)
 
     def _create_default_template(self) -> Template:
         """Create a simple default template with all continuous properties."""
@@ -873,6 +901,87 @@ class WellView:
         template.add_track(track_type="depth", width=0.3, title="Depth")
 
         return template
+
+    def _calculate_depth_range_from_tops(self, tops_list: list[str]) -> tuple[float, float]:
+        """
+        Calculate depth range from a list of formation top names.
+
+        The depth range is calculated as the min/max depths of the specified tops
+        with 5% padding added. Minimum range is 50m.
+
+        Parameters
+        ----------
+        tops_list : list[str]
+            List of formation top names to include in depth range
+
+        Returns
+        -------
+        tuple[float, float]
+            Calculated depth range (top, bottom)
+
+        Raises
+        ------
+        ValueError
+            If no tops have been loaded or if specified tops are not found
+        """
+        # Check if any tops have been loaded
+        if not self.tops:
+            raise ValueError(
+                "No formation tops have been loaded. Cannot calculate depth range from tops. "
+                "Load tops using template.add_tops() or view.add_tops() before using the 'tops' parameter."
+            )
+
+        # Collect all tops data from all tops groups
+        all_tops_data = {}  # depth -> name mapping
+        for tops_group in self.tops:
+            tops_data = tops_group['tops']
+            all_tops_data.update(tops_data)
+
+        # Find depths for specified tops
+        tops_depths = []
+        not_found = []
+        for top_name in tops_list:
+            found = False
+            for depth, name in all_tops_data.items():
+                if name == top_name:
+                    tops_depths.append(depth)
+                    found = True
+                    break
+            if not found:
+                not_found.append(top_name)
+
+        # Check if all tops were found
+        if not_found:
+            available_tops = list(set(all_tops_data.values()))
+            raise ValueError(
+                f"Formation tops not found: {not_found}. "
+                f"Available tops: {available_tops}"
+            )
+
+        if not tops_depths:
+            raise ValueError(
+                f"No depths found for specified tops: {tops_list}"
+            )
+
+        # Calculate min and max depths
+        min_depth = min(tops_depths)
+        max_depth = max(tops_depths)
+
+        # Calculate range and padding
+        depth_range = max_depth - min_depth
+        padding = depth_range * 0.05
+
+        # Apply padding
+        range_top = min_depth - padding
+        range_bottom = max_depth + padding
+
+        # Ensure minimum range of 50m
+        calculated_range = range_bottom - range_top
+        if calculated_range < 50.0:
+            # Extend bottom to ensure 50m range
+            range_bottom = range_top + 50.0
+
+        return (float(range_top), float(range_bottom))
 
     def add_track(
         self,
