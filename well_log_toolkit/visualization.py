@@ -2101,20 +2101,51 @@ class WellView:
             color_values = (colormap_values[:-1] + colormap_values[1:]) / 2
             colors = cmap(norm(color_values))
 
-            # Create polygon vertices for each depth interval (using normalized coordinates)
-            verts = []
-            for i in range(n_intervals):
-                verts.append([
-                    (left_values[i], depth_for_fill[i]),
-                    (right_values[i], depth_for_fill[i]),
-                    (right_values[i+1], depth_for_fill[i+1]),
-                    (left_values[i+1], depth_for_fill[i+1])
-                ])
+            # Bin adjacent polygons with similar colors for better performance
+            # Balance: visual quality vs polygon count
+            # Color difference threshold: 0.02 in RGB space (imperceptible to human eye)
+            color_threshold = 0.02
 
-            # Create PolyCollection with all polygons at once
+            binned_verts = []
+            binned_colors = []
+
+            if n_intervals > 0:
+                # Start first bin
+                bin_start_idx = 0
+                bin_color = colors[0]
+
+                for i in range(1, n_intervals):
+                    # Check if this color is similar enough to bin with previous
+                    color_diff = np.sqrt(np.sum((colors[i][:3] - bin_color[:3])**2))
+
+                    if color_diff > color_threshold:
+                        # Color changed significantly - close current bin and start new one
+                        # Create polygon from bin_start_idx to i
+                        binned_verts.append([
+                            (left_values[bin_start_idx], depth_for_fill[bin_start_idx]),
+                            (right_values[bin_start_idx], depth_for_fill[bin_start_idx]),
+                            (right_values[i], depth_for_fill[i]),
+                            (left_values[i], depth_for_fill[i])
+                        ])
+                        binned_colors.append(bin_color)
+
+                        # Start new bin
+                        bin_start_idx = i
+                        bin_color = colors[i]
+
+                # Close final bin
+                binned_verts.append([
+                    (left_values[bin_start_idx], depth_for_fill[bin_start_idx]),
+                    (right_values[bin_start_idx], depth_for_fill[bin_start_idx]),
+                    (right_values[n_intervals], depth_for_fill[n_intervals]),
+                    (left_values[n_intervals], depth_for_fill[n_intervals])
+                ])
+                binned_colors.append(bin_color)
+
+            # Create PolyCollection with binned polygons
             poly_collection = PolyCollection(
-                verts,
-                facecolors=colors,
+                binned_verts,
+                facecolors=binned_colors,
                 alpha=fill_alpha,
                 edgecolors='none',
                 linewidths=0
