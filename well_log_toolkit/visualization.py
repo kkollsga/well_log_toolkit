@@ -33,14 +33,19 @@ def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: 
     Uses a min-max preservation strategy: for each bin, keeps both the min and max values
     to preserve peaks and troughs that would be visible in the plot.
 
+    Adaptively adjusts target points based on depth range (zoom level):
+    - Targets 15 points per meter of depth (good visual quality)
+    - Caps at max_points for very large depth ranges
+    - No downsampling if data is already sparse enough
+
     Parameters
     ----------
     depth : np.ndarray
-        Depth array
+        Depth array (already clipped to visible range)
     values : np.ndarray
         Values array
     max_points : int, default 2000
-        Maximum number of points to return
+        Maximum number of points to return (used as cap for large ranges)
 
     Returns
     -------
@@ -49,13 +54,32 @@ def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: 
     """
     n_points = len(depth)
 
-    # If already small enough, return as-is
-    if n_points <= max_points:
+    if n_points <= 2:
+        return depth, values
+
+    # Calculate depth range (zoom level)
+    depth_range = depth[-1] - depth[0]
+    if depth_range <= 0:
+        return depth, values
+
+    # Adaptive target: 15 points per meter (balances quality and performance)
+    # This naturally scales with zoom level:
+    # - 10m range → 150 points
+    # - 100m range → 1500 points
+    # - 1000m range → 2000 points (capped)
+    points_per_meter = 15
+    adaptive_target = int(depth_range * points_per_meter)
+
+    # Cap at max_points for very large ranges
+    target_points = min(adaptive_target, max_points)
+
+    # Don't downsample if we're already below target
+    if n_points <= target_points:
         return depth, values
 
     # Calculate bin size to achieve target point count
-    # We'll keep 2 points per bin (min and max), so need max_points/2 bins
-    n_bins = max_points // 2
+    # We'll keep 2 points per bin (min and max), so need target_points/2 bins
+    n_bins = target_points // 2
     bin_size = n_points // n_bins
 
     # Preallocate output arrays
@@ -2101,26 +2125,35 @@ class WellView:
             color_values = (colormap_values[:-1] + colormap_values[1:]) / 2
             colors = cmap(norm(color_values))
 
-            # Bin adjacent polygons with similar colors for better performance
-            # Balance: visual quality vs polygon count
-            # Color difference threshold: 0.02 in RGB space (imperceptible to human eye)
-            color_threshold = 0.02
+            # Adaptive color binning: target polygon count while preserving detail
+            # More polygons where colors change rapidly, fewer where smooth
+            target_polygons = 300  # Good balance for performance and quality
 
             binned_verts = []
             binned_colors = []
 
-            if n_intervals > 0:
-                # Start first bin
+            if n_intervals > 0 and n_intervals > target_polygons:
+                # Calculate color differences between adjacent intervals
+                color_diffs = np.sqrt(np.sum((colors[1:, :3] - colors[:-1, :3])**2, axis=1))
+
+                # Find adaptive threshold: use percentile to achieve target count
+                # Higher percentile = more aggressive binning
+                target_percentile = 100 * (1 - target_polygons / n_intervals)
+                color_threshold = np.percentile(color_diffs, target_percentile)
+
+                # Ensure minimum threshold to avoid over-binning
+                color_threshold = max(color_threshold, 0.01)
+
+                # Bin intervals using adaptive threshold
                 bin_start_idx = 0
                 bin_color = colors[0]
 
                 for i in range(1, n_intervals):
-                    # Check if this color is similar enough to bin with previous
-                    color_diff = np.sqrt(np.sum((colors[i][:3] - bin_color[:3])**2))
+                    # Check if this color differs significantly from bin average
+                    color_diff = color_diffs[i-1]
 
                     if color_diff > color_threshold:
-                        # Color changed significantly - close current bin and start new one
-                        # Create polygon from bin_start_idx to i
+                        # Significant color change - close current bin and start new one
                         binned_verts.append([
                             (left_values[bin_start_idx], depth_for_fill[bin_start_idx]),
                             (right_values[bin_start_idx], depth_for_fill[bin_start_idx]),
@@ -2141,6 +2174,16 @@ class WellView:
                     (left_values[n_intervals], depth_for_fill[n_intervals])
                 ])
                 binned_colors.append(bin_color)
+            else:
+                # Too few intervals already - don't bin
+                for i in range(n_intervals):
+                    binned_verts.append([
+                        (left_values[i], depth_for_fill[i]),
+                        (right_values[i], depth_for_fill[i]),
+                        (right_values[i+1], depth_for_fill[i+1]),
+                        (left_values[i+1], depth_for_fill[i+1])
+                    ])
+                    binned_colors.append(colors[i])
 
             # Create PolyCollection with binned polygons
             poly_collection = PolyCollection(
