@@ -2718,3 +2718,661 @@ class WellView:
             f"depth_range={self.depth_range}, "
             f"{track_info})"
         )
+
+
+class Crossplot:
+    """
+    Create beautiful, modern crossplots for well log analysis.
+
+    Supports single and multi-well crossplots with extensive customization options
+    including color mapping, size mapping, shape mapping, and regression analysis.
+
+    Parameters
+    ----------
+    wells : Well or list of Well
+        Single well or list of wells to plot
+    x : str
+        Name of property for x-axis
+    y : str
+        Name of property for y-axis
+    shape : str, optional
+        Property name for shape mapping. Use "well" to map shapes by well name.
+        Default: None (single shape)
+    color : str, optional
+        Property name for color mapping. Use "depth" to color by depth.
+        Default: None (single color)
+    size : str, optional
+        Property name for size mapping.
+        Default: None (constant size)
+    colortemplate : str, optional
+        Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm")
+        Default: "viridis"
+    color_range : tuple[float, float], optional
+        Min and max values for color mapping. If None, uses data range.
+        Default: None
+    size_range : tuple[float, float], optional
+        Min and max marker sizes for size mapping.
+        Default: (20, 200)
+    title : str, optional
+        Plot title. Default: "Cross Plot"
+    xlabel : str, optional
+        X-axis label. If None, uses property name.
+    ylabel : str, optional
+        Y-axis label. If None, uses property name.
+    figsize : tuple[float, float], optional
+        Figure size (width, height) in inches. Default: (10, 8)
+    dpi : int, optional
+        Figure resolution. Default: 100
+    marker : str, optional
+        Marker style. Default: "o"
+    marker_size : float, optional
+        Base marker size. Default: 50
+    marker_alpha : float, optional
+        Marker transparency (0-1). Default: 0.7
+    edge_color : str, optional
+        Marker edge color. Default: "black"
+    edge_width : float, optional
+        Marker edge width. Default: 0.5
+    x_log : bool, optional
+        Use logarithmic scale for x-axis. Default: False
+    y_log : bool, optional
+        Use logarithmic scale for y-axis. Default: False
+    grid : bool, optional
+        Show grid. Default: True
+    grid_alpha : float, optional
+        Grid transparency. Default: 0.3
+    depth_range : tuple[float, float], optional
+        Depth range to filter data. Default: None (all depths)
+    show_colorbar : bool, optional
+        Show colorbar when using color mapping. Default: True
+    show_legend : bool, optional
+        Show legend when using shape/well mapping. Default: True
+
+    Examples
+    --------
+    Basic crossplot from a single well:
+
+    >>> plot = well.Crossplot(x="RHOB", y="NPHI")
+    >>> plot.show()
+
+    Multi-well crossplot with color and size mapping:
+
+    >>> plot = manager.Crossplot(
+    ...     x="PHIE",
+    ...     y="SW",
+    ...     color="depth",
+    ...     size="PERM",
+    ...     shape="well",
+    ...     colortemplate="viridis"
+    ... )
+    >>> plot.show()
+
+    With regression analysis:
+
+    >>> plot = well.Crossplot(x="RHOB", y="NPHI")
+    >>> plot.add_regression("linear")
+    >>> plot.add_regression("polynomial", degree=2)
+    >>> plot.show()
+    >>> print(plot.regressions["linear"].equation())
+    """
+
+    def __init__(
+        self,
+        wells: Union['Well', list['Well']],
+        x: str,
+        y: str,
+        shape: Optional[str] = None,
+        color: Optional[str] = None,
+        size: Optional[str] = None,
+        colortemplate: str = "viridis",
+        color_range: Optional[tuple[float, float]] = None,
+        size_range: tuple[float, float] = (20, 200),
+        title: str = "Cross Plot",
+        xlabel: Optional[str] = None,
+        ylabel: Optional[str] = None,
+        figsize: tuple[float, float] = (10, 8),
+        dpi: int = 100,
+        marker: str = "o",
+        marker_size: float = 50,
+        marker_alpha: float = 0.7,
+        edge_color: str = "black",
+        edge_width: float = 0.5,
+        x_log: bool = False,
+        y_log: bool = False,
+        grid: bool = True,
+        grid_alpha: float = 0.3,
+        depth_range: Optional[tuple[float, float]] = None,
+        show_colorbar: bool = True,
+        show_legend: bool = True,
+    ):
+        # Store wells as list
+        if not isinstance(wells, list):
+            self.wells = [wells]
+        else:
+            self.wells = wells
+
+        # Store parameters
+        self.x = x
+        self.y = y
+        self.shape = shape
+        self.color = color
+        self.size = size
+        self.colortemplate = colortemplate
+        self.color_range = color_range
+        self.size_range = size_range
+        self.title = title
+        self.xlabel = xlabel if xlabel else x
+        self.ylabel = ylabel if ylabel else y
+        self.figsize = figsize
+        self.dpi = dpi
+        self.marker = marker
+        self.marker_size = marker_size
+        self.marker_alpha = marker_alpha
+        self.edge_color = edge_color
+        self.edge_width = edge_width
+        self.x_log = x_log
+        self.y_log = y_log
+        self.grid = grid
+        self.grid_alpha = grid_alpha
+        self.depth_range = depth_range
+        self.show_colorbar = show_colorbar
+        self.show_legend = show_legend
+
+        # Plot objects
+        self.fig = None
+        self.ax = None
+        self.scatter = None
+        self.colorbar = None
+
+        # Regression storage
+        self.regressions = {}
+        self.regression_lines = {}
+
+        # Data cache
+        self._data = None
+
+    def _prepare_data(self) -> pd.DataFrame:
+        """Prepare data from wells for plotting."""
+        if self._data is not None:
+            return self._data
+
+        all_data = []
+
+        for well in self.wells:
+            try:
+                # Get x and y properties
+                x_prop = well.get_property(self.x)
+                y_prop = well.get_property(self.y)
+
+                # Get depths - use x property's depth
+                depths = x_prop.depth
+                x_values = x_prop.values
+                y_values = y_prop.values
+
+                # Align y values to x depth grid if needed
+                if len(y_prop.depth) != len(depths) or not np.allclose(y_prop.depth, depths):
+                    # Interpolate y values to x depth grid
+                    y_values = np.interp(depths, y_prop.depth, y_prop.values, left=np.nan, right=np.nan)
+
+                # Create dataframe for this well
+                df = pd.DataFrame({
+                    'depth': depths,
+                    'x': x_values,
+                    'y': y_values,
+                    'well': well.name
+                })
+
+                # Add color property if specified
+                if self.color and self.color != "depth":
+                    try:
+                        color_prop = well.get_property(self.color)
+                        color_values = color_prop.values
+                        # Align to x depth grid
+                        if len(color_prop.depth) != len(depths) or not np.allclose(color_prop.depth, depths):
+                            color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
+                        df['color_val'] = color_values
+                    except (AttributeError, KeyError):
+                        warnings.warn(f"Color property '{self.color}' not found in well '{well.name}', using depth")
+                        df['color_val'] = depths
+                elif self.color == "depth":
+                    df['color_val'] = depths
+
+                # Add size property if specified
+                if self.size:
+                    try:
+                        size_prop = well.get_property(self.size)
+                        size_values = size_prop.values
+                        # Align to x depth grid
+                        if len(size_prop.depth) != len(depths) or not np.allclose(size_prop.depth, depths):
+                            size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
+                        df['size_val'] = size_values
+                    except (AttributeError, KeyError):
+                        warnings.warn(f"Size property '{self.size}' not found in well '{well.name}'")
+
+                # Add shape property if specified and not "well"
+                if self.shape and self.shape != "well":
+                    try:
+                        shape_prop = well.get_property(self.shape)
+                        shape_values = shape_prop.values
+                        # Align to x depth grid
+                        if len(shape_prop.depth) != len(depths) or not np.allclose(shape_prop.depth, depths):
+                            shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
+                        df['shape_val'] = shape_values
+                    except (AttributeError, KeyError):
+                        warnings.warn(f"Shape property '{self.shape}' not found in well '{well.name}'")
+
+                all_data.append(df)
+
+            except (AttributeError, KeyError) as e:
+                warnings.warn(f"Could not get properties for well '{well.name}': {e}")
+                continue
+
+        if not all_data:
+            raise ValueError("No valid data found in any wells")
+
+        # Combine all data
+        self._data = pd.concat(all_data, ignore_index=True)
+
+        # Apply depth filter if specified
+        if self.depth_range:
+            min_depth, max_depth = self.depth_range
+            self._data = self._data[
+                (self._data['depth'] >= min_depth) &
+                (self._data['depth'] <= max_depth)
+            ]
+
+        # Remove rows with NaN in x or y
+        self._data = self._data.dropna(subset=['x', 'y'])
+
+        return self._data
+
+    def plot(self) -> 'Crossplot':
+        """Generate the crossplot figure."""
+        # Prepare data
+        data = self._prepare_data()
+
+        if len(data) == 0:
+            raise ValueError("No valid data points to plot")
+
+        # Create figure
+        self.fig, self.ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
+
+        # Determine plotting approach based on shape mapping
+        if self.shape == "well" or (self.shape and 'shape_val' in data.columns):
+            self._plot_by_groups(data)
+        else:
+            self._plot_single_group(data)
+
+        # Set scales
+        if self.x_log:
+            self.ax.set_xscale('log')
+        if self.y_log:
+            self.ax.set_yscale('log')
+
+        # Labels and title
+        self.ax.set_xlabel(self.xlabel, fontsize=12, fontweight='bold')
+        self.ax.set_ylabel(self.ylabel, fontsize=12, fontweight='bold')
+        self.ax.set_title(self.title, fontsize=14, fontweight='bold', pad=20)
+
+        # Grid
+        if self.grid:
+            self.ax.grid(True, alpha=self.grid_alpha, linestyle='--', linewidth=0.5)
+
+        # Modern styling
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['left'].set_linewidth(1.5)
+        self.ax.spines['bottom'].set_linewidth(1.5)
+
+        # Tight layout
+        self.fig.tight_layout()
+
+        return self
+
+    def _plot_single_group(self, data: pd.DataFrame) -> None:
+        """Plot all data as a single group."""
+        x_vals = data['x'].values
+        y_vals = data['y'].values
+
+        # Determine colors
+        if self.color:
+            c_vals = data['color_val'].values
+            cmap = self.colortemplate
+            if self.color_range:
+                vmin, vmax = self.color_range
+            else:
+                vmin, vmax = np.nanmin(c_vals), np.nanmax(c_vals)
+        else:
+            c_vals = DEFAULT_COLORS[0]
+            cmap = None
+            vmin = vmax = None
+
+        # Determine sizes
+        if self.size and 'size_val' in data.columns:
+            s_vals = data['size_val'].values
+            # Normalize sizes to size_range
+            s_min, s_max = np.nanmin(s_vals), np.nanmax(s_vals)
+            if s_max > s_min:
+                s_normalized = (s_vals - s_min) / (s_max - s_min)
+                sizes = self.size_range[0] + s_normalized * (self.size_range[1] - self.size_range[0])
+            else:
+                sizes = self.marker_size
+        else:
+            sizes = self.marker_size
+
+        # Create scatter plot
+        self.scatter = self.ax.scatter(
+            x_vals, y_vals,
+            c=c_vals,
+            s=sizes,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            alpha=self.marker_alpha,
+            edgecolors=self.edge_color,
+            linewidths=self.edge_width,
+            marker=self.marker
+        )
+
+        # Add colorbar if using color mapping
+        if self.color and self.show_colorbar:
+            self.colorbar = self.fig.colorbar(self.scatter, ax=self.ax)
+            colorbar_label = self.color if self.color != "depth" else "Depth"
+            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+
+    def _plot_by_groups(self, data: pd.DataFrame) -> None:
+        """Plot data grouped by shape/well."""
+        # Determine grouping
+        if self.shape == "well":
+            groups = data.groupby('well')
+            group_label = "Well"
+        else:
+            groups = data.groupby('shape_val')
+            group_label = self.shape
+
+        # Define markers for different groups
+        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
+
+        # Track for colorbar (use first scatter)
+        first_scatter = None
+
+        for idx, (group_name, group_data) in enumerate(groups):
+            x_vals = group_data['x'].values
+            y_vals = group_data['y'].values
+
+            # Determine marker
+            marker = markers[idx % len(markers)]
+
+            # Determine colors
+            if self.color:
+                c_vals = group_data['color_val'].values
+                cmap = self.colortemplate
+                if self.color_range:
+                    vmin, vmax = self.color_range
+                else:
+                    # Use global range from all data
+                    vmin, vmax = np.nanmin(data['color_val']), np.nanmax(data['color_val'])
+            else:
+                c_vals = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
+                cmap = None
+                vmin = vmax = None
+
+            # Determine sizes
+            if self.size and 'size_val' in group_data.columns:
+                s_vals = group_data['size_val'].values
+                # Normalize sizes to size_range
+                s_min, s_max = np.nanmin(s_vals), np.nanmax(s_vals)
+                if s_max > s_min:
+                    s_normalized = (s_vals - s_min) / (s_max - s_min)
+                    sizes = self.size_range[0] + s_normalized * (self.size_range[1] - self.size_range[0])
+                else:
+                    sizes = self.marker_size
+            else:
+                sizes = self.marker_size
+
+            # Create scatter plot for this group
+            scatter = self.ax.scatter(
+                x_vals, y_vals,
+                c=c_vals,
+                s=sizes,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                alpha=self.marker_alpha,
+                edgecolors=self.edge_color,
+                linewidths=self.edge_width,
+                marker=marker,
+                label=str(group_name)
+            )
+
+            if first_scatter is None and self.color:
+                first_scatter = scatter
+
+        # Add legend
+        if self.show_legend:
+            legend = self.ax.legend(
+                title=group_label,
+                loc='best',
+                frameon=True,
+                framealpha=0.9,
+                edgecolor='black'
+            )
+            legend.get_title().set_fontweight('bold')
+
+        # Add colorbar if using color mapping
+        if self.color and self.show_colorbar and first_scatter:
+            self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
+            colorbar_label = self.color if self.color != "depth" else "Depth"
+            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+
+    def add_regression(
+        self,
+        regression_type: str,
+        name: Optional[str] = None,
+        line_color: str = 'red',
+        line_width: float = 2,
+        line_style: str = '-',
+        line_alpha: float = 0.8,
+        show_equation: bool = True,
+        show_r2: bool = True,
+        **kwargs
+    ) -> 'Crossplot':
+        """Add a regression line to the crossplot.
+
+        Parameters
+        ----------
+        regression_type : str
+            Type of regression: "linear", "logarithmic", "exponential",
+            "polynomial", or "power"
+        name : str, optional
+            Name for this regression. If None, uses regression_type.
+        line_color : str, optional
+            Color of regression line. Default: 'red'
+        line_width : float, optional
+            Width of regression line. Default: 2
+        line_style : str, optional
+            Style of regression line. Default: '-'
+        line_alpha : float, optional
+            Transparency of regression line. Default: 0.8
+        show_equation : bool, optional
+            Show equation in legend. Default: True
+        show_r2 : bool, optional
+            Show R² value in legend. Default: True
+        **kwargs
+            Additional arguments for regression (e.g., degree for polynomial)
+
+        Returns
+        -------
+        Crossplot
+            Self for method chaining
+
+        Examples
+        --------
+        >>> plot = well.Crossplot(x="RHOB", y="NPHI")
+        >>> plot.add_regression("linear")
+        >>> plot.add_regression("polynomial", degree=2, line_color="blue")
+        >>> plot.show()
+        """
+        from .regression import (
+            LinearRegression, LogarithmicRegression, ExponentialRegression,
+            PolynomialRegression, PowerRegression
+        )
+
+        # Ensure data is prepared
+        data = self._prepare_data()
+        x_vals = data['x'].values
+        y_vals = data['y'].values
+
+        # Remove any remaining NaN values
+        mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+        x_clean = x_vals[mask]
+        y_clean = y_vals[mask]
+
+        if len(x_clean) < 2:
+            raise ValueError("Need at least 2 valid data points for regression")
+
+        # Create regression object
+        regression_type = regression_type.lower()
+        if regression_type == "linear":
+            reg = LinearRegression()
+        elif regression_type == "logarithmic":
+            reg = LogarithmicRegression()
+        elif regression_type == "exponential":
+            reg = ExponentialRegression()
+        elif regression_type == "polynomial":
+            degree = kwargs.get('degree', 2)
+            reg = PolynomialRegression(degree=degree)
+        elif regression_type == "power":
+            reg = PowerRegression()
+        else:
+            raise ValueError(
+                f"Unknown regression type: {regression_type}. "
+                f"Choose from: linear, logarithmic, exponential, polynomial, power"
+            )
+
+        # Fit regression
+        try:
+            reg.fit(x_clean, y_clean)
+        except ValueError as e:
+            raise ValueError(f"Failed to fit {regression_type} regression: {e}")
+
+        # Store regression
+        reg_name = name if name else regression_type
+        self.regressions[reg_name] = reg
+
+        # Plot regression line if figure exists
+        if self.ax is not None:
+            # Create x values for line (spanning data range)
+            x_min, x_max = np.nanmin(x_clean), np.nanmax(x_clean)
+            x_line = np.linspace(x_min, x_max, 200)
+
+            # Predict y values
+            try:
+                y_line = reg.predict(x_line)
+            except ValueError:
+                # Handle cases where prediction fails for some x values
+                warnings.warn(f"Could not predict full range for {regression_type} regression")
+                return self
+
+            # Create label
+            label_parts = [reg_name]
+            if show_equation:
+                label_parts.append(reg.equation())
+            if show_r2:
+                label_parts.append(f"R² = {reg.r_squared:.4f}")
+            label = "\n".join(label_parts)
+
+            # Plot line
+            line = self.ax.plot(
+                x_line, y_line,
+                color=line_color,
+                linewidth=line_width,
+                linestyle=line_style,
+                alpha=line_alpha,
+                label=label
+            )[0]
+
+            self.regression_lines[reg_name] = line
+
+            # Update legend
+            self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+
+        return self
+
+    def remove_regression(self, name: str) -> 'Crossplot':
+        """Remove a regression from the plot.
+
+        Parameters
+        ----------
+        name : str
+            Name of regression to remove
+
+        Returns
+        -------
+        Crossplot
+            Self for method chaining
+        """
+        if name in self.regressions:
+            del self.regressions[name]
+
+        if name in self.regression_lines:
+            line = self.regression_lines[name]
+            line.remove()
+            del self.regression_lines[name]
+            # Update legend
+            if self.ax is not None:
+                self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+
+        return self
+
+    def show(self) -> None:
+        """Display the crossplot in Jupyter or interactive environment."""
+        if self.fig is None:
+            self.plot()
+
+        plt.show()
+
+    def save(self, filepath: str, dpi: Optional[int] = None, bbox_inches: str = 'tight') -> None:
+        """Save the crossplot to a file.
+
+        Parameters
+        ----------
+        filepath : str
+            Output file path
+        dpi : int, optional
+            Resolution. If None, uses figure's dpi.
+        bbox_inches : str, optional
+            Bounding box mode. Default: 'tight'
+        """
+        if self.fig is None:
+            self.plot()
+
+        if dpi is None:
+            dpi = self.dpi
+
+        self.fig.savefig(filepath, dpi=dpi, bbox_inches=bbox_inches)
+
+    def close(self) -> None:
+        """Close the matplotlib figure and free memory."""
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
+            self.ax = None
+            self.scatter = None
+            self.colorbar = None
+            self.regression_lines = {}
+
+    def __repr__(self) -> str:
+        """String representation."""
+        n_wells = len(self.wells)
+        well_info = f"wells={n_wells}"
+        if n_wells == 1:
+            well_info = f"well='{self.wells[0].name}'"
+
+        n_regressions = len(self.regressions)
+        reg_info = f", regressions={n_regressions}" if n_regressions > 0 else ""
+
+        return (
+            f"Crossplot({well_info}, "
+            f"x='{self.x}', y='{self.y}'{reg_info})"
+        )

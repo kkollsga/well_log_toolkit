@@ -90,7 +90,14 @@ from .exceptions import (
     WellNameMismatchError,
     DepthAlignmentError,
 )
-from .visualization import Template, WellView
+from .visualization import Template, WellView, Crossplot
+from .regression import (
+    LinearRegression,
+    LogarithmicRegression,
+    ExponentialRegression,
+    PolynomialRegression,
+    PowerRegression,
+)
 
 __all__ = [
     # Main classes
@@ -101,6 +108,13 @@ __all__ = [
     # Visualization
     "Template",
     "WellView",
+    "Crossplot",
+    # Regression
+    "LinearRegression",
+    "LogarithmicRegression",
+    "ExponentialRegression",
+    "PolynomialRegression",
+    "PowerRegression",
     # Utilities
     "sanitize_well_name",
     "sanitize_property_name",

@@ -2438,6 +2438,178 @@ class WellDataManager:
                 f"Available templates: {available or 'none'}"
             )
 
+    def Crossplot(
+        self,
+        x: str,
+        y: str,
+        wells: Optional[list[str]] = None,
+        shape: str = "well",
+        color: Optional[str] = None,
+        size: Optional[str] = None,
+        colortemplate: str = "viridis",
+        color_range: Optional[tuple[float, float]] = None,
+        size_range: tuple[float, float] = (20, 200),
+        title: str = "Cross Plot",
+        xlabel: Optional[str] = None,
+        ylabel: Optional[str] = None,
+        figsize: tuple[float, float] = (10, 8),
+        dpi: int = 100,
+        marker: str = "o",
+        marker_size: float = 50,
+        marker_alpha: float = 0.7,
+        edge_color: str = "black",
+        edge_width: float = 0.5,
+        x_log: bool = False,
+        y_log: bool = False,
+        grid: bool = True,
+        grid_alpha: float = 0.3,
+        depth_range: Optional[tuple[float, float]] = None,
+        show_colorbar: bool = True,
+        show_legend: bool = True,
+    ) -> 'Crossplot':
+        """
+        Create a multi-well crossplot.
+
+        Parameters
+        ----------
+        x : str
+            Name of property for x-axis
+        y : str
+            Name of property for y-axis
+        wells : list[str], optional
+            List of well names to include. If None, uses all wells.
+            Default: None (all wells)
+        shape : str, optional
+            Property name for shape mapping. Use "well" to map shapes by well name.
+            Default: "well" (each well gets different marker)
+        color : str, optional
+            Property name for color mapping. Use "depth" to color by depth.
+            Default: None (color by well if shape="well", else single color)
+        size : str, optional
+            Property name for size mapping.
+            Default: None (constant size)
+        colortemplate : str, optional
+            Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm")
+            Default: "viridis"
+        color_range : tuple[float, float], optional
+            Min and max values for color mapping. If None, uses data range.
+            Default: None
+        size_range : tuple[float, float], optional
+            Min and max marker sizes for size mapping.
+            Default: (20, 200)
+        title : str, optional
+            Plot title. Default: "Cross Plot"
+        xlabel : str, optional
+            X-axis label. If None, uses property name.
+        ylabel : str, optional
+            Y-axis label. If None, uses property name.
+        figsize : tuple[float, float], optional
+            Figure size (width, height) in inches. Default: (10, 8)
+        dpi : int, optional
+            Figure resolution. Default: 100
+        marker : str, optional
+            Base marker style (used when shape mapping is not "well"). Default: "o"
+        marker_size : float, optional
+            Base marker size. Default: 50
+        marker_alpha : float, optional
+            Marker transparency (0-1). Default: 0.7
+        edge_color : str, optional
+            Marker edge color. Default: "black"
+        edge_width : float, optional
+            Marker edge width. Default: 0.5
+        x_log : bool, optional
+            Use logarithmic scale for x-axis. Default: False
+        y_log : bool, optional
+            Use logarithmic scale for y-axis. Default: False
+        grid : bool, optional
+            Show grid. Default: True
+        grid_alpha : float, optional
+            Grid transparency. Default: 0.3
+        depth_range : tuple[float, float], optional
+            Depth range to filter data. Default: None (all depths)
+        show_colorbar : bool, optional
+            Show colorbar when using color mapping. Default: True
+        show_legend : bool, optional
+            Show legend. Default: True
+
+        Returns
+        -------
+        Crossplot
+            Crossplot visualization object
+
+        Examples
+        --------
+        Multi-well crossplot with each well as different marker:
+
+        >>> plot = manager.Crossplot(x="RHOB", y="NPHI", shape="well")
+        >>> plot.show()
+
+        Specific wells with color and size mapping:
+
+        >>> plot = manager.Crossplot(
+        ...     x="PHIE_2025",
+        ...     y="NetSand_2025",
+        ...     wells=["Well_A", "Well_B"],
+        ...     color="depth",
+        ...     size="Sw_2025",
+        ...     colortemplate="viridis",
+        ...     color_range=[2000, 2500],
+        ...     title="Multi-Well Cross Plot"
+        ... )
+        >>> plot.show()
+
+        With regression analysis:
+
+        >>> plot = manager.Crossplot(x="RHOB", y="NPHI")
+        >>> plot.add_regression("linear", line_color="red")
+        >>> plot.add_regression("polynomial", degree=2, line_color="blue")
+        >>> plot.show()
+        """
+        from .visualization import Crossplot as CrossplotClass
+
+        # Get well objects
+        if wells is None:
+            well_objects = list(self._wells.values())
+        else:
+            well_objects = []
+            for well_name in wells:
+                well = self.get_well(well_name)
+                if well is None:
+                    raise ValueError(f"Well '{well_name}' not found")
+                well_objects.append(well)
+
+        if not well_objects:
+            raise ValueError("No wells available for crossplot")
+
+        return CrossplotClass(
+            wells=well_objects,
+            x=x,
+            y=y,
+            shape=shape,
+            color=color,
+            size=size,
+            colortemplate=colortemplate,
+            color_range=color_range,
+            size_range=size_range,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            figsize=figsize,
+            dpi=dpi,
+            marker=marker,
+            marker_size=marker_size,
+            marker_alpha=marker_alpha,
+            edge_color=edge_color,
+            edge_width=edge_width,
+            x_log=x_log,
+            y_log=y_log,
+            grid=grid,
+            grid_alpha=grid_alpha,
+            depth_range=depth_range,
+            show_colorbar=show_colorbar,
+            show_legend=show_legend,
+        )
+
     def __repr__(self) -> str:
         """String representation."""
         return f"WellDataManager(wells={len(self._wells)})"

@@ -13,6 +13,8 @@ Fast, intuitive Python library for petrophysical well log analysis. Load LAS fil
 - **⚖️ Depth-Weighted Statistics** - Proper averaging for irregular sampling
 - **📊 Multi-Well Analytics** - Cross-well statistics: `manager.PHIE.filter('Zone').percentile(50)`
 - **🎨 Professional Visualization** - Create customizable well log displays with templates
+- **📊 Interactive Crossplots** - Beautiful scatter plots with color/size/shape mapping by property
+- **📈 Regression Analysis** - 5 regression types (linear, polynomial, exponential, log, power)
 - **💾 Project Persistence** - Save/load entire projects with metadata and templates
 
 ---
@@ -27,6 +29,7 @@ Fast, intuitive Python library for petrophysical well log analysis. Load LAS fil
 ### Learning Path
 - [Core Concepts](#core-concepts) - Essential patterns and workflows
 - [Visualization Guide](#visualization-guide) - Creating well log displays
+- [Crossplot & Regression Guide](#crossplot--regression-guide) - Data analysis and trend visualization
 - [Advanced Topics](#advanced-topics) - Deep dives into specific features
 
 ### Quick Reference
@@ -973,6 +976,512 @@ view.save("comprehensive_log.png", dpi=300)
 
 ---
 
+## Crossplot & Regression Guide
+
+Create beautiful, publication-quality crossplots for petrophysical analysis with sophisticated color/size/shape mapping and built-in regression analysis.
+
+### Quick Start
+
+```python
+from well_log_toolkit import WellDataManager
+
+manager = WellDataManager()
+manager.load_las("well.las")
+well = manager.well_36_7_5_A
+
+# Simple crossplot
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.show()
+```
+
+That's it! One line to create a scatter plot from any two properties.
+
+### Basic Crossplots
+
+#### Single Well Analysis
+
+```python
+# Density vs Neutron Porosity
+plot = well.Crossplot(
+    x="RHOB",
+    y="NPHI",
+    title="Density-Neutron Crossplot"
+)
+plot.show()
+
+# Save high-resolution image
+plot.save("density_neutron.png", dpi=300)
+```
+
+#### Multi-Well Comparison
+
+Compare multiple wells on the same plot:
+
+```python
+# All wells with different markers
+plot = manager.Crossplot(
+    x="PHIE",
+    y="SW",
+    shape="well",  # Different marker shape per well
+    title="Multi-Well Porosity vs Saturation"
+)
+plot.show()
+
+# Specific wells only
+plot = manager.Crossplot(
+    x="RHOB",
+    y="NPHI",
+    wells=["Well_A", "Well_B", "Well_C"],
+    shape="well"
+)
+plot.show()
+```
+
+### Advanced Mapping
+
+#### Color by Property or Depth
+
+Visualize a third dimension using color:
+
+```python
+# Color by depth
+plot = well.Crossplot(
+    x="PHIE",
+    y="SW",
+    color="depth",
+    colortemplate="viridis",
+    color_range=[2000, 2500],  # Depth range in meters
+    title="Porosity vs SW (colored by depth)"
+)
+plot.show()
+
+# Color by shale volume
+plot = well.Crossplot(
+    x="PHIE",
+    y="PERM",
+    color="VSH",
+    colortemplate="RdYlGn_r",  # Red=high shale, Green=low shale
+    title="Porosity-Permeability (colored by VSH)"
+)
+plot.show()
+```
+
+**Available colormaps:** `"viridis"`, `"plasma"`, `"coolwarm"`, `"RdYlGn"`, `"jet"`, and 100+ more matplotlib colormaps.
+
+#### Size by Property
+
+Make marker size represent a fourth dimension:
+
+```python
+plot = well.Crossplot(
+    x="PHIE",
+    y="SW",
+    size="PERM",              # Bigger markers = higher permeability
+    size_range=(20, 200),     # Min/max marker sizes
+    color="depth",
+    colortemplate="viridis",
+    title="Porosity vs SW (sized by PERM)"
+)
+plot.show()
+```
+
+#### Shape by Category
+
+Use different marker shapes for different groups:
+
+```python
+# Different shapes for different facies
+plot = well.Crossplot(
+    x="PHIE",
+    y="PERM",
+    shape="Facies",           # Different marker per facies type
+    color="depth",
+    title="Porosity-Permeability by Facies"
+)
+plot.show()
+
+# Multi-well: different shapes per well
+plot = manager.Crossplot(
+    x="PHIE",
+    y="SW",
+    shape="well",             # Circle, square, triangle, etc.
+    color="VSH",
+    size="PERM"
+)
+plot.show()
+```
+
+#### All Features Combined
+
+Combine color, size, and shape for comprehensive visualization:
+
+```python
+plot = manager.Crossplot(
+    x="PHIE",
+    y="SW",
+    wells=["Well_A", "Well_B"],    # Specific wells
+    shape="well",                   # Different marker per well
+    color="depth",                  # Color by depth
+    size="PERM",                    # Size by permeability
+    colortemplate="viridis",
+    color_range=[2000, 2500],
+    size_range=(30, 200),
+    title="Multi-Dimensional Analysis",
+    figsize=(12, 10),
+    dpi=150
+)
+plot.show()
+```
+
+### Logarithmic Scales
+
+Perfect for permeability and resistivity data:
+
+```python
+# Log scale on x-axis (permeability)
+plot = well.Crossplot(
+    x="PERM",
+    y="PHIE",
+    x_log=True,
+    title="Porosity-Permeability (log scale)"
+)
+plot.show()
+
+# Log-log plot
+plot = well.Crossplot(
+    x="PERM",
+    y="Pressure",
+    x_log=True,
+    y_log=True,
+    title="Log-Log Analysis"
+)
+plot.show()
+```
+
+### Depth Filtering
+
+Focus on specific intervals:
+
+```python
+# Reservoir zone only
+plot = well.Crossplot(
+    x="PHIE",
+    y="SW",
+    depth_range=(2000, 2500),
+    color="VSH",
+    title="Reservoir Zone Analysis (2000-2500m)"
+)
+plot.show()
+```
+
+### Regression Analysis
+
+Add trend lines to identify relationships between properties.
+
+#### Linear Regression
+
+```python
+plot = well.Crossplot(x="RHOB", y="NPHI", title="Density-Neutron")
+
+# Add linear regression
+plot.add_regression("linear", line_color="red", line_width=2)
+plot.show()
+
+# Access regression results
+reg = plot.regressions["linear"]
+print(reg.equation())      # y = -0.2956x + 0.9305
+print(f"R² = {reg.r_squared:.4f}")  # R² = 0.8147
+print(f"RMSE = {reg.rmse:.4f}")     # RMSE = 0.0208
+```
+
+#### Multiple Regression Types
+
+Compare different regression models:
+
+```python
+plot = well.Crossplot(x="PHIE", y="SW", title="Porosity vs Saturation")
+
+# Add multiple regressions
+plot.add_regression("linear", line_color="red")
+plot.add_regression("polynomial", degree=2, line_color="blue")
+plot.add_regression("exponential", line_color="green")
+
+plot.show()
+
+# Compare R² values
+for name, reg in plot.regressions.items():
+    print(f"{name}: R² = {reg.r_squared:.4f}")
+# linear: R² = 0.0144
+# polynomial: R² = 0.0155
+# exponential: R² = 0.0201  ← Best fit
+```
+
+#### Available Regression Types
+
+| Type | Equation | Use Case | Example |
+|------|----------|----------|---------|
+| `"linear"` | y = ax + b | Straight trends | Density-Porosity |
+| `"polynomial"` | y = aₙxⁿ + ... + a₁x + a₀ | Curved relationships | Sonic-Porosity |
+| `"exponential"` | y = ae^(bx) | Exponential growth | Production decline |
+| `"logarithmic"` | y = a·ln(x) + b | Diminishing returns | Time-dependent |
+| `"power"` | y = ax^b | Power law | Porosity-Permeability |
+
+#### Polynomial Regression
+
+Fit higher-order polynomials for curved relationships:
+
+```python
+plot = well.Crossplot(x="DT", y="PHIE")
+
+# Quadratic (degree 2)
+plot.add_regression("polynomial", degree=2, line_color="blue")
+
+# Cubic (degree 3)
+plot.add_regression("polynomial", degree=3, line_color="green", name="cubic")
+
+plot.show()
+```
+
+#### Regression Customization
+
+Control regression line appearance:
+
+```python
+plot.add_regression(
+    "linear",
+    name="best_fit",           # Custom name
+    line_color="red",           # Line color
+    line_width=2,               # Line thickness
+    line_style="--",            # Dashed: "--", dotted: ":", solid: "-"
+    line_alpha=0.8,             # Transparency (0-1)
+    show_equation=True,         # Show equation in legend
+    show_r2=True                # Show R² value
+)
+```
+
+#### Using Regression for Predictions
+
+Extract regression objects and use them for calculations:
+
+```python
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.add_regression("linear")
+
+# Get regression object
+reg = plot.regressions["linear"]
+
+# Predict values
+density_values = [2.3, 2.4, 2.5, 2.6]
+predicted_nphi = reg(density_values)
+print(predicted_nphi)  # [0.249, 0.220, 0.191, 0.161]
+
+# Or use predict method
+predicted_nphi = reg.predict(density_values)
+
+# Get statistics
+print(f"Equation: {reg.equation()}")
+print(f"R²: {reg.r_squared:.4f}")
+print(f"RMSE: {reg.rmse:.4f}")
+```
+
+### Standalone Regression Classes
+
+Use regression classes independently for data analysis:
+
+```python
+from well_log_toolkit import LinearRegression, PolynomialRegression
+import numpy as np
+
+# Prepare data
+x_data = np.array([2.2, 2.3, 2.4, 2.5, 2.6])
+y_data = np.array([0.28, 0.25, 0.22, 0.19, 0.16])
+
+# Fit linear regression
+reg = LinearRegression()
+reg.fit(x_data, y_data)
+
+# Get results
+print(reg.equation())           # y = -0.3000x + 0.9400
+print(f"R² = {reg.r_squared}")  # R² = 1.0000
+print(f"RMSE = {reg.rmse}")     # RMSE = 0.0000
+
+# Make predictions
+new_densities = [2.35, 2.45, 2.55]
+predicted = reg(new_densities)
+print(predicted)  # [0.235, 0.205, 0.175]
+
+# Try polynomial
+poly = PolynomialRegression(degree=2)
+poly.fit(x_data, y_data)
+print(poly.equation())
+```
+
+#### All Regression Classes
+
+```python
+from well_log_toolkit import (
+    LinearRegression,          # y = ax + b
+    PolynomialRegression,      # y = aₙxⁿ + ... + a₀
+    ExponentialRegression,     # y = ae^(bx)
+    LogarithmicRegression,     # y = a·ln(x) + b
+    PowerRegression            # y = ax^b
+)
+
+# Each has the same interface
+reg = LinearRegression()
+reg.fit(x, y)
+y_pred = reg.predict(x_new)
+print(reg.equation())
+print(reg.r_squared)
+print(reg.rmse)
+```
+
+### Customization Options
+
+Fine-tune your crossplot appearance:
+
+```python
+plot = well.Crossplot(
+    x="RHOB",
+    y="NPHI",
+    # Plot settings
+    title="Custom Crossplot",
+    xlabel="Bulk Density (g/cc)",
+    ylabel="Neutron Porosity (v/v)",
+    figsize=(12, 10),           # Figure size (width, height)
+    dpi=150,                    # Resolution
+
+    # Marker settings
+    marker="D",                 # Diamond markers
+    marker_size=80,             # Larger markers
+    marker_alpha=0.7,           # 70% opaque
+    edge_color="darkblue",      # Marker outline color
+    edge_width=1.5,             # Outline thickness
+
+    # Grid settings
+    grid=True,
+    grid_alpha=0.3,             # Subtle grid
+
+    # Display options
+    show_colorbar=True,         # Show colorbar
+    show_legend=True            # Show legend
+)
+plot.show()
+```
+
+**Marker styles:** `"o"` (circle), `"s"` (square), `"^"` (triangle), `"D"` (diamond), `"v"` (inverted triangle), `"*"` (star), `"+"` (plus), `"x"` (cross)
+
+### Practical Examples
+
+#### Porosity-Permeability Analysis
+
+```python
+# Classic log-scale relationship
+plot = well.Crossplot(
+    x="PHIE",
+    y="PERM",
+    y_log=True,                 # Log scale for permeability
+    color="depth",
+    colortemplate="viridis",
+    title="Porosity-Permeability Transform"
+)
+
+# Add power law regression (typical for poro-perm)
+plot.add_regression("power", line_color="red", line_width=2)
+plot.show()
+
+# Use regression for permeability prediction
+power_reg = plot.regressions["power"]
+print(power_reg.equation())    # y = 2.5*x^3.2
+
+# Predict permeability from porosity
+porosities = [0.10, 0.15, 0.20, 0.25, 0.30]
+perms = power_reg(porosities)
+print(perms)  # [0.003, 0.025, 0.100, 0.275, 0.562] mD
+```
+
+#### Reservoir Quality Classification
+
+```python
+# Multi-well reservoir quality
+plot = manager.Crossplot(
+    x="PHIE",
+    y="SW",
+    shape="well",              # Different marker per well
+    color="VSH",               # Color by shale volume
+    size="PERM",               # Size by permeability
+    colortemplate="RdYlGn_r",  # Red=shaly, Green=clean
+    title="Reservoir Quality Classification"
+)
+
+# Add cutoff lines
+plot.add_regression("linear", line_color="red", show_equation=False)
+plot.show()
+
+# Identify sweet spots: PHIE > 0.15 and SW < 0.4
+```
+
+#### Lithology Identification
+
+```python
+# Density-Neutron crossplot for lithology
+plot = well.Crossplot(
+    x="RHOB",
+    y="NPHI",
+    color="GR",                # Color by gamma ray
+    colortemplate="viridis",
+    color_range=[0, 150],
+    title="Density-Neutron Lithology Plot"
+)
+
+# Add lithology lines
+plot.add_regression("linear", line_color="yellow", name="Sandstone")
+plot.add_regression("polynomial", degree=2, line_color="gray", name="Shale")
+plot.show()
+```
+
+### Best Practices
+
+1. **Choose appropriate scales:** Use log scales for permeability, resistivity
+2. **Color consistency:** Specify `color_range` to keep colors consistent across plots
+3. **Multiple regressions:** Try different types and compare R² values
+4. **Depth filtering:** Focus on specific intervals with `depth_range`
+5. **Save high-res:** Use `dpi=300` for publication-quality images
+
+### Quick Reference
+
+```python
+# Basic crossplot
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.show()
+
+# With color and size
+plot = well.Crossplot(x="PHIE", y="SW", color="depth", size="PERM")
+plot.show()
+
+# Multi-well
+plot = manager.Crossplot(x="PHIE", y="SW", shape="well")
+plot.show()
+
+# With regression
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.add_regression("linear", line_color="red")
+plot.show()
+
+# Standalone regression
+from well_log_toolkit import LinearRegression
+reg = LinearRegression()
+reg.fit(x, y)
+predictions = reg([10, 20, 30])
+```
+
+For comprehensive examples and API details, see:
+- **[CROSSPLOT_README.md](CROSSPLOT_README.md)** - Complete documentation
+- **[CROSSPLOT_QUICK_REFERENCE.md](CROSSPLOT_QUICK_REFERENCE.md)** - Quick reference card
+- **[examples/crossplot_examples.py](examples/crossplot_examples.py)** - 15+ examples
+
+---
+
 ## Style & Marker Reference
 
 ### Line Styles
@@ -1303,6 +1812,7 @@ from well_log_toolkit import WellDataManager, Well, Property, LasFile
 - `set_template(name, template)` - Store template
 - `get_template(name)` - Retrieve template
 - `list_templates()` - List template names
+- `Crossplot(x, y, wells=None, shape="well", ...)` - Create multi-well crossplot
 
 **Well** - Individual wellbore
 - `get_property(name, source=None)` - Get property
@@ -1312,7 +1822,8 @@ from well_log_toolkit import WellDataManager, Well, Property, LasFile
 - `export_sources(directory)` - Export each source
 - `rename_source(old, new)` - Rename source
 - `remove_source(name)` - Remove source
-- `WellView(depth_range=None, tops=None, template, ...)` - Create visualization
+- `WellView(depth_range=None, tops=None, template, ...)` - Create log visualization
+- `Crossplot(x, y, color=None, size=None, shape=None, ...)` - Create crossplot
 
 **Property** - Single measurement or computed value
 - `filter(discrete_property)` - Filter by discrete property
@@ -1323,7 +1834,7 @@ from well_log_toolkit import WellDataManager, Well, Property, LasFile
 ### Visualization Classes
 
 ```python
-from well_log_toolkit import Template, WellView
+from well_log_toolkit import Template, WellView, Crossplot
 ```
 
 **Template** - Display layout configuration
@@ -1344,6 +1855,38 @@ from well_log_toolkit import Template, WellView
 - `close()` - Close figure
 - `add_track(...)` - Add temporary track
 - `add_tops(...)` - Add temporary tops
+
+**Crossplot** - Scatter plot with regression analysis
+- `plot()` - Create matplotlib figure
+- `show()` - Display plot
+- `save(filepath, dpi)` - Save to file
+- `close()` - Close figure
+- `add_regression(type, **kwargs)` - Add regression line
+- `remove_regression(name)` - Remove regression
+- Attributes: `regressions`, `fig`, `ax`
+
+### Regression Classes
+
+```python
+from well_log_toolkit import (
+    LinearRegression,
+    PolynomialRegression,
+    ExponentialRegression,
+    LogarithmicRegression,
+    PowerRegression
+)
+```
+
+All regression classes share the same interface:
+
+- `fit(x, y)` - Fit regression model to data
+- `predict(x)` - Predict y values for given x
+- `__call__(x)` - Alternative prediction syntax: `reg([1, 2, 3])`
+- `equation()` - Get equation string (e.g., "y = 2.5x + 1.3")
+- Attributes: `r_squared`, `rmse`, `x_data`, `y_data`
+
+**PolynomialRegression** - Additional parameter:
+- `__init__(degree=2)` - Specify polynomial degree
 
 ### Statistics Functions
 
@@ -1436,6 +1979,40 @@ template.add_track(
 manager.set_template("custom", template)
 view = well.WellView(template="custom")
 view.save("log.png", dpi=300)
+```
+
+### Crossplots
+
+```python
+# Simple crossplot
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.show()
+
+# With color and regression
+plot = well.Crossplot(x="PHIE", y="SW", color="depth")
+plot.add_regression("linear", line_color="red")
+plot.show()
+
+# Multi-well
+plot = manager.Crossplot(x="PHIE", y="SW", shape="well")
+plot.show()
+```
+
+### Regression Analysis
+
+```python
+# With crossplot
+plot = well.Crossplot(x="RHOB", y="NPHI")
+plot.add_regression("linear")
+reg = plot.regressions["linear"]
+predictions = reg([2.3, 2.4, 2.5])
+
+# Standalone
+from well_log_toolkit import LinearRegression
+reg = LinearRegression()
+reg.fit(x_data, y_data)
+print(reg.equation())
+y_pred = reg(new_x_values)
 ```
 
 ### Save and Load Projects

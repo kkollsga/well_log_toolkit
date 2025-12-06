@@ -2163,6 +2163,165 @@ class Well:
             header_config=header_config
         )
 
+    def Crossplot(
+        self,
+        x: str,
+        y: str,
+        shape: Optional[str] = None,
+        color: Optional[str] = None,
+        size: Optional[str] = None,
+        colortemplate: str = "viridis",
+        color_range: Optional[tuple[float, float]] = None,
+        size_range: tuple[float, float] = (20, 200),
+        title: str = "Cross Plot",
+        xlabel: Optional[str] = None,
+        ylabel: Optional[str] = None,
+        figsize: tuple[float, float] = (10, 8),
+        dpi: int = 100,
+        marker: str = "o",
+        marker_size: float = 50,
+        marker_alpha: float = 0.7,
+        edge_color: str = "black",
+        edge_width: float = 0.5,
+        x_log: bool = False,
+        y_log: bool = False,
+        grid: bool = True,
+        grid_alpha: float = 0.3,
+        depth_range: Optional[tuple[float, float]] = None,
+        show_colorbar: bool = True,
+        show_legend: bool = True,
+    ) -> 'Crossplot':
+        """
+        Create a beautiful crossplot for this well.
+
+        Parameters
+        ----------
+        x : str
+            Name of property for x-axis
+        y : str
+            Name of property for y-axis
+        shape : str, optional
+            Property name for shape mapping.
+            Default: None (single shape)
+        color : str, optional
+            Property name for color mapping. Use "depth" to color by depth.
+            Default: None (single color)
+        size : str, optional
+            Property name for size mapping.
+            Default: None (constant size)
+        colortemplate : str, optional
+            Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm")
+            Default: "viridis"
+        color_range : tuple[float, float], optional
+            Min and max values for color mapping. If None, uses data range.
+            Default: None
+        size_range : tuple[float, float], optional
+            Min and max marker sizes for size mapping.
+            Default: (20, 200)
+        title : str, optional
+            Plot title. Default: "Cross Plot"
+        xlabel : str, optional
+            X-axis label. If None, uses property name.
+        ylabel : str, optional
+            Y-axis label. If None, uses property name.
+        figsize : tuple[float, float], optional
+            Figure size (width, height) in inches. Default: (10, 8)
+        dpi : int, optional
+            Figure resolution. Default: 100
+        marker : str, optional
+            Marker style. Default: "o"
+        marker_size : float, optional
+            Base marker size. Default: 50
+        marker_alpha : float, optional
+            Marker transparency (0-1). Default: 0.7
+        edge_color : str, optional
+            Marker edge color. Default: "black"
+        edge_width : float, optional
+            Marker edge width. Default: 0.5
+        x_log : bool, optional
+            Use logarithmic scale for x-axis. Default: False
+        y_log : bool, optional
+            Use logarithmic scale for y-axis. Default: False
+        grid : bool, optional
+            Show grid. Default: True
+        grid_alpha : float, optional
+            Grid transparency. Default: 0.3
+        depth_range : tuple[float, float], optional
+            Depth range to filter data. Default: None (all depths)
+        show_colorbar : bool, optional
+            Show colorbar when using color mapping. Default: True
+        show_legend : bool, optional
+            Show legend when using shape mapping. Default: True
+
+        Returns
+        -------
+        Crossplot
+            Crossplot visualization object
+
+        Examples
+        --------
+        Basic crossplot:
+
+        >>> plot = well.Crossplot(x="RHOB", y="NPHI")
+        >>> plot.show()
+
+        With color and size mapping:
+
+        >>> plot = well.Crossplot(
+        ...     x="PHIE_2025",
+        ...     y="NetSand_2025",
+        ...     color="depth",
+        ...     size="Sw_2025",
+        ...     colortemplate="viridis",
+        ...     color_range=[2000, 2500],
+        ...     title="Porosity vs Net Sand"
+        ... )
+        >>> plot.show()
+
+        With regression analysis:
+
+        >>> plot = well.Crossplot(x="RHOB", y="NPHI")
+        >>> plot.add_regression("linear")
+        >>> plot.add_regression("polynomial", degree=2, line_color="blue")
+        >>> plot.show()
+        >>> print(plot.regressions["linear"].equation())
+
+        With logarithmic scales:
+
+        >>> plot = well.Crossplot(x="PERM", y="PHIE", x_log=True)
+        >>> plot.show()
+        """
+        from .visualization import Crossplot as CrossplotClass
+
+        return CrossplotClass(
+            wells=self,
+            x=x,
+            y=y,
+            shape=shape,
+            color=color,
+            size=size,
+            colortemplate=colortemplate,
+            color_range=color_range,
+            size_range=size_range,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            figsize=figsize,
+            dpi=dpi,
+            marker=marker,
+            marker_size=marker_size,
+            marker_alpha=marker_alpha,
+            edge_color=edge_color,
+            edge_width=edge_width,
+            x_log=x_log,
+            y_log=y_log,
+            grid=grid,
+            grid_alpha=grid_alpha,
+            depth_range=depth_range,
+            show_colorbar=show_colorbar,
+            show_legend=show_legend,
+        )
+
     def __repr__(self) -> str:
         """String representation."""
         # Count total unique properties across all sources
