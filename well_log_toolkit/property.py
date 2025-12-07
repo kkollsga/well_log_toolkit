@@ -550,6 +550,63 @@ class Property(PropertyOperationsMixin):
         )
 
     @property
+    def MD(self) -> np.ndarray:
+        """
+        Get Measured Depth array (standardized depth accessor).
+
+        This is an alias for `.depth` that provides a standardized naming convention
+        for use in calculations and conditionals across all well log toolkit methods.
+
+        Returns
+        -------
+        np.ndarray
+            Measured depth values (same as `.depth`)
+
+        Examples
+        --------
+        >>> # Use in conditional calculations
+        >>> shallow_phie = np.where(well.PHIE.MD < 2000, well.PHIE, np.nan)
+        >>>
+        >>> # Combine with Well for multi-well conditionals
+        >>> well.calc = np.where((well.PHIE.MD > 2000) & (well.PHIE.MD < 3000),
+        ...                      well.PHIE * 2,
+        ...                      well.PHIE)
+        """
+        return self.depth
+
+    @property
+    def Well(self) -> np.ndarray:
+        """
+        Get Well name as an array aligned with depth.
+
+        Returns an array of well names, one for each depth point. This enables
+        conditional logic based on well name in calculations and filtering operations.
+
+        Returns
+        -------
+        np.ndarray
+            Array of well names (str), one per depth point
+
+        Examples
+        --------
+        >>> # Use in multi-well calculations
+        >>> plot_data = crossplot.data  # DataFrame with 'well' column
+        >>>
+        >>> # In property calculations (returns array of well names)
+        >>> well_names = well.PHIE.Well
+        >>> # array(['36/7-5 ST2', '36/7-5 ST2', ...])
+        >>>
+        >>> # Conditional based on well
+        >>> result = np.where(well.PHIE.Well == "36/7-5", well.PHIE * 1.1, well.PHIE)
+        """
+        if self.parent_well is None:
+            # Return array of empty strings if no parent well
+            return np.full(len(self.depth), '', dtype=object)
+
+        # Return array of well names, one for each depth point
+        return np.full(len(self.depth), self.parent_well.name, dtype=object)
+
+    @property
     def is_filtered(self) -> bool:
         """
         Check if this property is a filtered copy with modified depth grid.

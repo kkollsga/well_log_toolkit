@@ -5,7 +5,7 @@ for prediction. Each regression class can be used independently or as part of
 crossplot visualizations.
 """
 
-from typing import Optional, Union, Tuple, Callable
+from typing import Optional, Union, Tuple, Callable, Dict
 import numpy as np
 from numpy.typing import ArrayLike
 from abc import ABC, abstractmethod
@@ -14,12 +14,19 @@ from abc import ABC, abstractmethod
 class RegressionBase(ABC):
     """Base class for all regression types."""
 
-    def __init__(self):
+    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize regression base class.
+
+        Args:
+            locked_params: Dictionary of parameter names and their locked values.
+                          These parameters will not be fitted and will remain constant.
+        """
         self.fitted = False
         self.x_data: Optional[np.ndarray] = None
         self.y_data: Optional[np.ndarray] = None
         self.r_squared: Optional[float] = None
         self.rmse: Optional[float] = None
+        self._locked_params: Dict[str, float] = locked_params if locked_params is not None else {}
 
     @abstractmethod
     def fit(self, x: ArrayLike, y: ArrayLike) -> 'RegressionBase':
@@ -105,6 +112,64 @@ class RegressionBase(ABC):
 
         return x_clean, y_clean
 
+    def lock_params(self, **params: float) -> 'RegressionBase':
+        """Lock one or more parameters to fixed values.
+
+        Locked parameters will not be optimized during fitting.
+
+        Args:
+            **params: Parameter names and their locked values
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            >>> reg = LinearRegression()
+            >>> reg.lock_params(slope=2.0)
+            >>> reg.fit(x, y)  # Will fit intercept only, slope fixed at 2.0
+        """
+        self._locked_params.update(params)
+        return self
+
+    def unlock_params(self, *param_names: str) -> 'RegressionBase':
+        """Unlock one or more parameters.
+
+        Args:
+            *param_names: Names of parameters to unlock. If none provided, unlocks all.
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            >>> reg.unlock_params('slope')  # Unlock specific parameter
+            >>> reg.unlock_params()  # Unlock all parameters
+        """
+        if not param_names:
+            self._locked_params.clear()
+        else:
+            for name in param_names:
+                self._locked_params.pop(name, None)
+        return self
+
+    def get_locked_params(self) -> Dict[str, float]:
+        """Get currently locked parameters.
+
+        Returns:
+            Dictionary of locked parameter names and values
+        """
+        return self._locked_params.copy()
+
+    def is_param_locked(self, param_name: str) -> bool:
+        """Check if a parameter is locked.
+
+        Args:
+            param_name: Name of the parameter to check
+
+        Returns:
+            True if parameter is locked, False otherwise
+        """
+        return param_name in self._locked_params
+
 
 class LinearRegression(RegressionBase):
     """Linear regression: y = a*x + b
@@ -118,10 +183,19 @@ class LinearRegression(RegressionBase):
         y = 2.00x + 0.00
         >>> print(f"R² = {reg.r_squared:.3f}")
         R² = 1.000
+
+        # Lock slope to force through origin with specific slope
+        >>> reg = LinearRegression(locked_params={'slope': 2.0})
+        >>> reg.fit(x, y)  # Only fits intercept
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize linear regression.
+
+        Args:
+            locked_params: Dictionary to lock parameters. Valid keys: 'slope', 'intercept'
+        """
+        super().__init__(locked_params)
         self.slope: Optional[float] = None
         self.intercept: Optional[float] = None
 
@@ -137,8 +211,25 @@ class LinearRegression(RegressionBase):
         """
         x_clean, y_clean = self._prepare_data(x, y)
 
-        # Calculate slope and intercept using least squares
-        self.slope, self.intercept = np.polyfit(x_clean, y_clean, 1)
+        # Check if parameters are locked
+        slope_locked = self.is_param_locked('slope')
+        intercept_locked = self.is_param_locked('intercept')
+
+        if slope_locked and intercept_locked:
+            # Both locked - just use the locked values
+            self.slope = self._locked_params['slope']
+            self.intercept = self._locked_params['intercept']
+        elif slope_locked:
+            # Fit intercept only: y - slope*x = intercept
+            self.slope = self._locked_params['slope']
+            self.intercept = np.mean(y_clean - self.slope * x_clean)
+        elif intercept_locked:
+            # Fit slope only: (y - intercept) / x = slope
+            self.intercept = self._locked_params['intercept']
+            self.slope = np.sum((y_clean - self.intercept) * x_clean) / np.sum(x_clean ** 2)
+        else:
+            # Calculate slope and intercept using least squares
+            self.slope, self.intercept = np.polyfit(x_clean, y_clean, 1)
 
         # Calculate metrics
         y_pred = self.slope * x_clean + self.intercept
@@ -181,10 +272,19 @@ class LogarithmicRegression(RegressionBase):
         >>> reg.fit([1, 2, 4, 8], [1, 2, 3, 4])
         >>> reg.predict([16])
         array([5.])
+
+        # Lock the coefficient
+        >>> reg = LogarithmicRegression(locked_params={'a': 1.5})
+        >>> reg.fit(x, y)  # Only fits b
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize logarithmic regression.
+
+        Args:
+            locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
+        """
+        super().__init__(locked_params)
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
@@ -206,7 +306,25 @@ class LogarithmicRegression(RegressionBase):
 
         # Transform to linear: y = a*ln(x) + b
         ln_x = np.log(x_clean)
-        self.a, self.b = np.polyfit(ln_x, y_clean, 1)
+
+        # Check if parameters are locked
+        a_locked = self.is_param_locked('a')
+        b_locked = self.is_param_locked('b')
+
+        if a_locked and b_locked:
+            # Both locked - just use the locked values
+            self.a = self._locked_params['a']
+            self.b = self._locked_params['b']
+        elif a_locked:
+            # Fit b only: y - a*ln(x) = b
+            self.a = self._locked_params['a']
+            self.b = np.mean(y_clean - self.a * ln_x)
+        elif b_locked:
+            # Fit a only: (y - b) / ln(x) = a
+            self.b = self._locked_params['b']
+            self.a = np.sum((y_clean - self.b) * ln_x) / np.sum(ln_x ** 2)
+        else:
+            self.a, self.b = np.polyfit(ln_x, y_clean, 1)
 
         # Calculate metrics
         y_pred = self.a * ln_x + self.b
@@ -253,10 +371,19 @@ class ExponentialRegression(RegressionBase):
         >>> reg.fit([0, 1, 2, 3], [1, 2.7, 7.4, 20.1])
         >>> reg.predict([4])
         array([54.6])
+
+        # Lock the base value
+        >>> reg = ExponentialRegression(locked_params={'a': 1.0})
+        >>> reg.fit(x, y)  # Only fits b
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize exponential regression.
+
+        Args:
+            locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
+        """
+        super().__init__(locked_params)
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
@@ -276,11 +403,29 @@ class ExponentialRegression(RegressionBase):
         if np.any(y_clean <= 0):
             raise ValueError("Exponential regression requires all y values to be positive")
 
-        # Transform to linear: ln(y) = ln(a) + b*x
-        ln_y = np.log(y_clean)
-        b, ln_a = np.polyfit(x_clean, ln_y, 1)
-        self.b = b
-        self.a = np.exp(ln_a)
+        # Check if parameters are locked
+        a_locked = self.is_param_locked('a')
+        b_locked = self.is_param_locked('b')
+
+        if a_locked and b_locked:
+            # Both locked - just use the locked values
+            self.a = self._locked_params['a']
+            self.b = self._locked_params['b']
+        elif a_locked:
+            # Fit b only: ln(y/a) = b*x
+            self.a = self._locked_params['a']
+            ln_y_ratio = np.log(y_clean / self.a)
+            self.b = np.sum(ln_y_ratio * x_clean) / np.sum(x_clean ** 2)
+        elif b_locked:
+            # Fit a only: ln(y) = ln(a) + b*x => a = exp(mean(ln(y) - b*x))
+            self.b = self._locked_params['b']
+            self.a = np.exp(np.mean(np.log(y_clean) - self.b * x_clean))
+        else:
+            # Transform to linear: ln(y) = ln(a) + b*x
+            ln_y = np.log(y_clean)
+            b, ln_a = np.polyfit(x_clean, ln_y, 1)
+            self.b = b
+            self.a = np.exp(ln_a)
 
         # Calculate metrics
         y_pred = self.a * np.exp(self.b * x_clean)
@@ -322,15 +467,21 @@ class PolynomialRegression(RegressionBase):
         array([25.])
         >>> print(reg.equation())
         y = 1.00x² + 0.00x + 0.00
+
+        # Lock specific coefficients (indexed from highest to lowest degree)
+        >>> reg = PolynomialRegression(degree=2, locked_params={'c0': 1.0})  # Lock x² coefficient
+        >>> reg.fit(x, y)  # Only fits c1 and c2
     """
 
-    def __init__(self, degree: int = 2):
+    def __init__(self, degree: int = 2, locked_params: Optional[Dict[str, float]] = None):
         """Initialize polynomial regression.
 
         Args:
             degree: Polynomial degree (default: 2 for quadratic)
+            locked_params: Dictionary to lock coefficients. Keys: 'c0', 'c1', ..., 'c{degree}'
+                          where c0 is the coefficient for x^degree (highest power)
         """
-        super().__init__()
+        super().__init__(locked_params)
         if degree < 1:
             raise ValueError("Polynomial degree must be at least 1")
         self.degree = degree
@@ -348,8 +499,42 @@ class PolynomialRegression(RegressionBase):
         """
         x_clean, y_clean = self._prepare_data(x, y)
 
-        # Fit polynomial
-        self.coefficients = np.polyfit(x_clean, y_clean, self.degree)
+        # Check for locked coefficients
+        locked_indices = {int(k[1:]): v for k, v in self._locked_params.items() if k.startswith('c')}
+
+        if not locked_indices:
+            # No locked coefficients - use standard polyfit
+            self.coefficients = np.polyfit(x_clean, y_clean, self.degree)
+        else:
+            # Initialize coefficients array
+            self.coefficients = np.zeros(self.degree + 1)
+
+            # Set locked coefficients
+            for idx, val in locked_indices.items():
+                if idx < 0 or idx > self.degree:
+                    raise ValueError(f"Coefficient index c{idx} out of range for degree {self.degree}")
+                self.coefficients[idx] = val
+
+            # Create design matrix for unlocked coefficients
+            # Subtract contribution of locked coefficients from y
+            y_adjusted = y_clean.copy()
+            for idx, val in locked_indices.items():
+                power = self.degree - idx
+                y_adjusted -= val * (x_clean ** power)
+
+            # Fit only unlocked coefficients
+            unlocked_indices = [i for i in range(self.degree + 1) if i not in locked_indices]
+
+            if unlocked_indices:
+                # Build design matrix for unlocked terms
+                X = np.column_stack([x_clean ** (self.degree - i) for i in unlocked_indices])
+
+                # Solve least squares
+                coefs_unlocked = np.linalg.lstsq(X, y_adjusted, rcond=None)[0]
+
+                # Assign unlocked coefficients
+                for i, idx in enumerate(unlocked_indices):
+                    self.coefficients[idx] = coefs_unlocked[i]
 
         # Calculate metrics
         y_pred = np.polyval(self.coefficients, x_clean)
@@ -425,10 +610,19 @@ class PowerRegression(RegressionBase):
         >>> reg.fit([1, 2, 3, 4], [1, 4, 9, 16])
         >>> reg.predict([5])
         array([25.])
+
+        # Lock the exponent to fit a scaled relationship
+        >>> reg = PowerRegression(locked_params={'b': 2.0})
+        >>> reg.fit(x, y)  # Only fits a
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize power regression.
+
+        Args:
+            locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
+        """
+        super().__init__(locked_params)
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
@@ -450,11 +644,32 @@ class PowerRegression(RegressionBase):
         if np.any(y_clean <= 0):
             raise ValueError("Power regression requires all y values to be positive")
 
-        # Transform to linear: ln(y) = ln(a) + b*ln(x)
-        ln_x = np.log(x_clean)
-        ln_y = np.log(y_clean)
-        self.b, ln_a = np.polyfit(ln_x, ln_y, 1)
-        self.a = np.exp(ln_a)
+        # Check if parameters are locked
+        a_locked = self.is_param_locked('a')
+        b_locked = self.is_param_locked('b')
+
+        if a_locked and b_locked:
+            # Both locked - just use the locked values
+            self.a = self._locked_params['a']
+            self.b = self._locked_params['b']
+        elif a_locked:
+            # Fit b only: ln(y/a) = b*ln(x)
+            self.a = self._locked_params['a']
+            ln_x = np.log(x_clean)
+            ln_y_ratio = np.log(y_clean / self.a)
+            self.b = np.sum(ln_y_ratio * ln_x) / np.sum(ln_x ** 2)
+        elif b_locked:
+            # Fit a only: ln(y) = ln(a) + b*ln(x) => a = exp(mean(ln(y) - b*ln(x)))
+            self.b = self._locked_params['b']
+            ln_x = np.log(x_clean)
+            ln_y = np.log(y_clean)
+            self.a = np.exp(np.mean(ln_y - self.b * ln_x))
+        else:
+            # Transform to linear: ln(y) = ln(a) + b*ln(x)
+            ln_x = np.log(x_clean)
+            ln_y = np.log(y_clean)
+            self.b, ln_a = np.polyfit(ln_x, ln_y, 1)
+            self.a = np.exp(ln_a)
 
         # Calculate metrics
         y_pred = self.a * np.power(x_clean, self.b)
