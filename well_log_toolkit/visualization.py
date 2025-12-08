@@ -24,6 +24,7 @@ from .regression import (
     LinearRegression, LogarithmicRegression, ExponentialRegression,
     PolynomialRegression, PowerRegression
 )
+from .exceptions import PropertyNotFoundError
 
 # Default color palettes
 DEFAULT_COLORS = [
@@ -3033,7 +3034,7 @@ class Crossplot:
                         if needs_alignment(color_prop.depth, depths):
                             color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
                         df['color_val'] = color_values
-                    except (AttributeError, KeyError):
+                    except (AttributeError, KeyError, PropertyNotFoundError):
                         warnings.warn(f"Color property '{self.color}' not found in well '{well.name}', using depth")
                         df['color_val'] = depths
                 elif self.color == "depth":
@@ -3048,7 +3049,7 @@ class Crossplot:
                         if needs_alignment(size_prop.depth, depths):
                             size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
                         df['size_val'] = size_values
-                    except (AttributeError, KeyError):
+                    except (AttributeError, KeyError, PropertyNotFoundError):
                         warnings.warn(f"Size property '{self.size}' not found in well '{well.name}'")
 
                 # Add shape property if specified and not "well"
@@ -3060,12 +3061,12 @@ class Crossplot:
                         if needs_alignment(shape_prop.depth, depths):
                             shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
                         df['shape_val'] = shape_values
-                    except (AttributeError, KeyError):
+                    except (AttributeError, KeyError, PropertyNotFoundError):
                         warnings.warn(f"Shape property '{self.shape}' not found in well '{well.name}'")
 
                 all_data.append(df)
 
-            except (AttributeError, KeyError) as e:
+            except (AttributeError, KeyError, PropertyNotFoundError) as e:
                 warnings.warn(f"Could not get properties for well '{well.name}': {e}")
                 continue
 
