@@ -70,13 +70,14 @@ class RegressionBase(ABC):
         """
         return self.predict(x)
 
-    def _calculate_metrics(self, x: np.ndarray, y: np.ndarray, y_pred: np.ndarray) -> None:
+    def _calculate_metrics(self, x: np.ndarray, y: np.ndarray, y_pred: np.ndarray, use_log_space: bool = False) -> None:
         """Calculate R² and RMSE metrics.
 
         Args:
             x: Independent variable values
             y: Actual dependent variable values
             y_pred: Predicted dependent variable values
+            use_log_space: If True, calculate R² in log space (useful when y spans orders of magnitude)
         """
         # Store original data
         self.x_data = x
@@ -85,12 +86,21 @@ class RegressionBase(ABC):
         # Store x-axis range
         self.x_range = (float(np.min(x)), float(np.max(x)))
 
-        # R² calculation
-        ss_res = np.sum((y - y_pred) ** 2)
-        ss_tot = np.sum((y - np.mean(y)) ** 2)
-        self.r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+        # R² calculation - in log space if requested
+        if use_log_space and np.all(y > 0) and np.all(y_pred > 0):
+            # Calculate R² in log space for data spanning orders of magnitude
+            log_y = np.log10(y)
+            log_y_pred = np.log10(y_pred)
+            ss_res = np.sum((log_y - log_y_pred) ** 2)
+            ss_tot = np.sum((log_y - np.mean(log_y)) ** 2)
+            self.r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+        else:
+            # Standard R² in linear space
+            ss_res = np.sum((y - y_pred) ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            self.r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
 
-        # RMSE calculation
+        # RMSE calculation (always in linear space)
         self.rmse = np.sqrt(np.mean((y - y_pred) ** 2))
 
     def _prepare_data(self, x: ArrayLike, y: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:

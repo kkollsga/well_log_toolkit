@@ -3139,6 +3139,27 @@ class Crossplot:
             self._regressions[reg_type] = {}
         self._regressions[reg_type][identifier] = regression_obj
 
+    def _get_group_colors(self, data: pd.DataFrame, group_column: str) -> dict:
+        """Get the color assigned to each group in the plot.
+
+        Args:
+            data: DataFrame with plotting data
+            group_column: Column name used for grouping
+
+        Returns:
+            Dictionary mapping group names to their colors
+        """
+        group_colors = {}
+
+        # Get unique groups in the same order as they'll appear in the plot
+        groups = data.groupby(group_column)
+
+        for idx, (group_name, _) in enumerate(groups):
+            # Use the same color assignment logic as _plot_by_groups
+            group_colors[group_name] = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
+
+        return group_colors
+
     def _find_best_legend_locations(self, data: pd.DataFrame) -> tuple[str, str]:
         """Find the two best locations for legends based on data density.
 
@@ -3228,7 +3249,12 @@ class Crossplot:
 
         # Add R² on second line if requested (will be styled grey later)
         if include_r2:
-            return f"{first_line}\nR² = {reg.r_squared:.3f}"
+            # Format R² with appropriate note
+            if self.y_log:
+                r2_label = f"R² = {reg.r_squared:.3f} (log)"
+            else:
+                r2_label = f"R² = {reg.r_squared:.3f}"
+            return f"{first_line}\n{r2_label}"
         else:
             return first_line
 
@@ -3371,15 +3397,19 @@ class Crossplot:
                             f"Reduce the number of groups or use a different regression strategy."
                         )
 
+                    # Get the actual colors used for each group in the plot
+                    group_colors_map = self._get_group_colors(data, group_column)
+
                     for idx, (group_name, group_data) in enumerate(color_groups):
                         x_vals = group_data['x'].values
                         y_vals = group_data['y'].values
                         mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                         if np.sum(mask) >= 2:
-                            # Copy config and set default line color if not specified
+                            # Copy config and use the same color as the data group
                             group_config = config.copy()
                             if 'line_color' not in group_config:
-                                group_config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+                                # Use the same color as the data points for this group
+                                group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
 
                             # Skip legend update for all but last regression
                             is_last = (idx == n_groups - 1)
@@ -3412,15 +3442,19 @@ class Crossplot:
                         f"Reduce the number of groups or use a different regression strategy."
                     )
 
+                # Get the actual colors used for each group in the plot
+                group_colors_map = self._get_group_colors(data, group_col)
+
                 for idx, (group_name, group_data) in enumerate(groups):
                     x_vals = group_data['x'].values
                     y_vals = group_data['y'].values
                     mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                     if np.sum(mask) >= 2:
-                        # Copy config and set default line color if not specified
+                        # Copy config and use the same color as the data group
                         group_config = config.copy()
                         if 'line_color' not in group_config:
-                            group_config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+                            # Use the same color as the data points for this group
+                            group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
 
                         # Skip legend update for all but last regression
                         is_last = (idx == n_groups - 1)
@@ -3466,6 +3500,11 @@ class Crossplot:
         except ValueError as e:
             warnings.warn(f"Failed to fit {regression_type} regression for {name}: {e}")
             return
+
+        # Recalculate R² in log space if y-axis is log scale
+        if self.y_log:
+            y_pred = reg.predict(x_vals)
+            reg._calculate_metrics(x_vals, y_vals, y_pred, use_log_space=True)
 
         # Store regression in nested structure
         self._store_regression(regression_type, name, reg)
@@ -3809,6 +3848,11 @@ class Crossplot:
             reg.fit(x_clean, y_clean)
         except ValueError as e:
             raise ValueError(f"Failed to fit {regression_type} regression: {e}")
+
+        # Recalculate R² in log space if y-axis is log scale
+        if self.y_log:
+            y_pred = reg.predict(x_clean)
+            reg._calculate_metrics(x_clean, y_clean, y_pred, use_log_space=True)
 
         # Store regression in nested structure
         reg_name = name if name else regression_type
