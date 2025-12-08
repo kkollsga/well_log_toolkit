@@ -2247,7 +2247,7 @@ class Well:
 
                 df = pd.DataFrame(data)
 
-                # Create LasFile from DataFrame
+                # Create LasFile from DataFrame with all metadata
                 las = LasFile.from_dataframe(
                     df=df,
                     well_name=self.name,

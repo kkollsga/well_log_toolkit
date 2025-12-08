@@ -104,7 +104,10 @@ class LasFile:
         source_name: str = 'external_df',
         unit_mappings: Optional[dict[str, str]] = None,
         type_mappings: Optional[dict[str, str]] = None,
-        label_mappings: Optional[dict[str, dict[int, str]]] = None
+        label_mappings: Optional[dict[str, dict[int, str]]] = None,
+        color_mappings: Optional[dict[str, dict[int, str]]] = None,
+        style_mappings: Optional[dict[str, dict[int, str]]] = None,
+        thickness_mappings: Optional[dict[str, dict[int, float]]] = None
     ) -> 'LasFile':
         """
         Create a LasFile object from a DataFrame.
@@ -123,6 +126,12 @@ class LasFile:
             Mapping of column names to 'continuous' or 'discrete'
         label_mappings : dict[str, dict[int, str]], optional
             Label mappings for discrete properties
+        color_mappings : dict[str, dict[int, str]], optional
+            Color mappings for discrete property values
+        style_mappings : dict[str, dict[int, str]], optional
+            Style mappings for discrete property values
+        thickness_mappings : dict[str, dict[int, float]], optional
+            Thickness mappings for discrete property values
 
         Returns
         -------
@@ -148,6 +157,9 @@ class LasFile:
         unit_mappings = unit_mappings or {}
         type_mappings = type_mappings or {}
         label_mappings = label_mappings or {}
+        color_mappings = color_mappings or {}
+        style_mappings = style_mappings or {}
+        thickness_mappings = thickness_mappings or {}
 
         # Create instance without parsing file
         instance = cls(source_name, _from_dataframe=True)
@@ -176,7 +188,7 @@ class LasFile:
                 'multiplier': None
             }
 
-        # Set parameter info (discrete labels)
+        # Set parameter info (discrete labels and metadata)
         if label_mappings:
             discrete_props = ','.join(sorted(label_mappings.keys()))
             instance.parameter_info['DISCRETE_PROPS'] = discrete_props
@@ -185,6 +197,27 @@ class LasFile:
                 for value, label in labels.items():
                     param_name = f"{prop_name}_{value}"
                     instance.parameter_info[param_name] = label
+
+        # Add color mappings to parameter section
+        if color_mappings:
+            for prop_name, colors in color_mappings.items():
+                for value, color in colors.items():
+                    param_name = f"{prop_name}_{value}_COLOR"
+                    instance.parameter_info[param_name] = color
+
+        # Add style mappings to parameter section
+        if style_mappings:
+            for prop_name, styles in style_mappings.items():
+                for value, style in styles.items():
+                    param_name = f"{prop_name}_{value}_STYLE"
+                    instance.parameter_info[param_name] = style
+
+        # Add thickness mappings to parameter section
+        if thickness_mappings:
+            for prop_name, thicknesses in thickness_mappings.items():
+                for value, thickness in thicknesses.items():
+                    param_name = f"{prop_name}_{value}_THICKNESS"
+                    instance.parameter_info[param_name] = str(thickness)
 
         # Set data directly
         instance._data = df.copy()
