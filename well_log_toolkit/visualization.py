@@ -2761,24 +2761,34 @@ class Crossplot:
     Create beautiful, modern crossplots for well log analysis.
 
     Supports single and multi-well crossplots with extensive customization options
-    including color mapping, size mapping, shape mapping, and regression analysis.
+    including color mapping, size mapping, shape mapping, regression analysis, and
+    multi-layer plotting for combining different data types (e.g., Core vs Sidewall).
 
     Parameters
     ----------
     wells : Well or list of Well
         Single well or list of wells to plot
-    x : str
-        Name of property for x-axis
-    y : str
-        Name of property for y-axis
+    x : str, optional
+        Name of property for x-axis. Required if layers is not provided.
+    y : str, optional
+        Name of property for y-axis. Required if layers is not provided.
+    layers : dict[str, list[str]], optional
+        Dictionary mapping layer labels to [x_property, y_property] lists.
+        Use this to combine multiple property pairs in a single plot.
+        Example: {"Core": ["CorePor", "CorePerm"], "Sidewall": ["SWPor", "SWPerm"]}
+        When using layers, you can use "label" for color/shape/size to differentiate
+        between layer types. Default: None
     shape : str, optional
-        Property name for shape mapping. Use "well" to map shapes by well name.
+        Property name for shape mapping. Use "well" to map shapes by well name,
+        or "label" (when using layers) to map shapes by layer type.
         Default: None (single shape)
     color : str, optional
-        Property name for color mapping. Use "depth" to color by depth.
+        Property name for color mapping. Use "depth" to color by depth,
+        or "label" (when using layers) to color by layer type.
         Default: None (single color)
     size : str, optional
-        Property name for size mapping.
+        Property name for size mapping, or "label" (when using layers) to
+        size by layer type.
         Default: None (constant size)
     colortemplate : str, optional
         Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm")
@@ -2884,6 +2894,38 @@ class Crossplot:
     ... )
     >>> plot.show()
 
+    Combining multiple data types with layers (Core + Sidewall):
+
+    >>> plot = manager.Crossplot(
+    ...     layers={
+    ...         "Core": ["CorePor_obds", "CorePerm_obds"],
+    ...         "Sidewall": ["SidewallPor_ob", "SidewallPerm_ob"]
+    ...     },
+    ...     shape="label",  # Different shapes for Core vs Sidewall
+    ...     y_log=True
+    ... )
+    >>> plot.show()
+
+    Using add_layer method with method chaining:
+
+    >>> manager.Crossplot(y_log=True) \\
+    ...     .add_layer("CorePor_obds", "CorePerm_obds", label="Core") \\
+    ...     .add_layer("SidewallPor_ob", "SidewallPerm_ob", label="Sidewall") \\
+    ...     .show()
+
+    Layers with regression by color (single trend per well):
+
+    >>> plot = manager.Crossplot(
+    ...     layers={
+    ...         "Core": ["CorePor_obds", "CorePerm_obds"],
+    ...         "Sidewall": ["SidewallPor_ob", "SidewallPerm_ob"]
+    ...     },
+    ...     shape="label",  # Different shapes for data types
+    ...     color="well",   # Color by well
+    ...     regression_by_color="linear"  # One trend per well (combining both data types)
+    ... )
+    >>> plot.show()
+
     Access regression objects:
 
     >>> linear_regs = plot.regression("linear")
@@ -2894,8 +2936,9 @@ class Crossplot:
     def __init__(
         self,
         wells: Union['Well', list['Well']],
-        x: str,
-        y: str,
+        x: Optional[str] = None,
+        y: Optional[str] = None,
+        layers: Optional[dict[str, list[str]]] = None,
         shape: Optional[str] = None,
         color: Optional[str] = None,
         size: Optional[str] = None,
@@ -2932,6 +2975,31 @@ class Crossplot:
         else:
             self.wells = wells
 
+        # Validate input: either (x, y) or layers must be provided
+        if layers is None and (x is None or y is None):
+            raise ValueError("Either (x, y) or layers must be provided")
+
+        # Initialize layer tracking
+        self._layers = []
+
+        # If layers dict provided, convert to internal format
+        if layers is not None:
+            for label, props in layers.items():
+                if len(props) != 2:
+                    raise ValueError(f"Layer '{label}' must have exactly 2 properties [x, y]")
+                self._layers.append({
+                    'label': label,
+                    'x': props[0],
+                    'y': props[1]
+                })
+        # If x and y provided, create a default layer
+        elif x is not None and y is not None:
+            self._layers.append({
+                'label': None,
+                'x': x,
+                'y': y
+            })
+
         # Store parameters
         self.x = x
         self.y = y
@@ -2942,8 +3010,20 @@ class Crossplot:
         self.color_range = color_range
         self.size_range = size_range
         self.title = title
-        self.xlabel = xlabel if xlabel else x
-        self.ylabel = ylabel if ylabel else y
+        # Set axis labels - use provided labels, or property names, or generic labels for layers
+        if xlabel:
+            self.xlabel = xlabel
+        elif x:
+            self.xlabel = x
+        else:
+            self.xlabel = "X"
+
+        if ylabel:
+            self.ylabel = ylabel
+        elif y:
+            self.ylabel = y
+        else:
+            self.ylabel = "Y"
         self.figsize = figsize
         self.dpi = dpi
         self.marker = marker
@@ -2982,6 +3062,50 @@ class Crossplot:
         # Data cache
         self._data = None
 
+    def add_layer(self, x: str, y: str, label: str):
+        """
+        Add a new data layer to the crossplot.
+
+        This allows combining multiple property pairs in a single plot, useful for
+        comparing different data types (e.g., Core vs Sidewall data).
+
+        Parameters
+        ----------
+        x : str
+            Name of property for x-axis for this layer
+        y : str
+            Name of property for y-axis for this layer
+        label : str
+            Label for this layer (used in legend and available as "label" property
+            for color/shape mapping)
+
+        Returns
+        -------
+        self
+            Returns self to allow method chaining
+
+        Examples
+        --------
+        >>> plot = manager.Crossplot(y_log=True)
+        >>> plot.add_layer('CorePor_obds', 'CorePerm_obds', label='Core')
+        >>> plot.add_layer('SidewallPor_ob', 'SidewallPerm_ob', label='Sidewall')
+        >>> plot.show()
+
+        With method chaining:
+        >>> manager.Crossplot(y_log=True) \\
+        ...     .add_layer('CorePor_obds', 'CorePerm_obds', label='Core') \\
+        ...     .add_layer('SidewallPor_ob', 'SidewallPerm_ob', label='Sidewall') \\
+        ...     .show()
+        """
+        self._layers.append({
+            'label': label,
+            'x': x,
+            'y': y
+        })
+        # Clear data cache since we're adding new data
+        self._data = None
+        return self
+
     def _prepare_data(self) -> pd.DataFrame:
         """Prepare data from wells for plotting."""
         if self._data is not None:
@@ -2989,86 +3113,104 @@ class Crossplot:
 
         all_data = []
 
-        for well in self.wells:
-            try:
-                # Get x and y properties
-                x_prop = well.get_property(self.x)
-                y_prop = well.get_property(self.y)
+        # Helper function to check if alignment is needed
+        def needs_alignment(prop_depth, ref_depth):
+            """Quick check if depths need alignment."""
+            if len(prop_depth) != len(ref_depth):
+                return True
+            # Fast check: if arrays are identical objects or first/last don't match
+            if prop_depth is ref_depth:
+                return False
+            if prop_depth[0] != ref_depth[0] or prop_depth[-1] != ref_depth[-1]:
+                return True
+            # Only do expensive allclose if needed
+            return not np.allclose(prop_depth, ref_depth)
 
-                # Get depths - use x property's depth
-                depths = x_prop.depth
-                x_values = x_prop.values
-                y_values = y_prop.values
+        # Loop through each layer
+        for layer in self._layers:
+            layer_x = layer['x']
+            layer_y = layer['y']
+            layer_label = layer['label']
 
-                # Helper function to check if alignment is needed
-                def needs_alignment(prop_depth, ref_depth):
-                    """Quick check if depths need alignment."""
-                    if len(prop_depth) != len(ref_depth):
-                        return True
-                    # Fast check: if arrays are identical objects or first/last don't match
-                    if prop_depth is ref_depth:
-                        return False
-                    if prop_depth[0] != ref_depth[0] or prop_depth[-1] != ref_depth[-1]:
-                        return True
-                    # Only do expensive allclose if needed
-                    return not np.allclose(prop_depth, ref_depth)
+            for well in self.wells:
+                try:
+                    # Get x and y properties for this layer
+                    x_prop = well.get_property(layer_x)
+                    y_prop = well.get_property(layer_y)
 
-                # Align y values to x depth grid if needed
-                if needs_alignment(y_prop.depth, depths):
-                    y_values = np.interp(depths, y_prop.depth, y_prop.values, left=np.nan, right=np.nan)
+                    # Get depths - use x property's depth
+                    depths = x_prop.depth
+                    x_values = x_prop.values
+                    y_values = y_prop.values
 
-                # Create dataframe for this well
-                df = pd.DataFrame({
-                    'depth': depths,
-                    'x': x_values,
-                    'y': y_values,
-                    'well': well.name
-                })
+                    # Align y values to x depth grid if needed
+                    if needs_alignment(y_prop.depth, depths):
+                        y_values = np.interp(depths, y_prop.depth, y_prop.values, left=np.nan, right=np.nan)
 
-                # Add color property if specified
-                if self.color and self.color != "depth":
-                    try:
-                        color_prop = well.get_property(self.color)
-                        color_values = color_prop.values
-                        # Align to x depth grid
-                        if needs_alignment(color_prop.depth, depths):
-                            color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
-                        df['color_val'] = color_values
-                    except (AttributeError, KeyError, PropertyNotFoundError):
-                        warnings.warn(f"Color property '{self.color}' not found in well '{well.name}', using depth")
+                    # Create dataframe for this well and layer
+                    df = pd.DataFrame({
+                        'depth': depths,
+                        'x': x_values,
+                        'y': y_values,
+                        'well': well.name,
+                        'label': layer_label  # Add layer label
+                    })
+
+                    # Add color property if specified
+                    if self.color == "label":
+                        # Use layer label for color
+                        df['color_val'] = layer_label
+                    elif self.color and self.color != "depth":
+                        try:
+                            color_prop = well.get_property(self.color)
+                            color_values = color_prop.values
+                            # Align to x depth grid
+                            if needs_alignment(color_prop.depth, depths):
+                                color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
+                            df['color_val'] = color_values
+                        except (AttributeError, KeyError, PropertyNotFoundError):
+                            # Silently use depth as fallback
+                            df['color_val'] = depths
+                    elif self.color == "depth":
                         df['color_val'] = depths
-                elif self.color == "depth":
-                    df['color_val'] = depths
 
-                # Add size property if specified
-                if self.size:
-                    try:
-                        size_prop = well.get_property(self.size)
-                        size_values = size_prop.values
-                        # Align to x depth grid
-                        if needs_alignment(size_prop.depth, depths):
-                            size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
-                        df['size_val'] = size_values
-                    except (AttributeError, KeyError, PropertyNotFoundError):
-                        warnings.warn(f"Size property '{self.size}' not found in well '{well.name}'")
+                    # Add size property if specified
+                    if self.size == "label":
+                        # Use layer label for size (will need special handling in plot)
+                        df['size_val'] = layer_label
+                    elif self.size:
+                        try:
+                            size_prop = well.get_property(self.size)
+                            size_values = size_prop.values
+                            # Align to x depth grid
+                            if needs_alignment(size_prop.depth, depths):
+                                size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
+                            df['size_val'] = size_values
+                        except (AttributeError, KeyError, PropertyNotFoundError):
+                            # Silently skip if size property not found
+                            pass
 
-                # Add shape property if specified and not "well"
-                if self.shape and self.shape != "well":
-                    try:
-                        shape_prop = well.get_property(self.shape)
-                        shape_values = shape_prop.values
-                        # Align to x depth grid
-                        if needs_alignment(shape_prop.depth, depths):
-                            shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
-                        df['shape_val'] = shape_values
-                    except (AttributeError, KeyError, PropertyNotFoundError):
-                        warnings.warn(f"Shape property '{self.shape}' not found in well '{well.name}'")
+                    # Add shape property if specified
+                    if self.shape == "label":
+                        # Use layer label for shape
+                        df['shape_val'] = layer_label
+                    elif self.shape and self.shape != "well":
+                        try:
+                            shape_prop = well.get_property(self.shape)
+                            shape_values = shape_prop.values
+                            # Align to x depth grid
+                            if needs_alignment(shape_prop.depth, depths):
+                                shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
+                            df['shape_val'] = shape_values
+                        except (AttributeError, KeyError, PropertyNotFoundError):
+                            # Silently skip if shape property not found
+                            pass
 
-                all_data.append(df)
+                    all_data.append(df)
 
-            except (AttributeError, KeyError, PropertyNotFoundError) as e:
-                warnings.warn(f"Could not get properties for well '{well.name}': {e}")
-                continue
+                except (AttributeError, KeyError, PropertyNotFoundError):
+                    # Silently skip wells that don't have the required properties
+                    continue
 
         if not all_data:
             raise ValueError("No valid data found in any wells")
