@@ -335,9 +335,17 @@ class Well:
         # Mark source as modified
         self._sources[source_name]['modified'] = True
 
-    def load_las(self, las: Union[LasFile, str, Path], sampled: bool = False, resample_method: Optional[str] = None, merge: bool = False) -> 'Well':
+    def load_las(
+        self,
+        las: Union[LasFile, str, Path, list[Union[str, Path]]],
+        sampled: bool = False,
+        resample_method: Optional[str] = None,
+        merge: bool = False,
+        combine: Optional[str] = None,
+        source_name: Optional[str] = None
+    ) -> 'Well':
         """
-        Load LAS file into this well, organized by source.
+        Load LAS file(s) into this well, organized by source.
 
         Properties are grouped by source (LAS file). The source name is derived
         from the filename stem (without extension), sanitized for Python attribute
@@ -346,8 +354,8 @@ class Well:
 
         Parameters
         ----------
-        las : Union[LasFile, str, Path]
-            Either a LasFile instance or path to LAS file
+        las : Union[LasFile, str, Path, list[Union[str, Path]]]
+            Either a LasFile instance, path to LAS file, or list of LAS file paths
         sampled : bool, default False
             If True, mark all properties from this source as 'sampled' type.
             Use this for core plug data or other point measurements where
@@ -365,6 +373,15 @@ class Well:
             properties into the existing source instead of overwriting it.
             When merging with incompatible depth grids, resample_method must be specified.
             If False (default), existing source is overwritten with warning.
+        combine : str, optional
+            When loading multiple files (list), combine them into a single source:
+            - None (default): Load files as separate sources, no combining
+            - 'match': Combine using match method (safest, errors on mismatch)
+            - 'resample': Combine using resample method (interpolates to first file)
+            - 'concat': Combine using concat method (merges all unique depths)
+        source_name : str, optional
+            Name for combined source when combine is specified. If not specified,
+            uses 'combined_match', 'combined_resample', or 'combined_concat'
 
         Returns
         -------
@@ -381,23 +398,70 @@ class Well:
 
         Examples
         --------
-        >>> well = manager.well_36_7_5_B
+        >>> # Load single file
         >>> well.load_las("36_7-5_B_CorePor.las")  # Source name: "CorePor"
-        >>> well.load_las("36_7-5_B_Log.las")      # Source name: "Log"
-        >>> well.load_las("formation_tops.las")    # Source name: "formation_tops"
+
+        >>> # Load multiple files as separate sources
+        >>> well.load_las(["file1.las", "file2.las", "file3.las"])
+        >>> print(well.sources)  # ['file1', 'file2', 'file3']
+
+        >>> # Load and combine multiple files
+        >>> well.load_las(
+        ...     ["file1.las", "file2.las", "file3.las"],
+        ...     combine="match",
+        ...     source_name="CombinedLogs"
+        ... )
+        >>> print(well.sources)  # ['CombinedLogs']
+
         >>> # Load core plug data as sampled
         >>> well.load_las("36_7-5_B_Core.las", sampled=True)
-        >>> # Load data with incompatible depths
-        >>> well.load_las("interpreted.las", resample_method='linear')
-        >>> # Merge additional properties into existing source
+
+        >>> # Load with resample combining
+        >>> well.load_las(
+        ...     ["log1.las", "log2.las"],
+        ...     combine="resample",
+        ...     source_name="CombinedLogs"
+        ... )
+
+        >>> # Merge into existing source (legacy behavior)
         >>> well.load_las("CorePor.las")  # Load initial properties
-        >>> well.load_las("CorePor_Extra.las", merge=True)  # Merge new properties into "CorePor"
-        >>> # Access by source
-        >>> well.CorePor.PHIE
-        >>> well.Log.GR
-        >>> # Access directly if unique
-        >>> well.PHIE  # Error if both CorePor and Log have PHIE
+        >>> well.load_las("CorePor_Extra.las", merge=True)  # Merge new properties
         """
+        # Handle list of files
+        if isinstance(las, list):
+            # Load all files as separate sources
+            loaded_sources = []
+            for las_file in las:
+                # Recursively call load_las for each file (without merge or combine)
+                self.load_las(las_file, sampled=sampled, resample_method=resample_method, merge=False, combine=None)
+                # Get the source name that was just created
+                loaded_sources.append(self.sources[-1])
+
+            # Combine if requested
+            if combine in {'match', 'resample', 'concat'}:
+                # Determine combined source name
+                combined_source_name = source_name or f'combined_{combine}'
+
+                # Merge all loaded sources
+                self.merge(
+                    method=combine,
+                    sources=loaded_sources,
+                    source_name=combined_source_name
+                )
+
+                # Remove original sources
+                self.remove_source(loaded_sources)
+
+            return self
+
+        # Single file logic below
+        # Validate combine parameter for single file
+        if combine is not None:
+            raise ValueError(
+                f"combine='{combine}' is only valid when loading multiple files (list). "
+                f"For single file loading, use merge=True to merge into existing source."
+            )
+
         # Parse if path provided
         filepath = None
         if isinstance(las, (str, Path)):
