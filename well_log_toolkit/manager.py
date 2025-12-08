@@ -1510,7 +1510,8 @@ class WellDataManager:
         path: Optional[Union[str, Path]] = None,
         sampled: bool = False,
         combine: Optional[str] = None,
-        source_name: Optional[str] = None
+        source_name: Optional[str] = None,
+        silent: bool = False
     ) -> 'WellDataManager':
         """
         Load LAS file(s), auto-create well if needed.
@@ -1538,6 +1539,9 @@ class WellDataManager:
             Name for combined source when combine is specified. If not specified,
             uses 'combined_match', 'combined_resample', or 'combined_concat'.
             When files span multiple wells, the well name is prepended automatically.
+        silent : bool, default False
+            If True, suppress debug output showing which sources were loaded.
+            Useful when loading many files programmatically.
 
         Returns
         -------
@@ -1633,9 +1637,10 @@ class WellDataManager:
                     )
 
                 # Print debug output
-                print("Loaded sources:")
-                for well_name, src_name, file_count in loaded_sources:
-                    print(f"  - Well {well_name}: {src_name} ({file_count} file{'s' if file_count > 1 else ''} combined)")
+                if not silent:
+                    print("Loaded sources:")
+                    for well_name, src_name, file_count in loaded_sources:
+                        print(f"  - Well {well_name}: {src_name} ({file_count} file{'s' if file_count > 1 else ''} combined)")
 
                 return self
 
@@ -1668,7 +1673,7 @@ class WellDataManager:
                         loaded_sources.append((well_name, src_name))
 
             # Print debug output
-            if loaded_sources:
+            if not silent and loaded_sources:
                 print("Loaded sources:")
                 for well_name, src_name in loaded_sources:
                     print(f"  - Well {well_name}: {src_name}")
@@ -1715,7 +1720,7 @@ class WellDataManager:
         new_sources = set(self._wells[well_key].sources) - existing_sources
 
         # Print debug output
-        if new_sources:
+        if not silent and new_sources:
             print("Loaded sources:")
             for src_name in new_sources:
                 print(f"  - Well {well_name}: {src_name}")
@@ -2342,7 +2347,7 @@ class WellDataManager:
             las_files = list(base_path.glob("*.las"))
             if las_files:
                 for las_file in las_files:
-                    self.load_las(las_file)
+                    self.load_las(las_file, silent=True)
             return self
 
         # Load from well folders
@@ -2350,7 +2355,7 @@ class WellDataManager:
             # Find all LAS files in this folder
             las_files = sorted(well_folder.glob("*.las"))
             for las_file in las_files:
-                self.load_las(las_file)
+                self.load_las(las_file, silent=True)
 
         return self
 

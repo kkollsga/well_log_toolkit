@@ -457,27 +457,49 @@ class Well:
                 las_files = las
 
             # Load all files as separate sources
+            # Track sources before and after to identify what was loaded
             loaded_sources = []
+
             for las_file in las_files:
+                # Track sources before this file
+                sources_before = set(self.sources)
+
                 # Recursively call load_las for each file (without merge or combine, path already prepended)
                 self.load_las(las_file, path=None, sampled=sampled, resample_method=resample_method, merge=False, combine=None)
-                # Get the source name that was just created
-                loaded_sources.append(self.sources[-1])
+
+                # Find which source was added or modified
+                sources_after = set(self.sources)
+                new_or_modified = sources_after - sources_before
+
+                if new_or_modified:
+                    # New source was added
+                    loaded_sources.append(list(new_or_modified)[0])
+                else:
+                    # Source was overwritten - find it by checking which source is newest
+                    # Since we don't know which one, we'll use the last one in the list
+                    # This handles the overwrite case
+                    if self.sources:
+                        loaded_sources.append(self.sources[-1])
 
             # Combine if requested
             if combine in {'match', 'resample', 'concat'}:
                 # Determine combined source name
                 combined_source_name = source_name or f'combined_{combine}'
 
-                # Merge all loaded sources
-                self.merge(
-                    method=combine,
-                    sources=loaded_sources,
-                    source_name=combined_source_name
-                )
+                # Merge all loaded sources (only ones that exist)
+                sources_to_merge = [s for s in loaded_sources if s in self._sources]
 
-                # Remove original sources
-                self.remove_source(loaded_sources)
+                if sources_to_merge:
+                    self.merge(
+                        method=combine,
+                        sources=sources_to_merge,
+                        source_name=combined_source_name
+                    )
+
+                    # Remove original sources (only ones that exist)
+                    sources_to_remove = [s for s in sources_to_merge if s in self._sources]
+                    if sources_to_remove:
+                        self.remove_source(sources_to_remove)
 
             return self
 
