@@ -2822,6 +2822,12 @@ class Crossplot:
         Show colorbar when using color mapping. Default: True
     show_legend : bool, optional
         Show legend when using shape/well mapping. Default: True
+    show_regression_legend : bool, optional
+        Show separate legend for regression lines in lower right. Default: True
+    show_regression_equation : bool, optional
+        Show equations in regression legend. Default: True
+    show_regression_r2 : bool, optional
+        Show R² values in regression legend. Default: True
     regression : str or dict, optional
         Regression type to apply to all data points. Can be a string (e.g., "linear") or
         dict with keys: type, line_color, line_width, line_style, line_alpha, x_range.
@@ -2912,9 +2918,12 @@ class Crossplot:
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
-        regression: Optional[str] = None,
-        regression_by_color: Optional[str] = None,
-        regression_by_group: Optional[str] = None,
+        show_regression_legend: bool = True,
+        show_regression_equation: bool = True,
+        show_regression_r2: bool = True,
+        regression: Optional[Union[str, dict]] = None,
+        regression_by_color: Optional[Union[str, dict]] = None,
+        regression_by_group: Optional[Union[str, dict]] = None,
     ):
         # Store wells as list
         if not isinstance(wells, list):
@@ -2948,6 +2957,9 @@ class Crossplot:
         self.depth_range = depth_range
         self.show_colorbar = show_colorbar
         self.show_legend = show_legend
+        self.show_regression_legend = show_regression_legend
+        self.show_regression_equation = show_regression_equation
+        self.show_regression_r2 = show_regression_r2
         self.regression = regression
         self.regression_by_color = regression_by_color
         self.regression_by_group = regression_by_group
@@ -2961,6 +2973,7 @@ class Crossplot:
         # Regression storage - nested structure: {type: {identifier: regression_obj}}
         self._regressions = {}
         self.regression_lines = {}
+        self.regression_legend = None  # Separate legend for regressions
 
         # Pending regressions (added before plot() is called)
         self._pending_regressions = []
@@ -3125,6 +3138,121 @@ class Crossplot:
         if reg_type not in self._regressions:
             self._regressions[reg_type] = {}
         self._regressions[reg_type][identifier] = regression_obj
+
+    def _format_regression_label(self, name: str, reg, include_equation: bool = None, include_r2: bool = None) -> str:
+        """Format a modern, compact regression label.
+
+        Args:
+            name: Name of the regression
+            reg: Regression object
+            include_equation: Whether to include equation (uses self.show_regression_equation if None)
+            include_r2: Whether to include R² (uses self.show_regression_r2 if None)
+
+        Returns:
+            Formatted label string
+        """
+        if include_equation is None:
+            include_equation = self.show_regression_equation
+        if include_r2 is None:
+            include_r2 = self.show_regression_r2
+
+        # Start with name
+        parts = [name]
+
+        # Add equation and R² on same line if both shown, more compact
+        metrics = []
+        if include_equation:
+            eq = reg.equation()
+            # Shorten equation format for compactness
+            eq = eq.replace(' ', '')  # Remove spaces
+            metrics.append(eq)
+
+        if include_r2:
+            # Use superscript 2 for R²
+            metrics.append(f"R²={reg.r_squared:.3f}")
+
+        if metrics:
+            # Join equation and R² with pipe separator for clarity
+            parts.append(" | ".join(metrics))
+
+        return "\n".join(parts)
+
+    def _update_regression_legend(self) -> None:
+        """Create or update the separate regression legend with smart placement."""
+        if not self.show_regression_legend or not self.regression_lines:
+            return
+
+        if self.ax is None:
+            return
+
+        # Remove old regression legend if it exists
+        if self.regression_legend is not None:
+            self.regression_legend.remove()
+            self.regression_legend = None
+
+        # Create new regression legend with only regression lines
+        regression_handles = []
+        regression_labels = []
+
+        for line in self.regression_lines.values():
+            regression_handles.append(line)
+            regression_labels.append(line.get_label())
+
+        if regression_handles:
+            # Smart placement: try these locations in priority order
+            # Prefer corners away from main legend and colorbar
+            locations = [
+                'lower right',   # Primary choice
+                'upper right',   # If lower right conflicts with data
+                'lower left',    # If right side has colorbar/main legend
+                'center right',  # Fallback
+            ]
+
+            # If main legend is shown, it's likely in upper left
+            # If colorbar is shown, it's on the right side
+            # Adjust preferences based on what's visible
+            if self.show_legend and self.show_colorbar:
+                # Both legend and colorbar present - lower left might be better
+                locations = ['lower left', 'lower right', 'upper right', 'center left']
+            elif self.show_colorbar:
+                # Colorbar on right - prefer left side
+                locations = ['lower left', 'upper left', 'lower right', 'center left']
+
+            # Try to create legend with best location
+            # Use 'best' as fallback - matplotlib will find optimal position
+            try:
+                self.regression_legend = self.ax.legend(
+                    regression_handles,
+                    regression_labels,
+                    loc=locations[0],  # Try first preference
+                    frameon=True,
+                    framealpha=0.95,
+                    edgecolor='#cccccc',
+                    fancybox=False,
+                    shadow=False,
+                    fontsize=9,
+                    title='Regressions',
+                    title_fontsize=10
+                )
+            except Exception:
+                # Fallback to 'best' if specific location fails
+                self.regression_legend = self.ax.legend(
+                    regression_handles,
+                    regression_labels,
+                    loc='best',
+                    frameon=True,
+                    framealpha=0.95,
+                    edgecolor='#cccccc',
+                    fancybox=False,
+                    shadow=False,
+                    fontsize=9,
+                    title='Regressions',
+                    title_fontsize=10
+                )
+
+            # Modern styling
+            self.regression_legend.get_frame().set_linewidth(0.8)
+            self.regression_legend.get_title().set_fontweight('600')
 
     def _add_automatic_regressions(self, data: pd.DataFrame) -> None:
         """Add automatic regressions based on initialization parameters."""
@@ -3313,8 +3441,8 @@ class Crossplot:
             warnings.warn(f"Could not generate plot data for {name} regression: {e}")
             return
 
-        # Create label with equation and R²
-        label = f"{name}\n{reg.equation()}\nR² = {reg.r_squared:.4f}"
+        # Create label using formatter
+        label = self._format_regression_label(name, reg)
 
         # Plot line with config parameters
         line = self.ax.plot(
@@ -3328,9 +3456,9 @@ class Crossplot:
 
         self.regression_lines[name] = line
 
-        # Update legend if requested (skipped during batch operations for performance)
+        # Update regression legend if requested (skipped during batch operations for performance)
         if update_legend and self.ax is not None:
-            self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+            self._update_regression_legend()
 
     def plot(self) -> 'Crossplot':
         """Generate the crossplot figure."""
@@ -3394,13 +3522,12 @@ class Crossplot:
                         warnings.warn(f"Could not generate plot data for {reg_type} regression: {e}")
                         continue
 
-                    # Create label
-                    label_parts = [reg_name]
-                    if pending['show_equation']:
-                        label_parts.append(reg.equation())
-                    if pending['show_r2']:
-                        label_parts.append(f"R² = {reg.r_squared:.4f}")
-                    label = "\n".join(label_parts)
+                    # Create label using formatter
+                    label = self._format_regression_label(
+                        reg_name, reg,
+                        include_equation=pending['show_equation'],
+                        include_r2=pending['show_r2']
+                    )
 
                     # Plot line
                     line = self.ax.plot(
@@ -3414,9 +3541,9 @@ class Crossplot:
 
                     self.regression_lines[reg_name] = line
 
-            # Update legend once after all pending regressions
+            # Update regression legend once after all pending regressions
             if self.ax is not None:
-                self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+                self._update_regression_legend()
 
             # Clear pending list
             self._pending_regressions = []
@@ -3650,13 +3777,12 @@ class Crossplot:
                 warnings.warn(f"Could not generate plot data for {regression_type} regression: {e}")
                 return self
 
-            # Create label
-            label_parts = [reg_name]
-            if show_equation:
-                label_parts.append(reg.equation())
-            if show_r2:
-                label_parts.append(f"R² = {reg.r_squared:.4f}")
-            label = "\n".join(label_parts)
+            # Create label using formatter
+            label = self._format_regression_label(
+                reg_name, reg,
+                include_equation=show_equation,
+                include_r2=show_r2
+            )
 
             # Plot line
             line = self.ax.plot(
@@ -3670,8 +3796,8 @@ class Crossplot:
 
             self.regression_lines[reg_name] = line
 
-            # Update legend
-            self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+            # Update regression legend
+            self._update_regression_legend()
         else:
             # Store for later when plot() is called
             self._pending_regressions.append({

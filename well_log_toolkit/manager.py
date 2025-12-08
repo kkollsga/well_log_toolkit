@@ -2466,6 +2466,9 @@ class WellDataManager:
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
+        show_regression_legend: bool = True,
+        show_regression_equation: bool = True,
+        show_regression_r2: bool = True,
         regression: Optional[Union[str, dict]] = None,
         regression_by_color: Optional[Union[str, dict]] = None,
         regression_by_group: Optional[Union[str, dict]] = None,
@@ -2534,6 +2537,12 @@ class WellDataManager:
             Show colorbar when using color mapping. Default: True
         show_legend : bool, optional
             Show legend. Default: True
+        show_regression_legend : bool, optional
+            Show separate legend for regression lines in lower right corner. Default: True
+        show_regression_equation : bool, optional
+            Include regression equation in regression legend labels. Default: True
+        show_regression_r2 : bool, optional
+            Include R² value in regression legend labels. Default: True
         regression : str or dict, optional
             Regression type to apply to all data points. Can be a string (e.g., "linear") or
             dict with keys: type, line_color, line_width, line_style, line_alpha, x_range.
@@ -2624,6 +2633,9 @@ class WellDataManager:
             depth_range=depth_range,
             show_colorbar=show_colorbar,
             show_legend=show_legend,
+            show_regression_legend=show_regression_legend,
+            show_regression_equation=show_regression_equation,
+            show_regression_r2=show_regression_r2,
             regression=regression,
             regression_by_color=regression_by_color,
             regression_by_group=regression_by_group,
