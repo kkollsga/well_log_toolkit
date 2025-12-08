@@ -2840,7 +2840,7 @@ class Crossplot:
         x_log: bool = False,
         y_log: bool = False,
         grid: bool = True,
-        grid_alpha: float = 0.3,
+        grid_alpha: float = 0.5,
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
@@ -3019,7 +3019,7 @@ class Crossplot:
             self.ax.grid(True, which='major', alpha=min(self.grid_alpha * 1.5, 1.0), linestyle='-', linewidth=0.5)
             # Add minor grid lines for log scales
             if self.x_log or self.y_log:
-                self.ax.grid(True, which='minor', alpha=self.grid_alpha, linestyle='-', linewidth=0.3)
+                self.ax.grid(True, which='minor', alpha=self.grid_alpha, linestyle='-', linewidth=0.35)
 
         # Modern styling
         self.ax.spines['top'].set_visible(False)
