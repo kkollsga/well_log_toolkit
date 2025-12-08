@@ -2539,9 +2539,10 @@ class WellDataManager:
             dict with keys: type, line_color, line_width, line_style, line_alpha, x_range.
             Default: None
         regression_by_color : str or dict, optional
-            Regression type to apply separately for each color group. Creates separate
-            regression lines for each unique color value. Accepts string or dict format.
-            Default: None
+            Regression type to apply separately for each color group in the plot. Creates
+            separate regression lines based on what determines colors in the visualization:
+            explicit color mapping if specified, otherwise shape groups (e.g., wells when
+            shape='well'). Accepts string or dict format. Default: None
         regression_by_group : str or dict, optional
             Regression type to apply separately for each well. Creates separate
             regression lines for each well. Accepts string or dict format.
