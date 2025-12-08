@@ -2466,6 +2466,9 @@ class WellDataManager:
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
+        regression: Optional[Union[str, dict]] = None,
+        regression_by_color: Optional[Union[str, dict]] = None,
+        regression_by_group: Optional[Union[str, dict]] = None,
     ) -> 'Crossplot':
         """
         Create a multi-well crossplot.
@@ -2531,6 +2534,18 @@ class WellDataManager:
             Show colorbar when using color mapping. Default: True
         show_legend : bool, optional
             Show legend. Default: True
+        regression : str or dict, optional
+            Regression type to apply to all data points. Can be a string (e.g., "linear") or
+            dict with keys: type, line_color, line_width, line_style, line_alpha, x_range.
+            Default: None
+        regression_by_color : str or dict, optional
+            Regression type to apply separately for each color group. Creates separate
+            regression lines for each unique color value. Accepts string or dict format.
+            Default: None
+        regression_by_group : str or dict, optional
+            Regression type to apply separately for each well. Creates separate
+            regression lines for each well. Accepts string or dict format.
+            Default: None
 
         Returns
         -------
@@ -2608,6 +2623,9 @@ class WellDataManager:
             depth_range=depth_range,
             show_colorbar=show_colorbar,
             show_legend=show_legend,
+            regression=regression,
+            regression_by_color=regression_by_color,
+            regression_by_group=regression_by_group,
         )
 
     def __repr__(self) -> str:

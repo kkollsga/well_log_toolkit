@@ -2961,6 +2961,9 @@ class Crossplot:
         self._regressions = {}
         self.regression_lines = {}
 
+        # Pending regressions (added before plot() is called)
+        self._pending_regressions = []
+
         # Data cache
         self._data = None
 
@@ -3355,6 +3358,51 @@ class Crossplot:
         # Add automatic regressions if specified
         self._add_automatic_regressions(data)
 
+        # Apply pending regressions (added via add_regression() before plot() was called)
+        if self._pending_regressions:
+            for pending in self._pending_regressions:
+                # Get the already-fitted regression object
+                reg_type = pending['regression_type']
+                reg_name = pending['name'] if pending['name'] else reg_type
+
+                # Retrieve stored regression
+                if reg_type in self._regressions and reg_name in self._regressions[reg_type]:
+                    reg = self._regressions[reg_type][reg_name]
+
+                    # Draw the regression line
+                    try:
+                        x_line, y_line = reg.get_plot_data(x_range=pending['x_range'], num_points=200)
+                    except ValueError as e:
+                        warnings.warn(f"Could not generate plot data for {reg_type} regression: {e}")
+                        continue
+
+                    # Create label
+                    label_parts = [reg_name]
+                    if pending['show_equation']:
+                        label_parts.append(reg.equation())
+                    if pending['show_r2']:
+                        label_parts.append(f"R² = {reg.r_squared:.4f}")
+                    label = "\n".join(label_parts)
+
+                    # Plot line
+                    line = self.ax.plot(
+                        x_line, y_line,
+                        color=pending['line_color'],
+                        linewidth=pending['line_width'],
+                        linestyle=pending['line_style'],
+                        alpha=pending['line_alpha'],
+                        label=label
+                    )[0]
+
+                    self.regression_lines[reg_name] = line
+
+            # Update legend once after all pending regressions
+            if self.ax is not None:
+                self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+
+            # Clear pending list
+            self._pending_regressions = []
+
         # Tight layout
         self.fig.tight_layout()
 
@@ -3575,7 +3623,7 @@ class Crossplot:
         reg_name = name if name else regression_type
         self._store_regression(regression_type, reg_name, reg)
 
-        # Plot regression line if figure exists
+        # Plot regression line if figure exists, otherwise store for later
         if self.ax is not None:
             # Get plot data using the regression helper method
             try:
@@ -3606,6 +3654,20 @@ class Crossplot:
 
             # Update legend
             self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+        else:
+            # Store for later when plot() is called
+            self._pending_regressions.append({
+                'regression_type': regression_type,
+                'name': name,
+                'line_color': line_color,
+                'line_width': line_width,
+                'line_style': line_style,
+                'line_alpha': line_alpha,
+                'show_equation': show_equation,
+                'show_r2': show_r2,
+                'x_range': x_range,
+                'kwargs': kwargs
+            })
 
         return self
 
