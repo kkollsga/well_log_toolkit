@@ -3016,10 +3016,10 @@ class Crossplot:
 
         # Grid
         if self.grid:
-            self.ax.grid(True, which='major', alpha=self.grid_alpha, linestyle='-', linewidth=0.5)
+            self.ax.grid(True, which='major', alpha=min(self.grid_alpha * 1.5, 1.0), linestyle='-', linewidth=0.5)
             # Add minor grid lines for log scales
             if self.x_log or self.y_log:
-                self.ax.grid(True, which='minor', alpha=self.grid_alpha * 0.5, linestyle='-', linewidth=0.3)
+                self.ax.grid(True, which='minor', alpha=self.grid_alpha, linestyle='-', linewidth=0.3)
 
         # Modern styling
         self.ax.spines['top'].set_visible(False)
