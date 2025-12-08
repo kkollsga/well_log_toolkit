@@ -1108,9 +1108,43 @@ class Well:
             f"Available properties: {available or 'none'}"
         )
     
+    @staticmethod
+    def _is_regular_grid(depth: np.ndarray, tolerance: float = 1e-6) -> tuple[bool, Optional[float]]:
+        """
+        Check if a depth grid has regular spacing.
+
+        Parameters
+        ----------
+        depth : np.ndarray
+            Depth values to check
+        tolerance : float, default 1e-6
+            Maximum allowed deviation from regular spacing
+
+        Returns
+        -------
+        tuple[bool, Optional[float]]
+            (is_regular, step_size)
+            - is_regular: True if grid is regular
+            - step_size: The step size if regular, None otherwise
+        """
+        if len(depth) < 2:
+            return False, None
+
+        # Calculate differences between consecutive depths
+        diffs = np.diff(depth)
+
+        # Check if all differences are approximately equal
+        mean_diff = np.mean(diffs)
+        max_deviation = np.max(np.abs(diffs - mean_diff))
+
+        is_regular = max_deviation <= tolerance
+        step_size = mean_diff if is_regular else None
+
+        return is_regular, step_size
+
     def _merge_properties(
         self,
-        method: str = 'resample',
+        method: str = 'match',
         sources: Optional[list[str]] = None,
         properties: Optional[list[str]] = None,
         depth_step: Optional[float] = None,
@@ -1125,18 +1159,26 @@ class Well:
 
         Parameters
         ----------
-        method : {'resample', 'concat'}, default 'resample'
-            Merge method
+        method : {'match', 'resample', 'concat'}, default 'match'
+            Merge method:
+            - 'match': Use first source's depth grid. Continuous properties must have
+              exact depth match (errors otherwise). Discrete properties are resampled
+              using interval logic (since they define depth intervals).
+            - 'resample': Use first source's depth grid (or depth_grid if provided),
+              interpolate other sources to this grid. If first source has irregular
+              spacing, errors when other sources extend beyond its range.
+            - 'concat': Merge all unique depths, fill NaN where depth doesn't exist
         sources : list[str], optional
-            List of source names to include
+            List of source names to include (required for 'match' and 'resample' methods)
         properties : list[str], optional
             List of property names to include
         depth_step : float, optional
-            For 'resample' method: step size for regular grid (default 0.1)
+            Not used (deprecated - kept for backward compatibility)
         depth_range : tuple[float, float], optional
-            For 'resample' method: (min_depth, max_depth) for grid
+            Not used (deprecated - kept for backward compatibility)
         depth_grid : np.ndarray, optional
-            For 'resample' method: explicit depth grid to use
+            For 'resample' method: explicit depth grid to use. If None, uses first
+            source's depth grid.
         source_name : str, optional
             Source name for merged properties. If None, generates 'merged_{method}'
 
@@ -1150,11 +1192,13 @@ class Well:
         ValueError
             If invalid method specified
         WellError
-            If no properties match the filters
+            If no properties match the filters, if 'match' method detects
+            incompatible depths, or if 'resample' with irregular grid detects
+            extrapolation requirements
         """
-        if method not in {'resample', 'concat'}:
+        if method not in {'resample', 'concat', 'match'}:
             raise ValueError(
-                f"method must be 'resample' or 'concat', got '{method}'"
+                f"method must be 'resample', 'concat', or 'match', got '{method}'"
             )
 
         # Filter properties by sources and/or names
@@ -1197,38 +1241,76 @@ class Well:
         merged_properties = {}
 
         if method == 'resample':
-            # Create or use provided depth grid
+            # Determine the reference depth grid
             if depth_grid is None:
-                if depth_step is None:
-                    depth_step = 0.1
-
-                if depth_range is None:
-                    # Use min/max across selected properties
-                    all_depths = [p.depth for p in props_to_merge.values()]
-                    depth_range = (
-                        min(d.min() for d in all_depths),
-                        max(d.max() for d in all_depths)
+                # Use first source's depth grid as reference
+                if sources is None or len(sources) == 0:
+                    raise WellError(
+                        "For 'resample' method, you must specify sources list. "
+                        "The first source will be used as the reference depth grid."
                     )
 
-                depth_grid = np.arange(
-                    depth_range[0],
-                    depth_range[1] + depth_step/2,
-                    depth_step
-                )
+                first_source_name = sources[0]
+                if first_source_name not in self._sources:
+                    available_sources = ', '.join(self._sources.keys())
+                    raise WellError(
+                        f"First source '{first_source_name}' not found. "
+                        f"Available sources: {available_sources}"
+                    )
 
-            # Create new resampled properties
+                # Get reference depth from first property in first source
+                first_source_props = self._sources[first_source_name]['properties']
+                if not first_source_props:
+                    raise WellError(f"First source '{first_source_name}' has no properties")
+
+                reference_depth = next(iter(first_source_props.values())).depth
+
+                # Check if the reference depth grid is regular
+                is_regular, _ = self._is_regular_grid(reference_depth)
+
+                # Check other sources for values outside reference range
+                ref_min, ref_max = reference_depth.min(), reference_depth.max()
+
+                for source in sources[1:]:
+                    if source not in self._sources:
+                        continue
+
+                    source_props = self._sources[source]['properties']
+                    for prop_name, prop in source_props.items():
+                        # Check property name filter
+                        if properties is not None and prop_name not in properties:
+                            continue
+
+                        # Check if this source has depth values outside reference range
+                        prop_min, prop_max = prop.depth.min(), prop.depth.max()
+
+                        if prop_min < ref_min or prop_max > ref_max:
+                            if not is_regular:
+                                raise WellError(
+                                    f"Cannot resample sources: source '{source}' has depth values "
+                                    f"outside the range of first source '{first_source_name}' "
+                                    f"[{ref_min:.2f}, {ref_max:.2f}], but the first source has an "
+                                    f"irregular depth grid. Extrapolation is only allowed for regular grids. "
+                                    f"Source '{source}' range: [{prop_min:.2f}, {prop_max:.2f}]. "
+                                    f"Use method='concat' to merge all depths, or trim '{source}' to fit."
+                                )
+            else:
+                # Use explicitly provided depth grid (for backward compatibility)
+                reference_depth = depth_grid
+
+            # Resample all properties to reference depth grid
             for name, prop in props_to_merge.items():
                 resampled_values = Property._resample_to_grid(
                     prop.depth,
                     prop.values,
-                    depth_grid,
+                    reference_depth,
                     method='linear' if prop.type == 'continuous' else 'previous'
                 )
 
                 # Create new property with merged source
                 merged_prop = Property(
                     name=name,
-                    depth=depth_grid.copy(),
+                    depth=reference_depth.copy(),
                     values=resampled_values,
                     parent_well=self,
                     unit=prop.unit,
@@ -1243,7 +1325,7 @@ class Well:
 
                 merged_properties[name] = merged_prop
 
-        else:  # method == 'concat'
+        elif method == 'concat':
             # Collect all unique depths from selected properties
             all_depths = []
             for prop in props_to_merge.values():
@@ -1280,11 +1362,100 @@ class Well:
 
                 merged_properties[name] = merged_prop
 
+        else:  # method == 'match'
+            # Get the first source's depth grid as reference
+            if sources is None or len(sources) == 0:
+                raise WellError(
+                    "For 'match' method, you must specify sources list. "
+                    "The first source will be used as the reference depth grid."
+                )
+
+            first_source_name = sources[0]
+            if first_source_name not in self._sources:
+                available_sources = ', '.join(self._sources.keys())
+                raise WellError(
+                    f"First source '{first_source_name}' not found. "
+                    f"Available sources: {available_sources}"
+                )
+
+            # Get reference depth from first property in first source
+            first_source_props = self._sources[first_source_name]['properties']
+            if not first_source_props:
+                raise WellError(f"First source '{first_source_name}' has no properties")
+
+            reference_depth = next(iter(first_source_props.values())).depth
+            reference_depth_set = set(reference_depth)
+
+            # Check other sources for incompatible depths
+            # Continuous properties must have exact depth match
+            # Discrete properties can be resampled (they define intervals)
+            for source in sources[1:]:
+                if source not in self._sources:
+                    continue
+
+                source_props = self._sources[source]['properties']
+                for prop_name, prop in source_props.items():
+                    # Check property name filter
+                    if properties is not None and prop_name not in properties:
+                        continue
+
+                    # Only check continuous properties for exact depth match
+                    if prop.type == 'continuous':
+                        # Check if this source has depth values not in reference
+                        prop_depth_set = set(prop.depth)
+                        extra_depths = prop_depth_set - reference_depth_set
+
+                        if extra_depths:
+                            raise WellError(
+                                f"Cannot match sources: continuous property '{prop_name}' from source '{source}' "
+                                f"has depth values that don't exist in first source '{first_source_name}'. "
+                                f"Found {len(extra_depths)} incompatible depth values. "
+                                f"Use method='resample' or method='concat' instead."
+                            )
+
+            # Create matched properties using reference depth
+            for name, prop in props_to_merge.items():
+                if prop.type == 'continuous':
+                    # Continuous properties: require exact depth match
+                    depth_to_value = dict(zip(prop.depth, prop.values))
+
+                    # Match values to reference depth (NaN where depth doesn't exist in this property)
+                    matched_values = np.array([
+                        depth_to_value.get(d, np.nan) for d in reference_depth
+                    ])
+                else:
+                    # Discrete properties: resample using 'previous' method (interval-based)
+                    # This works because discrete properties define intervals
+                    matched_values = Property._resample_to_grid(
+                        prop.depth,
+                        prop.values,
+                        reference_depth,
+                        method='previous'
+                    )
+
+                # Create new property with merged source
+                merged_prop = Property(
+                    name=name,
+                    depth=reference_depth.copy(),
+                    values=matched_values,
+                    parent_well=self,
+                    unit=prop.unit,
+                    prop_type=prop.type,
+                    description=prop.description,
+                    null_value=-999.25,
+                    labels=prop.labels,
+                    source_las=None,
+                    source_name=source_name,
+                    original_name=prop.original_name
+                )
+
+                merged_properties[name] = merged_prop
+
         return merged_properties
 
     def merge(
         self,
-        method: str = 'resample',
+        method: str = 'match',
         sources: Optional[list[str]] = None,
         properties: Optional[list[str]] = None,
         depth_step: Optional[float] = None,
@@ -1301,21 +1472,29 @@ class Well:
 
         Parameters
         ----------
-        method : {'resample', 'concat'}, default 'resample'
+        method : {'match', 'resample', 'concat'}, default 'match'
             Merge method:
-            - 'resample': Interpolate all properties to a common regular depth grid
+            - 'match': Use first source's depth grid as reference. Continuous properties
+              must have exact depth match (errors otherwise). Discrete properties are
+              automatically resampled using interval logic, since they define depth
+              intervals. This is the safest option when depths should already align.
+            - 'resample': Use first source's depth grid, interpolate other sources
+              to match. If first source has regular spacing (e.g., every 0.1m),
+              allows extrapolation for other sources. If irregular spacing, raises
+              error when other sources extend beyond first source's range.
             - 'concat': Merge all unique depths, fill NaN where depth doesn't exist
         sources : list[str], optional
-            List of source names to include (e.g., ['log1.las', 'core.las'])
-            If None, includes properties from all sources
+            List of source names to include (e.g., ['CorePerm', 'CorePor'])
+            Required for 'match' and 'resample' methods. The first source is used
+            as the reference depth grid.
         properties : list[str], optional
             List of property names to include. If None, includes all properties
         depth_step : float, optional
-            For 'resample' method: step size for regular grid (default 0.1)
+            Not used (deprecated - kept for backward compatibility)
         depth_range : tuple[float, float], optional
-            For 'resample' method: (min_depth, max_depth) for grid
+            Not used (deprecated - kept for backward compatibility)
         depth_grid : np.ndarray, optional
-            For 'resample' method: explicit depth grid to use
+            Not used (deprecated - kept for backward compatibility)
         source_name : str, optional
             Custom source name for merged properties. If None, uses 'merged_{method}'
 
@@ -1329,25 +1508,37 @@ class Well:
         ValueError
             If invalid method specified
         WellError
-            If no properties match the filters
+            If no properties match the filters, if 'match' method detects
+            incompatible depths, or if 'resample' with irregular grid detects
+            extrapolation requirements
 
         Examples
         --------
-        >>> # Resample log and core data to common 0.1m grid
-        >>> well.merge(method='resample', depth_step=0.1)
+        >>> # Match sources with compatible depths (default, safest)
+        >>> well.merge(
+        ...     sources=['CorePerm', 'CorePor'],
+        ...     source_name='CorePlugs'
+        ... )
+
+        >>> # Resample to first source's grid (allows interpolation)
+        >>> well.merge(
+        ...     method='resample',
+        ...     sources=['CompLogs', 'CorePerm'],
+        ...     source_name='Resampled'
+        ... )
 
         >>> # Concatenate specific sources with custom name
         >>> well.merge(
         ...     method='concat',
-        ...     sources=['log1.las', 'log2.las'],
+        ...     sources=['log1', 'log2'],
         ...     source_name='combined_logs'
         ... )
 
-        >>> # Resample only specific properties
+        >>> # Match only specific properties
         >>> well.merge(
-        ...     method='resample',
-        ...     properties=['PHIE', 'CorePor'],
-        ...     depth_step=0.05
+        ...     sources=['source1', 'source2'],
+        ...     properties=['PHIE', 'SW'],
+        ...     source_name='selected_props'
         ... )
         """
         # Get merged properties using internal method
@@ -1378,26 +1569,25 @@ class Well:
         reference_property: Optional[str] = None,
         include: Optional[Union[str, list[str]]] = None,
         exclude: Optional[Union[str, list[str]]] = None,
-        auto_resample: bool = True,
-        merge_method: str = 'resample',
+        merge_method: str = 'match',
         discrete_labels: bool = True,
         clip_edges: bool = True,
         clip_to_property: Optional[str] = None
     ) -> pd.DataFrame:
         """
-        Export properties as DataFrame with optional resampling and filtering.
+        Export properties as DataFrame with optional merging and filtering.
 
-        This method does NOT modify the original property depth grids. If auto_resample
-        is True, properties are temporarily merged for the DataFrame output only using
-        the specified merge method.
+        This method does NOT modify the original property depth grids. Properties
+        are temporarily aligned using the specified merge method for DataFrame
+        output only.
 
         Parameters
         ----------
         reference_property : str, optional
-            Property to use as depth reference for resampling. If auto_resample
-            is True, all properties will be merged to this property's depth
-            grid. If not specified, defaults to the first property that was added
-            (typically the first property from the first LAS file loaded).
+            Property to use as depth reference. All properties will be aligned
+            to this property's depth grid using the merge_method. If not specified,
+            defaults to the first property that was added (typically the first
+            property from the first LAS file loaded).
         include : str or list[str], optional
             Property name(s) to include. If None, includes all properties.
             Can be a single string or a list of strings.
@@ -1405,12 +1595,11 @@ class Well:
             Property name(s) to exclude. If both include and exclude are
             specified, exclude overrides (removes properties from include list).
             Can be a single string or a list of strings.
-        auto_resample : bool, default True
-            If True, automatically merge all properties to the reference
-            property's depth grid (uses first property if not specified).
-            Set to False only if properties are already aligned.
-        merge_method : {'resample', 'concat'}, default 'resample'
-            Merge method to use when auto_resample is True:
+        merge_method : {'match', 'resample', 'concat'}, default 'match'
+            Method to align properties to reference depth grid:
+            - 'match': Require exact depth match for continuous properties (errors if
+              not aligned). Discrete properties are automatically resampled using
+              interval logic. Safest option.
             - 'resample': Interpolate properties to reference depth grid
             - 'concat': Merge unique depths, fill NaN where missing
         discrete_labels : bool, default True
@@ -1431,17 +1620,21 @@ class Well:
         Raises
         ------
         WellError
-            If properties have different depth grids and auto_resample is False
+            If properties have different depth grids and merge_method is 'match',
+            or if merge requirements fail
         PropertyNotFoundError
             If reference_property or included properties are not found
 
         Examples
         --------
-        >>> # Export all properties (auto-resamples to first property's grid)
+        >>> # Export all properties (errors if depths don't match exactly)
         >>> df = well.data()
 
+        >>> # Export with interpolation if depths don't align
+        >>> df = well.data(merge_method='resample')
+
         >>> # Export with specific reference property
-        >>> df = well.data(reference_property='DEPT')
+        >>> df = well.data(reference_property='PHIE')
 
         >>> # Include only specific properties
         >>> df = well.data(include=['PHIE', 'SW', 'PERM'])
@@ -1458,7 +1651,7 @@ class Well:
         >>> # Include with exclusions (exclude overrides)
         >>> df = well.data(include=['PHIE', 'SW', 'PERM', 'Zone'], exclude=['Zone'])
 
-        >>> # Use concat merge method instead of resample
+        >>> # Use concat merge method to include all unique depths
         >>> df = well.data(merge_method='concat')
 
         >>> # Disable label mapping for discrete properties
@@ -1520,33 +1713,17 @@ class Well:
 
         depth = ref_prop.depth
 
-        # Get properties to export (either merged or original)
-        if auto_resample:
-            # Use merge method to get temporary merged properties
-            props_to_export = self._merge_properties(
-                method=merge_method,
-                properties=properties_filter,
-                depth_grid=depth,
-                source_name='temp_dataframe'
-            )
-        else:
-            # Use original properties (only unique ones)
-            if properties_filter is not None:
-                props_to_export = {
-                    name: prop for name, (_, prop) in all_properties.items()
-                    if name in properties_filter
-                }
-            else:
-                props_to_export = {name: prop for name, (_, prop) in all_properties.items()}
-
-            # Verify all properties on same grid
-            for name, prop in props_to_export.items():
-                if not np.array_equal(prop.depth, depth):
-                    raise WellError(
-                        f"Cannot export to DataFrame: property '{name}' has different "
-                        f"depth grid than reference '{ref_prop_name}'. Either set auto_resample=True or "
-                        f"call well.merge() first to align all properties."
-                    )
+        # Always use merge method to align properties
+        # The merge_method parameter controls the behavior:
+        # - 'match': errors if grids don't align (safe default)
+        # - 'resample': interpolates to reference grid
+        # - 'concat': merges all unique depths
+        props_to_export = self._merge_properties(
+            method=merge_method,
+            properties=properties_filter,
+            depth_grid=depth,
+            source_name='temp_dataframe'
+        )
 
         # Build DataFrame
         data = {'DEPT': depth}
@@ -1625,7 +1802,13 @@ class Well:
         Convert well properties to a LasFile object.
 
         This creates a LasFile object from the well's properties. If properties have
-        different depth grids, they will be automatically merged using the resample method.
+        different depth grids, they will be automatically aligned using interpolation
+        (resample method) to the first property's depth grid. This ensures the exported
+        LAS file has a consistent depth grid.
+
+        Note: Unlike the data() method which defaults to 'match' for safety, this method
+        always resamples to ensure LAS export succeeds. If you need strict depth alignment
+        checking, use well.merge(method='match') before calling to_las().
 
         Parameters
         ----------
@@ -1667,6 +1850,10 @@ class Well:
         >>> las = well.to_las()
         >>> # ... modify via las.set_data(df) if needed ...
         >>> las.export('output.las')
+
+        >>> # If strict depth alignment is required, merge first
+        >>> well.merge(method='match', sources=['source1', 'source2'])
+        >>> las = well.to_las()
         """
         if not self._sources:
             raise WellError("No properties to export")

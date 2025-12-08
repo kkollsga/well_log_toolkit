@@ -1666,14 +1666,14 @@ stats = well.PHIE.filter('Zone').sums_avg()
 
 **To DataFrame:**
 ```python
-# All properties
+# All properties (default: errors if depths don't match exactly)
 df = well.data()
 
 # Specific properties
 df = well.data(include=['PHIE', 'SW', 'PERM'])
 
-# Auto-resample to common depth grid
-df = well.data(auto_resample=True)
+# Interpolate to common depth grid if depths don't align
+df = well.data(merge_method='resample')
 
 # Use labels for discrete properties
 df = well.data(discrete_labels=True)
