@@ -19,11 +19,46 @@ from matplotlib.patches import Rectangle
 if TYPE_CHECKING:
     from .well import Well
 
+# Import regression classes at module level for performance
+from .regression import (
+    LinearRegression, LogarithmicRegression, ExponentialRegression,
+    PolynomialRegression, PowerRegression
+)
+
 # Default color palettes
 DEFAULT_COLORS = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
     '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
 ]
+
+
+def _create_regression(regression_type: str, **kwargs):
+    """Factory function to create regression objects efficiently.
+
+    Args:
+        regression_type: Type of regression (linear, polynomial, etc.)
+        **kwargs: Additional parameters (e.g., degree for polynomial)
+
+    Returns:
+        Regression object instance
+    """
+    regression_type = regression_type.lower()
+    if regression_type == "linear":
+        return LinearRegression()
+    elif regression_type == "logarithmic":
+        return LogarithmicRegression()
+    elif regression_type == "exponential":
+        return ExponentialRegression()
+    elif regression_type == "polynomial":
+        degree = kwargs.get('degree', 2)
+        return PolynomialRegression(degree=degree)
+    elif regression_type == "power":
+        return PowerRegression()
+    else:
+        raise ValueError(
+            f"Unknown regression type: {regression_type}. "
+            f"Choose from: linear, logarithmic, exponential, polynomial, power"
+        )
 
 
 def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: int = 2000) -> tuple[np.ndarray, np.ndarray]:
@@ -2787,6 +2822,18 @@ class Crossplot:
         Show colorbar when using color mapping. Default: True
     show_legend : bool, optional
         Show legend when using shape/well mapping. Default: True
+    regression : str or dict, optional
+        Regression type to apply to all data points. Can be a string (e.g., "linear") or
+        dict with keys: type, line_color, line_width, line_style, line_alpha, x_range.
+        Default: None
+    regression_by_color : str or dict, optional
+        Regression type to apply separately for each color group. Creates separate
+        regression lines for each unique color value. Accepts string or dict format.
+        Default: None
+    regression_by_group : str or dict, optional
+        Regression type to apply separately for each group (well or shape). Creates
+        separate regression lines for each well or shape category. Accepts string or dict.
+        Default: None
 
     Examples
     --------
@@ -2807,13 +2854,33 @@ class Crossplot:
     ... )
     >>> plot.show()
 
-    With regression analysis:
+    With regression analysis (string format):
 
-    >>> plot = well.Crossplot(x="RHOB", y="NPHI")
-    >>> plot.add_regression("linear")
-    >>> plot.add_regression("polynomial", degree=2)
+    >>> plot = well.Crossplot(x="RHOB", y="NPHI", regression="linear")
     >>> plot.show()
-    >>> print(plot.regressions["linear"].equation())
+
+    With regression analysis (dict format for custom styling):
+
+    >>> plot = well.Crossplot(
+    ...     x="RHOB", y="NPHI",
+    ...     regression={"type": "linear", "line_color": "red", "line_width": 3}
+    ... )
+    >>> plot.show()
+
+    Multi-well with group-specific regressions:
+
+    >>> plot = manager.Crossplot(
+    ...     x="PHIE", y="SW",
+    ...     shape="well",
+    ...     regression_by_group={"type": "linear", "line_style": "--"}
+    ... )
+    >>> plot.show()
+
+    Access regression objects:
+
+    >>> linear_regs = plot.regression("linear")
+    >>> for name, reg in linear_regs.items():
+    ...     print(f"{name}: {reg.equation()}, R²={reg.r_squared:.3f}")
     """
 
     def __init__(
@@ -2844,6 +2911,9 @@ class Crossplot:
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
+        regression: Optional[str] = None,
+        regression_by_color: Optional[str] = None,
+        regression_by_group: Optional[str] = None,
     ):
         # Store wells as list
         if not isinstance(wells, list):
@@ -2877,6 +2947,9 @@ class Crossplot:
         self.depth_range = depth_range
         self.show_colorbar = show_colorbar
         self.show_legend = show_legend
+        self.regression = regression
+        self.regression_by_color = regression_by_color
+        self.regression_by_group = regression_by_group
 
         # Plot objects
         self.fig = None
@@ -2884,8 +2957,8 @@ class Crossplot:
         self.scatter = None
         self.colorbar = None
 
-        # Regression storage
-        self.regressions = {}
+        # Regression storage - nested structure: {type: {identifier: regression_obj}}
+        self._regressions = {}
         self.regression_lines = {}
 
         # Data cache
@@ -2909,9 +2982,21 @@ class Crossplot:
                 x_values = x_prop.values
                 y_values = y_prop.values
 
+                # Helper function to check if alignment is needed
+                def needs_alignment(prop_depth, ref_depth):
+                    """Quick check if depths need alignment."""
+                    if len(prop_depth) != len(ref_depth):
+                        return True
+                    # Fast check: if arrays are identical objects or first/last don't match
+                    if prop_depth is ref_depth:
+                        return False
+                    if prop_depth[0] != ref_depth[0] or prop_depth[-1] != ref_depth[-1]:
+                        return True
+                    # Only do expensive allclose if needed
+                    return not np.allclose(prop_depth, ref_depth)
+
                 # Align y values to x depth grid if needed
-                if len(y_prop.depth) != len(depths) or not np.allclose(y_prop.depth, depths):
-                    # Interpolate y values to x depth grid
+                if needs_alignment(y_prop.depth, depths):
                     y_values = np.interp(depths, y_prop.depth, y_prop.values, left=np.nan, right=np.nan)
 
                 # Create dataframe for this well
@@ -2928,7 +3013,7 @@ class Crossplot:
                         color_prop = well.get_property(self.color)
                         color_values = color_prop.values
                         # Align to x depth grid
-                        if len(color_prop.depth) != len(depths) or not np.allclose(color_prop.depth, depths):
+                        if needs_alignment(color_prop.depth, depths):
                             color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
                         df['color_val'] = color_values
                     except (AttributeError, KeyError):
@@ -2943,7 +3028,7 @@ class Crossplot:
                         size_prop = well.get_property(self.size)
                         size_values = size_prop.values
                         # Align to x depth grid
-                        if len(size_prop.depth) != len(depths) or not np.allclose(size_prop.depth, depths):
+                        if needs_alignment(size_prop.depth, depths):
                             size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
                         df['size_val'] = size_values
                     except (AttributeError, KeyError):
@@ -2955,7 +3040,7 @@ class Crossplot:
                         shape_prop = well.get_property(self.shape)
                         shape_values = shape_prop.values
                         # Align to x depth grid
-                        if len(shape_prop.depth) != len(depths) or not np.allclose(shape_prop.depth, depths):
+                        if needs_alignment(shape_prop.depth, depths):
                             shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
                         df['shape_val'] = shape_values
                     except (AttributeError, KeyError):
@@ -2985,6 +3070,246 @@ class Crossplot:
         self._data = self._data.dropna(subset=['x', 'y'])
 
         return self._data
+
+    def _parse_regression_config(self, config: Union[str, dict]) -> dict:
+        """Parse regression configuration from string or dict format.
+
+        Args:
+            config: Either a string (e.g., "linear") or dict (e.g., {"type": "linear", "line_color": "red"})
+
+        Returns:
+            Dictionary with 'type' and optional styling parameters
+        """
+        if isinstance(config, str):
+            return {'type': config}
+        elif isinstance(config, dict):
+            if 'type' not in config:
+                raise ValueError("Regression config dict must contain 'type' key")
+            return config.copy()
+        else:
+            raise ValueError(f"Regression config must be string or dict, got {type(config)}")
+
+    def regression(self, regression_type: Optional[str] = None) -> dict:
+        """Access regression objects.
+
+        Args:
+            regression_type: Optional regression type to filter by (e.g., "linear", "polynomial")
+
+        Returns:
+            If regression_type is None: Returns all regressions organized by type:
+                {"linear": {"red": RegObj, ...}, "polynomial": {"blue": RegObj, ...}}
+            If regression_type specified: Returns regressions of that type:
+                {"red": RegObj, ...}
+
+        Examples:
+            >>> plot.regression()  # Get all regressions
+            >>> plot.regression("linear")  # Get only linear regressions
+        """
+        if regression_type is None:
+            return self._regressions.copy()
+        else:
+            return self._regressions.get(regression_type, {}).copy()
+
+    def _store_regression(self, reg_type: str, identifier: str, regression_obj) -> None:
+        """Store a regression object in the nested structure.
+
+        Args:
+            reg_type: Type of regression (e.g., "linear", "polynomial")
+            identifier: Unique identifier for this regression (e.g., color, group name)
+            regression_obj: The regression object to store
+        """
+        if reg_type not in self._regressions:
+            self._regressions[reg_type] = {}
+        self._regressions[reg_type][identifier] = regression_obj
+
+    def _add_automatic_regressions(self, data: pd.DataFrame) -> None:
+        """Add automatic regressions based on initialization parameters."""
+        if not any([self.regression, self.regression_by_color, self.regression_by_group]):
+            return
+
+        total_points = len(data)
+        regression_count = 0
+
+        # Define colors for different regression lines
+        regression_colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+        color_idx = 0
+
+        # Add overall regression
+        if self.regression:
+            config = self._parse_regression_config(self.regression)
+            reg_type = config['type']
+
+            # Set default line color if not specified
+            if 'line_color' not in config:
+                config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+
+            self.add_regression(
+                reg_type,
+                name=f"Overall {reg_type}",
+                line_color=config.get('line_color', 'red'),
+                line_width=config.get('line_width', 2),
+                line_style=config.get('line_style', '-'),
+                line_alpha=config.get('line_alpha', 0.8)
+            )
+            regression_count += 1
+            color_idx += 1
+
+        # Add regression by color groups
+        if self.regression_by_color:
+            config = self._parse_regression_config(self.regression_by_color)
+            reg_type = config['type']
+
+            if not self.color:
+                warnings.warn("regression_by_color specified but no color mapping defined, skipping")
+            else:
+                # Get unique color groups
+                if 'color_val' in data.columns:
+                    # For continuous color values, we need to bin them or use unique values
+                    # Check if color is categorical (well, shape) or continuous
+                    if self.color == 'depth' or pd.api.types.is_numeric_dtype(data['color_val']):
+                        # For continuous values, we can't create separate regressions
+                        warnings.warn(
+                            f"regression_by_color requires categorical color mapping, "
+                            f"but '{self.color}' is continuous. Use regression_by_group instead."
+                        )
+                    else:
+                        # Categorical color values
+                        color_groups = data.groupby('color_val')
+                        n_groups = len(color_groups)
+
+                        # Validate regression count
+                        if regression_count + n_groups > total_points / 2:
+                            raise ValueError(
+                                f"Too many regression lines requested: {regression_count + n_groups} lines "
+                                f"for {total_points} data points (average < 2 points per line). "
+                                f"Reduce the number of groups or use a different regression strategy."
+                            )
+
+                        for idx, (group_name, group_data) in enumerate(color_groups):
+                            x_vals = group_data['x'].values
+                            y_vals = group_data['y'].values
+                            mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+                            if np.sum(mask) >= 2:
+                                # Copy config and set default line color if not specified
+                                group_config = config.copy()
+                                if 'line_color' not in group_config:
+                                    group_config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+
+                                # Skip legend update for all but last regression
+                                is_last = (idx == n_groups - 1)
+                                self._add_group_regression(
+                                    x_vals[mask], y_vals[mask],
+                                    reg_type,
+                                    name=f"{self.color}={group_name}",
+                                    config=group_config,
+                                    update_legend=is_last
+                                )
+                                regression_count += 1
+                                color_idx += 1
+
+        # Add regression by groups (well or shape)
+        if self.regression_by_group:
+            config = self._parse_regression_config(self.regression_by_group)
+            reg_type = config['type']
+
+            # Determine grouping
+            if self.shape == "well" or (self.shape and 'shape_val' in data.columns):
+                group_col = 'well' if self.shape == "well" else 'shape_val'
+                groups = data.groupby(group_col)
+                n_groups = len(groups)
+
+                # Validate regression count
+                if regression_count + n_groups > total_points / 2:
+                    raise ValueError(
+                        f"Too many regression lines requested: {regression_count + n_groups} lines "
+                        f"for {total_points} data points (average < 2 points per line). "
+                        f"Reduce the number of groups or use a different regression strategy."
+                    )
+
+                for idx, (group_name, group_data) in enumerate(groups):
+                    x_vals = group_data['x'].values
+                    y_vals = group_data['y'].values
+                    mask = np.isfinite(x_vals) & np.isfinite(y_vals)
+                    if np.sum(mask) >= 2:
+                        # Copy config and set default line color if not specified
+                        group_config = config.copy()
+                        if 'line_color' not in group_config:
+                            group_config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+
+                        # Skip legend update for all but last regression
+                        is_last = (idx == n_groups - 1)
+                        self._add_group_regression(
+                            x_vals[mask], y_vals[mask],
+                            reg_type,
+                            name=f"{group_col}={group_name}",
+                            config=group_config,
+                            update_legend=is_last
+                        )
+                        regression_count += 1
+                        color_idx += 1
+            else:
+                warnings.warn(
+                    "regression_by_group specified but no shape/well grouping defined. "
+                    "Use shape='well' or set shape to a property name."
+                )
+
+    def _add_group_regression(
+        self,
+        x_vals: np.ndarray,
+        y_vals: np.ndarray,
+        regression_type: str,
+        name: str,
+        config: dict,
+        update_legend: bool = True
+    ) -> None:
+        """Add a regression line for a specific group of data.
+
+        Args:
+            x_vals: X values for the group
+            y_vals: Y values for the group
+            regression_type: Type of regression (e.g., "linear", "polynomial")
+            name: Name identifier for this regression
+            config: Configuration dict with optional keys: line_color, line_width, line_style, line_alpha, x_range
+        """
+        # Create regression object using factory function
+        reg = _create_regression(regression_type, degree=config.get('degree', 2))
+
+        # Fit regression
+        try:
+            reg.fit(x_vals, y_vals)
+        except ValueError as e:
+            warnings.warn(f"Failed to fit {regression_type} regression for {name}: {e}")
+            return
+
+        # Store regression in nested structure
+        self._store_regression(regression_type, name, reg)
+
+        # Get plot data using the regression helper method
+        x_range_param = config.get('x_range', None)
+        try:
+            x_line, y_line = reg.get_plot_data(x_range=x_range_param, num_points=100)
+        except ValueError as e:
+            warnings.warn(f"Could not generate plot data for {name} regression: {e}")
+            return
+
+        # Create label with equation and R²
+        label = f"{name}\n{reg.equation()}\nR² = {reg.r_squared:.4f}"
+
+        # Plot line with config parameters
+        line = self.ax.plot(
+            x_line, y_line,
+            color=config.get('line_color', 'red'),
+            linewidth=config.get('line_width', 1.5),
+            linestyle=config.get('line_style', '--'),
+            alpha=config.get('line_alpha', 0.7),
+            label=label
+        )[0]
+
+        self.regression_lines[name] = line
+
+        # Update legend if requested (skipped during batch operations for performance)
+        if update_legend and self.ax is not None:
+            self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
 
     def plot(self) -> 'Crossplot':
         """Generate the crossplot figure."""
@@ -3026,6 +3351,9 @@ class Crossplot:
         self.ax.spines['right'].set_visible(False)
         self.ax.spines['left'].set_linewidth(1.5)
         self.ax.spines['bottom'].set_linewidth(1.5)
+
+        # Add automatic regressions if specified
+        self._add_automatic_regressions(data)
 
         # Tight layout
         self.fig.tight_layout()
@@ -3178,6 +3506,7 @@ class Crossplot:
         line_alpha: float = 0.8,
         show_equation: bool = True,
         show_r2: bool = True,
+        x_range: Optional[tuple[float, float]] = None,
         **kwargs
     ) -> 'Crossplot':
         """Add a regression line to the crossplot.
@@ -3201,6 +3530,9 @@ class Crossplot:
             Show equation in legend. Default: True
         show_r2 : bool, optional
             Show R² value in legend. Default: True
+        x_range : tuple[float, float], optional
+            Custom x-axis range for plotting the regression line.
+            If None, uses the data range from fitting.
         **kwargs
             Additional arguments for regression (e.g., degree for polynomial)
 
@@ -3214,13 +3546,9 @@ class Crossplot:
         >>> plot = well.Crossplot(x="RHOB", y="NPHI")
         >>> plot.add_regression("linear")
         >>> plot.add_regression("polynomial", degree=2, line_color="blue")
+        >>> plot.add_regression("linear", x_range=(0, 10))  # Custom range
         >>> plot.show()
         """
-        from .regression import (
-            LinearRegression, LogarithmicRegression, ExponentialRegression,
-            PolynomialRegression, PowerRegression
-        )
-
         # Ensure data is prepared
         data = self._prepare_data()
         x_vals = data['x'].values
@@ -3234,24 +3562,8 @@ class Crossplot:
         if len(x_clean) < 2:
             raise ValueError("Need at least 2 valid data points for regression")
 
-        # Create regression object
-        regression_type = regression_type.lower()
-        if regression_type == "linear":
-            reg = LinearRegression()
-        elif regression_type == "logarithmic":
-            reg = LogarithmicRegression()
-        elif regression_type == "exponential":
-            reg = ExponentialRegression()
-        elif regression_type == "polynomial":
-            degree = kwargs.get('degree', 2)
-            reg = PolynomialRegression(degree=degree)
-        elif regression_type == "power":
-            reg = PowerRegression()
-        else:
-            raise ValueError(
-                f"Unknown regression type: {regression_type}. "
-                f"Choose from: linear, logarithmic, exponential, polynomial, power"
-            )
+        # Create regression object using factory function
+        reg = _create_regression(regression_type, **kwargs)
 
         # Fit regression
         try:
@@ -3259,22 +3571,17 @@ class Crossplot:
         except ValueError as e:
             raise ValueError(f"Failed to fit {regression_type} regression: {e}")
 
-        # Store regression
+        # Store regression in nested structure
         reg_name = name if name else regression_type
-        self.regressions[reg_name] = reg
+        self._store_regression(regression_type, reg_name, reg)
 
         # Plot regression line if figure exists
         if self.ax is not None:
-            # Create x values for line (spanning data range)
-            x_min, x_max = np.nanmin(x_clean), np.nanmax(x_clean)
-            x_line = np.linspace(x_min, x_max, 200)
-
-            # Predict y values
+            # Get plot data using the regression helper method
             try:
-                y_line = reg.predict(x_line)
-            except ValueError:
-                # Handle cases where prediction fails for some x values
-                warnings.warn(f"Could not predict full range for {regression_type} regression")
+                x_line, y_line = reg.get_plot_data(x_range=x_range, num_points=200)
+            except ValueError as e:
+                warnings.warn(f"Could not generate plot data for {regression_type} regression: {e}")
                 return self
 
             # Create label
@@ -3302,22 +3609,39 @@ class Crossplot:
 
         return self
 
-    def remove_regression(self, name: str) -> 'Crossplot':
+    def remove_regression(self, name: str, regression_type: Optional[str] = None) -> 'Crossplot':
         """Remove a regression from the plot.
 
         Parameters
         ----------
         name : str
             Name of regression to remove
+        regression_type : str, optional
+            Type of regression. If None, searches all types for the name.
 
         Returns
         -------
         Crossplot
             Self for method chaining
         """
-        if name in self.regressions:
-            del self.regressions[name]
+        # Remove from nested structure
+        if regression_type:
+            # Remove from specific type
+            if regression_type in self._regressions and name in self._regressions[regression_type]:
+                del self._regressions[regression_type][name]
+                # Clean up empty type dict
+                if not self._regressions[regression_type]:
+                    del self._regressions[regression_type]
+        else:
+            # Search all types for the name
+            for reg_type in list(self._regressions.keys()):
+                if name in self._regressions[reg_type]:
+                    del self._regressions[reg_type][name]
+                    # Clean up empty type dict
+                    if not self._regressions[reg_type]:
+                        del self._regressions[reg_type]
 
+        # Remove line from plot
         if name in self.regression_lines:
             line = self.regression_lines[name]
             line.remove()
@@ -3372,7 +3696,8 @@ class Crossplot:
         if n_wells == 1:
             well_info = f"well='{self.wells[0].name}'"
 
-        n_regressions = len(self.regressions)
+        # Count total regressions across all types
+        n_regressions = sum(len(regs) for regs in self._regressions.values())
         reg_info = f", regressions={n_regressions}" if n_regressions > 0 else ""
 
         return (

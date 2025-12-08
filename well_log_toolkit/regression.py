@@ -26,6 +26,7 @@ class RegressionBase(ABC):
         self.y_data: Optional[np.ndarray] = None
         self.r_squared: Optional[float] = None
         self.rmse: Optional[float] = None
+        self.x_range: Optional[Tuple[float, float]] = None
         self._locked_params: Dict[str, float] = locked_params if locked_params is not None else {}
 
     @abstractmethod
@@ -80,6 +81,9 @@ class RegressionBase(ABC):
         # Store original data
         self.x_data = x
         self.y_data = y
+
+        # Store x-axis range
+        self.x_range = (float(np.min(x)), float(np.max(x)))
 
         # R² calculation
         ss_res = np.sum((y - y_pred) ** 2)
@@ -169,6 +173,44 @@ class RegressionBase(ABC):
             True if parameter is locked, False otherwise
         """
         return param_name in self._locked_params
+
+    def get_plot_data(
+        self,
+        x_range: Optional[Tuple[float, float]] = None,
+        num_points: int = 100
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Get x and y data for plotting the regression line.
+
+        Args:
+            x_range: Optional tuple of (x_min, x_max) for the plot range.
+                    If None, uses the stored x_range from fitting.
+                    If stored x_range is also None, raises an error.
+            num_points: Number of points to generate for the line. Default: 100
+
+        Returns:
+            Tuple of (x_values, y_values) for plotting
+
+        Raises:
+            ValueError: If model is not fitted or x_range cannot be determined
+        """
+        if not self.fitted:
+            raise ValueError("Model must be fitted before generating plot data")
+
+        # Determine x range
+        if x_range is not None:
+            x_min, x_max = x_range
+        elif self.x_range is not None:
+            x_min, x_max = self.x_range
+        else:
+            raise ValueError("x_range not available. Provide x_range parameter.")
+
+        # Generate x values
+        x_line = np.linspace(x_min, x_max, num_points)
+
+        # Predict y values
+        y_line = self.predict(x_line)
+
+        return x_line, y_line
 
 
 class LinearRegression(RegressionBase):
