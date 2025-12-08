@@ -338,6 +338,7 @@ class Well:
     def load_las(
         self,
         las: Union[LasFile, str, Path, list[Union[str, Path]]],
+        path: Optional[Union[str, Path]] = None,
         sampled: bool = False,
         resample_method: Optional[str] = None,
         merge: bool = False,
@@ -355,7 +356,11 @@ class Well:
         Parameters
         ----------
         las : Union[LasFile, str, Path, list[Union[str, Path]]]
-            Either a LasFile instance, path to LAS file, or list of LAS file paths
+            Either a LasFile instance, path to LAS file, or list of LAS file paths.
+            When providing a list, filenames can be relative to the path parameter.
+        path : Union[str, Path], optional
+            Directory path to prepend to all filenames. Useful when loading multiple
+            files from the same directory. If None, filenames are used as-is.
         sampled : bool, default False
             If True, mark all properties from this source as 'sampled' type.
             Use this for core plug data or other point measurements where
@@ -426,14 +431,36 @@ class Well:
         >>> # Merge into existing source (legacy behavior)
         >>> well.load_las("CorePor.las")  # Load initial properties
         >>> well.load_las("CorePor_Extra.las", merge=True)  # Merge new properties
+
+        >>> # Load multiple files from same directory
+        >>> well.load_las(
+        ...     ["file1.las", "file2.las", "file3.las"],
+        ...     path="data/well_logs",
+        ...     combine="match",
+        ...     source_name="AllLogs"
+        ... )
+        >>> # Loads: data/well_logs/file1.las, data/well_logs/file2.las, etc.
+
+        >>> # Mix of relative and absolute paths
+        >>> well.load_las(
+        ...     ["log1.las", "log2.las"],
+        ...     path="/absolute/path/to/logs"
+        ... )
         """
         # Handle list of files
         if isinstance(las, list):
+            # Prepend path to all filenames if provided
+            if path is not None:
+                base_path = Path(path)
+                las_files = [base_path / las_file for las_file in las]
+            else:
+                las_files = las
+
             # Load all files as separate sources
             loaded_sources = []
-            for las_file in las:
-                # Recursively call load_las for each file (without merge or combine)
-                self.load_las(las_file, sampled=sampled, resample_method=resample_method, merge=False, combine=None)
+            for las_file in las_files:
+                # Recursively call load_las for each file (without merge or combine, path already prepended)
+                self.load_las(las_file, path=None, sampled=sampled, resample_method=resample_method, merge=False, combine=None)
                 # Get the source name that was just created
                 loaded_sources.append(self.sources[-1])
 
@@ -465,8 +492,14 @@ class Well:
         # Parse if path provided
         filepath = None
         if isinstance(las, (str, Path)):
-            filepath = Path(las)
-            las = LasFile(las)
+            # Prepend path if provided
+            if path is not None:
+                las_path = Path(path) / las
+            else:
+                las_path = Path(las)
+
+            filepath = las_path
+            las = LasFile(las_path)
         elif hasattr(las, 'filepath') and las.filepath:
             filepath = Path(las.filepath)
 
