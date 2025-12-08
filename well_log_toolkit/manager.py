@@ -1642,7 +1642,7 @@ class WellDataManager:
             # No combine - load each file separately
             loaded_sources = []
             for file_path in file_paths:
-                # Read well name and source name before loading
+                # Read well name before loading
                 las = LasFile(file_path)
                 if las.well_name is None:
                     raise LasFileError(
@@ -1650,18 +1650,28 @@ class WellDataManager:
                         "Cannot determine which well to load into."
                     )
                 well_name = las.well_name
-                source_name_from_file = las.source_name
+                sanitized_name = sanitize_well_name(well_name)
+                well_key = f"well_{sanitized_name}"
+
+                # Track existing sources before loading
+                existing_sources = set()
+                if well_key in self._wells:
+                    existing_sources = set(self._wells[well_key].sources)
 
                 # Load the file
                 self.load_las(file_path, path=None, sampled=sampled, combine=None, source_name=None)
 
-                # Track what was loaded
-                loaded_sources.append((well_name, source_name_from_file))
+                # Find new sources that were added
+                if well_key in self._wells:
+                    new_sources = set(self._wells[well_key].sources) - existing_sources
+                    for src_name in new_sources:
+                        loaded_sources.append((well_name, src_name))
 
             # Print debug output
-            print("Loaded sources:")
-            for well_name, src_name in loaded_sources:
-                print(f"  - Well {well_name}: {src_name}")
+            if loaded_sources:
+                print("Loaded sources:")
+                for well_name, src_name in loaded_sources:
+                    print(f"  - Well {well_name}: {src_name}")
 
             return self
 
@@ -1681,12 +1691,15 @@ class WellDataManager:
                 "Cannot determine which well to load into."
             )
 
-        source_name_from_file = las.source_name
         sanitized_name = sanitize_well_name(well_name)
         # Use well_ prefix for dictionary key (attribute access)
         well_key = f"well_{sanitized_name}"
 
-        if well_key not in self._wells:
+        # Track existing sources before loading
+        existing_sources = set()
+        if well_key in self._wells:
+            existing_sources = set(self._wells[well_key].sources)
+        else:
             # Create new well
             self._wells[well_key] = Well(
                 name=well_name,
@@ -1698,9 +1711,14 @@ class WellDataManager:
         # Load into well
         self._wells[well_key].load_las(las, sampled=sampled)
 
+        # Find new sources that were added
+        new_sources = set(self._wells[well_key].sources) - existing_sources
+
         # Print debug output
-        print("Loaded sources:")
-        print(f"  - Well {well_name}: {source_name_from_file}")
+        if new_sources:
+            print("Loaded sources:")
+            for src_name in new_sources:
+                print(f"  - Well {well_name}: {src_name}")
 
         return self  # Enable chaining
 
