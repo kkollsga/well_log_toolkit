@@ -1507,7 +1507,10 @@ class WellDataManager:
     def load_las(
         self,
         filepath: Union[str, Path, list[Union[str, Path]]],
-        sampled: bool = False
+        path: Optional[Union[str, Path]] = None,
+        sampled: bool = False,
+        combine: Optional[str] = None,
+        source_name: Optional[str] = None
     ) -> 'WellDataManager':
         """
         Load LAS file(s), auto-create well if needed.
@@ -1515,10 +1518,26 @@ class WellDataManager:
         Parameters
         ----------
         filepath : Union[str, Path, list[Union[str, Path]]]
-            Path to LAS file or list of paths to LAS files
+            Path to LAS file or list of paths to LAS files.
+            When providing a list, filenames can be relative to the path parameter.
+        path : Union[str, Path], optional
+            Directory path to prepend to all filenames. Useful when loading multiple
+            files from the same directory. If None, filenames are used as-is.
         sampled : bool, default False
             If True, mark all properties from the LAS file(s) as 'sampled' type.
             Use this for core plug data or other point measurements.
+        combine : str, optional
+            When loading multiple files, combine files from the same well into a single source:
+            - None (default): Load files as separate sources, no combining
+            - 'match': Combine using match method (safest, errors on mismatch)
+            - 'resample': Combine using resample method (interpolates to first file)
+            - 'concat': Combine using concat method (merges all unique depths)
+            Files are automatically grouped by well name. If 4 files from 2 wells are loaded,
+            2 combined sources are created (one per well).
+        source_name : str, optional
+            Name for combined source when combine is specified. If not specified,
+            uses 'combined_match', 'combined_resample', or 'combined_concat'.
+            When files span multiple wells, the well name is prepended automatically.
 
         Returns
         -------
@@ -1535,26 +1554,134 @@ class WellDataManager:
         >>> manager = WellDataManager()
         >>> manager.load_las("well1.las")
         >>> manager.load_las(["well2.las", "well3.las"])
+
         >>> # Load core plug data
         >>> manager.load_las("core_data.las", sampled=True)
-        >>> well = manager.well_12_3_2_B
+
+        >>> # Load multiple files from same directory
+        >>> manager.load_las(
+        ...     ["file1.las", "file2.las", "file3.las"],
+        ...     path="data/well_logs"
+        ... )
+
+        >>> # Load and combine files (automatically groups by well)
+        >>> manager.load_las(
+        ...     ["36_7-5_B_CorePerm.las", "36_7-5_B_CorePor.las",
+        ...      "36_7-4_CorePerm.las", "36_7-4_CorePor.las"],
+        ...     path="data/",
+        ...     combine="match",
+        ...     source_name="CorePlugs"
+        ... )
+        Loaded sources:
+        - Well 36/7-5 B: CorePlugs (2 files combined)
+        - Well 36/7-4: CorePlugs (2 files combined)
         """
         # Handle list of files
         if isinstance(filepath, list):
-            for file in filepath:
-                self.load_las(file, sampled=sampled)
+            # Prepend path to all filenames if provided
+            if path is not None:
+                base_path = Path(path)
+                file_paths = [base_path / file for file in filepath]
+            else:
+                file_paths = filepath
+
+            # If combine is specified, group files by well and combine each group
+            if combine is not None:
+                # Group files by well name
+                from collections import defaultdict
+                well_groups = defaultdict(list)
+
+                for file_path in file_paths:
+                    las = LasFile(file_path)
+                    if las.well_name is None:
+                        raise LasFileError(
+                            f"LAS file {file_path} has no WELL name in header. "
+                            "Cannot determine which well to load into."
+                        )
+                    well_groups[las.well_name].append(file_path)
+
+                # Track loaded sources for debug output
+                loaded_sources = []
+
+                # Process each well group
+                for well_name, files_for_well in well_groups.items():
+                    sanitized_name = sanitize_well_name(well_name)
+                    well_key = f"well_{sanitized_name}"
+
+                    # Ensure well exists
+                    if well_key not in self._wells:
+                        self._wells[well_key] = Well(
+                            name=well_name,
+                            sanitized_name=sanitized_name,
+                            parent_manager=self
+                        )
+                        self._name_mapping[well_name] = well_key
+
+                    # Load files into well with combine
+                    self._wells[well_key].load_las(
+                        files_for_well,
+                        path=None,  # Path already prepended
+                        sampled=sampled,
+                        combine=combine,
+                        source_name=source_name
+                    )
+
+                    # Track what was loaded
+                    actual_source_name = source_name if source_name else f"combined_{combine}"
+                    loaded_sources.append(
+                        (well_name, actual_source_name, len(files_for_well))
+                    )
+
+                # Print debug output
+                print("Loaded sources:")
+                for well_name, src_name, file_count in loaded_sources:
+                    print(f"  - Well {well_name}: {src_name} ({file_count} file{'s' if file_count > 1 else ''} combined)")
+
+                return self
+
+            # No combine - load each file separately
+            loaded_sources = []
+            for file_path in file_paths:
+                # Read well name and source name before loading
+                las = LasFile(file_path)
+                if las.well_name is None:
+                    raise LasFileError(
+                        f"LAS file {file_path} has no WELL name in header. "
+                        "Cannot determine which well to load into."
+                    )
+                well_name = las.well_name
+                source_name_from_file = las.source_name
+
+                # Load the file
+                self.load_las(file_path, path=None, sampled=sampled, combine=None, source_name=None)
+
+                # Track what was loaded
+                loaded_sources.append((well_name, source_name_from_file))
+
+            # Print debug output
+            print("Loaded sources:")
+            for well_name, src_name in loaded_sources:
+                print(f"  - Well {well_name}: {src_name}")
+
             return self
 
         # Handle single file
-        las = LasFile(filepath)
+        # Prepend path if provided
+        if path is not None:
+            file_path = Path(path) / filepath
+        else:
+            file_path = filepath
+
+        las = LasFile(file_path)
         well_name = las.well_name
 
         if well_name is None:
             raise LasFileError(
-                f"LAS file {filepath} has no WELL name in header. "
+                f"LAS file {file_path} has no WELL name in header. "
                 "Cannot determine which well to load into."
             )
 
+        source_name_from_file = las.source_name
         sanitized_name = sanitize_well_name(well_name)
         # Use well_ prefix for dictionary key (attribute access)
         well_key = f"well_{sanitized_name}"
@@ -1570,6 +1697,10 @@ class WellDataManager:
 
         # Load into well
         self._wells[well_key].load_las(las, sampled=sampled)
+
+        # Print debug output
+        print("Loaded sources:")
+        print(f"  - Well {well_name}: {source_name_from_file}")
 
         return self  # Enable chaining
 
