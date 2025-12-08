@@ -3139,6 +3139,67 @@ class Crossplot:
             self._regressions[reg_type] = {}
         self._regressions[reg_type][identifier] = regression_obj
 
+    def _find_best_legend_locations(self, data: pd.DataFrame) -> tuple[str, str]:
+        """Find the two best locations for legends based on data density.
+
+        Divides the plot into a 3x3 grid and finds the two squares with the least data points.
+
+        Args:
+            data: DataFrame with 'x' and 'y' columns
+
+        Returns:
+            Tuple of (primary_location, secondary_location) as matplotlib location strings
+        """
+        # Get x and y bounds
+        x_vals = data['x'].values
+        y_vals = data['y'].values
+
+        # Handle log scales for binning
+        if self.x_log:
+            x_vals = np.log10(x_vals[x_vals > 0])
+        if self.y_log:
+            y_vals = np.log10(y_vals[y_vals > 0])
+
+        x_min, x_max = np.nanmin(x_vals), np.nanmax(x_vals)
+        y_min, y_max = np.nanmin(y_vals), np.nanmax(y_vals)
+
+        # Create 3x3 grid and count points in each square
+        x_bins = np.linspace(x_min, x_max, 4)
+        y_bins = np.linspace(y_min, y_max, 4)
+
+        # Count points in each of 9 squares
+        counts = {}
+        for i in range(3):
+            for j in range(3):
+                x_mask = (x_vals >= x_bins[i]) & (x_vals < x_bins[i+1])
+                y_mask = (y_vals >= y_bins[j]) & (y_vals < y_bins[j+1])
+                counts[(i, j)] = np.sum(x_mask & y_mask)
+
+        # Map grid positions to matplotlib location strings
+        # Grid: (0,2) (1,2) (2,2)  ->  upper left, upper center, upper right
+        #       (0,1) (1,1) (2,1)  ->  center left, center, center right
+        #       (0,0) (1,0) (2,0)  ->  lower left, lower center, lower right
+        position_map = {
+            (0, 2): 'upper left',
+            (1, 2): 'upper center',
+            (2, 2): 'upper right',
+            (0, 1): 'center left',
+            (1, 1): 'center',
+            (2, 1): 'center right',
+            (0, 0): 'lower left',
+            (1, 0): 'lower center',
+            (2, 0): 'lower right',
+        }
+
+        # Sort squares by count (ascending)
+        sorted_squares = sorted(counts.items(), key=lambda x: x[1])
+
+        # Get two best locations
+        best_pos = position_map[sorted_squares[0][0]]
+        second_best_pos = position_map[sorted_squares[1][0]]
+
+        return best_pos, second_best_pos
+
     def _format_regression_label(self, name: str, reg, include_equation: bool = None, include_r2: bool = None) -> str:
         """Format a modern, compact regression label.
 
@@ -3156,26 +3217,20 @@ class Crossplot:
         if include_r2 is None:
             include_r2 = self.show_regression_r2
 
-        # Start with name
-        parts = [name]
-
-        # Add equation and R² on same line if both shown, more compact
-        metrics = []
+        # Format: "Name (equation)" with R² on second line
+        # Equation and R² will be colored grey in the legend update method
+        first_line = name
         if include_equation:
             eq = reg.equation()
-            # Shorten equation format for compactness
-            eq = eq.replace(' ', '')  # Remove spaces
-            metrics.append(eq)
+            eq = eq.replace(' ', '')  # Remove spaces for compactness
+            # Add equation in parentheses (will be styled grey later)
+            first_line = f"{name} ({eq})"
 
+        # Add R² on second line if requested (will be styled grey later)
         if include_r2:
-            # Use superscript 2 for R²
-            metrics.append(f"R²={reg.r_squared:.3f}")
-
-        if metrics:
-            # Join equation and R² with pipe separator for clarity
-            parts.append(" | ".join(metrics))
-
-        return "\n".join(parts)
+            return f"{first_line}\nR² = {reg.r_squared:.3f}"
+        else:
+            return first_line
 
     def _update_regression_legend(self) -> None:
         """Create or update the separate regression legend with smart placement."""
@@ -3199,60 +3254,42 @@ class Crossplot:
             regression_labels.append(line.get_label())
 
         if regression_handles:
-            # Smart placement: try these locations in priority order
-            # Prefer corners away from main legend and colorbar
-            locations = [
-                'lower right',   # Primary choice
-                'upper right',   # If lower right conflicts with data
-                'lower left',    # If right side has colorbar/main legend
-                'center right',  # Fallback
-            ]
+            # Get smart placement based on data density
+            if self._data is not None:
+                _, secondary_loc = self._find_best_legend_locations(self._data)
+            else:
+                # Fallback if data not available
+                secondary_loc = 'lower right'
 
-            # If main legend is shown, it's likely in upper left
-            # If colorbar is shown, it's on the right side
-            # Adjust preferences based on what's visible
-            if self.show_legend and self.show_colorbar:
-                # Both legend and colorbar present - lower left might be better
-                locations = ['lower left', 'lower right', 'upper right', 'center left']
-            elif self.show_colorbar:
-                # Colorbar on right - prefer left side
-                locations = ['lower left', 'upper left', 'lower right', 'center left']
+            # Import legend from matplotlib
+            from matplotlib.legend import Legend
 
-            # Try to create legend with best location
-            # Use 'best' as fallback - matplotlib will find optimal position
-            try:
-                self.regression_legend = self.ax.legend(
-                    regression_handles,
-                    regression_labels,
-                    loc=locations[0],  # Try first preference
-                    frameon=True,
-                    framealpha=0.95,
-                    edgecolor='#cccccc',
-                    fancybox=False,
-                    shadow=False,
-                    fontsize=9,
-                    title='Regressions',
-                    title_fontsize=10
-                )
-            except Exception:
-                # Fallback to 'best' if specific location fails
-                self.regression_legend = self.ax.legend(
-                    regression_handles,
-                    regression_labels,
-                    loc='best',
-                    frameon=True,
-                    framealpha=0.95,
-                    edgecolor='#cccccc',
-                    fancybox=False,
-                    shadow=False,
-                    fontsize=9,
-                    title='Regressions',
-                    title_fontsize=10
-                )
+            # Create regression legend at secondary location
+            self.regression_legend = Legend(
+                self.ax,
+                regression_handles,
+                regression_labels,
+                loc=secondary_loc,
+                frameon=True,
+                framealpha=0.95,
+                edgecolor='#cccccc',
+                fancybox=False,
+                shadow=False,
+                fontsize=9,
+                title='Regressions',
+                title_fontsize=10
+            )
 
-            # Modern styling
+            # Modern styling with grey text for equation and R²
             self.regression_legend.get_frame().set_linewidth(0.8)
             self.regression_legend.get_title().set_fontweight('600')
+
+            # Set text color to grey for all labels
+            for text in self.regression_legend.get_texts():
+                text.set_color('#555555')
+
+            # Add as artist to avoid replacing the primary legend
+            self.ax.add_artist(self.regression_legend)
 
     def _add_automatic_regressions(self, data: pd.DataFrame) -> None:
         """Add automatic regressions based on initialization parameters."""
@@ -3672,16 +3709,25 @@ class Crossplot:
             if first_scatter is None and self.color:
                 first_scatter = scatter
 
-        # Add legend
+        # Add legend with smart placement
         if self.show_legend:
+            # Get best location based on data density
+            if self._data is not None:
+                primary_loc, _ = self._find_best_legend_locations(self._data)
+            else:
+                primary_loc = 'best'
+
             legend = self.ax.legend(
                 title=group_label,
-                loc='best',
+                loc=primary_loc,
                 frameon=True,
                 framealpha=0.9,
                 edgecolor='black'
             )
             legend.get_title().set_fontweight('bold')
+
+            # Store the primary legend so it persists when regression legend is added
+            self.ax.add_artist(legend)
 
         # Add colorbar if using color mapping
         if self.color and self.show_colorbar and first_scatter:
