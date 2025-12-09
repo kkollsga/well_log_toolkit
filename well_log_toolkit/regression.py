@@ -757,11 +757,182 @@ class PowerRegression(RegressionBase):
         return f"y = {self.a:.4f}*x^{self.b:.4f}"
 
 
+class PolynomialExponentialRegression(RegressionBase):
+    """Polynomial-Exponential regression: y = 10^(a + b*x + c*x² + ... + n*x^degree)
+
+    This is an exponential function with a polynomial in the exponent.
+    Equivalent to: log₁₀(y) = a + b*x + c*x² + ... + n*x^degree
+
+    This form is particularly useful for petrophysical relationships like
+    porosity-permeability where data spans orders of magnitude and the
+    relationship has curvature in log-space.
+
+    Note: Only valid for positive y values.
+
+    Example:
+        >>> # Quadratic exponential (default degree=2)
+        >>> reg = PolynomialExponentialRegression(degree=2)
+        >>> reg.fit([0.1, 0.15, 0.2, 0.25], [0.1, 1.0, 10.0, 50.0])
+        >>> reg.predict([0.3])
+        array([150.])
+        >>> print(reg.equation())
+        y = 10^(-2.5694 + 25.2696*x - 21.0434*x²)
+
+        # Linear exponential (degree=1, same as exponential but base 10)
+        >>> reg = PolynomialExponentialRegression(degree=1)
+        >>> reg.fit(x, y)
+
+        # Lock specific coefficients
+        >>> reg = PolynomialExponentialRegression(degree=2, locked_params={'c0': 0.0})
+        >>> reg.fit(x, y)  # Forces constant term to 0
+    """
+
+    def __init__(self, degree: int = 2, locked_params: Optional[Dict[str, float]] = None):
+        """Initialize polynomial-exponential regression.
+
+        Args:
+            degree: Polynomial degree in the exponent (default: 2 for quadratic)
+            locked_params: Dictionary to lock coefficients. Keys: 'c0', 'c1', ..., 'c{degree}'
+                          where c0 is the constant term, c1 is the linear coefficient, etc.
+        """
+        super().__init__(locked_params)
+        if degree < 1:
+            raise ValueError("Polynomial degree must be at least 1")
+        self.degree = degree
+        self.coefficients: Optional[np.ndarray] = None
+
+    def fit(self, x: ArrayLike, y: ArrayLike) -> 'PolynomialExponentialRegression':
+        """Fit polynomial-exponential regression model.
+
+        Args:
+            x: Independent variable values
+            y: Dependent variable values (must be positive)
+
+        Returns:
+            Self for method chaining
+        """
+        x_clean, y_clean = self._prepare_data(x, y)
+
+        # Check for positive y values
+        if np.any(y_clean <= 0):
+            raise ValueError("Polynomial-Exponential regression requires all y values to be positive")
+
+        # Transform to polynomial: log₁₀(y) = a + b*x + c*x² + ...
+        log_y = np.log10(y_clean)
+
+        # Check for locked coefficients
+        locked_indices = {int(k[1:]): v for k, v in self._locked_params.items() if k.startswith('c')}
+
+        if not locked_indices:
+            # No locked coefficients - use standard polyfit
+            # Note: polyfit returns coefficients from highest to lowest degree
+            # We need to reverse to get [constant, linear, quadratic, ...]
+            self.coefficients = np.polyfit(x_clean, log_y, self.degree)[::-1]
+        else:
+            # Initialize coefficients array [c0, c1, c2, ...]
+            self.coefficients = np.zeros(self.degree + 1)
+
+            # Set locked coefficients
+            for idx, val in locked_indices.items():
+                if idx < 0 or idx > self.degree:
+                    raise ValueError(f"Coefficient index c{idx} out of range for degree {self.degree}")
+                self.coefficients[idx] = val
+
+            # Subtract contribution of locked coefficients from log(y)
+            log_y_adjusted = log_y.copy()
+            for idx, val in locked_indices.items():
+                log_y_adjusted -= val * (x_clean ** idx)
+
+            # Fit only unlocked coefficients
+            unlocked_indices = [i for i in range(self.degree + 1) if i not in locked_indices]
+
+            if unlocked_indices:
+                # Build design matrix for unlocked terms
+                X = np.column_stack([x_clean ** i for i in unlocked_indices])
+
+                # Solve least squares
+                coefs_unlocked = np.linalg.lstsq(X, log_y_adjusted, rcond=None)[0]
+
+                # Assign unlocked coefficients
+                for i, idx in enumerate(unlocked_indices):
+                    self.coefficients[idx] = coefs_unlocked[i]
+
+        # Calculate metrics (in log space for better R² with data spanning orders of magnitude)
+        log_y_pred = np.sum([self.coefficients[i] * (x_clean ** i) for i in range(self.degree + 1)], axis=0)
+        y_pred = 10 ** log_y_pred
+        self._calculate_metrics(x_clean, y_clean, y_pred, use_log_space=True)
+
+        self.fitted = True
+        return self
+
+    def predict(self, x: ArrayLike) -> np.ndarray:
+        """Predict y values using polynomial-exponential model.
+
+        Args:
+            x: Independent variable values
+
+        Returns:
+            Predicted y values
+        """
+        if not self.fitted:
+            raise ValueError("Model must be fitted before prediction. Call fit() first.")
+
+        x = np.asarray(x, dtype=float)
+
+        # Calculate polynomial in exponent
+        log_y = np.sum([self.coefficients[i] * (x ** i) for i in range(self.degree + 1)], axis=0)
+
+        # Return 10^(polynomial)
+        return 10 ** log_y
+
+    def equation(self) -> str:
+        """Return the polynomial-exponential equation as a string."""
+        if not self.fitted:
+            return "Model not fitted"
+
+        # Build polynomial terms
+        terms = []
+        for i, coef in enumerate(self.coefficients):
+            if abs(coef) < 1e-10:  # Skip near-zero coefficients
+                continue
+
+            # Format coefficient
+            if not terms:  # First term
+                coef_str = f"{coef:.4f}"
+            else:
+                sign = "+" if coef >= 0 else "-"
+                coef_str = f"{sign} {abs(coef):.4f}"
+
+            # Format power
+            if i == 0:
+                term = coef_str
+            elif i == 1:
+                term = f"{coef_str}*x"
+            elif i == 2:
+                term = f"{coef_str}*x²"
+            elif i == 3:
+                term = f"{coef_str}*x³"
+            else:
+                term = f"{coef_str}*x^{i}"
+
+            terms.append(term)
+
+        if not terms:
+            return "y = 10^(0)"
+
+        poly_str = "".join(terms).strip()
+        # Clean up leading plus sign
+        poly_str = poly_str.replace("+ -", "- ")
+
+        return f"y = 10^({poly_str})"
+
+
 __all__ = [
     'RegressionBase',
     'LinearRegression',
     'LogarithmicRegression',
     'ExponentialRegression',
     'PolynomialRegression',
-    'PowerRegression'
+    'PowerRegression',
+    'PolynomialExponentialRegression'
 ]

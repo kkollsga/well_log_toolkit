@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 # Import regression classes at module level for performance
 from .regression import (
     LinearRegression, LogarithmicRegression, ExponentialRegression,
-    PolynomialRegression, PowerRegression
+    PolynomialRegression, PowerRegression, PolynomialExponentialRegression
 )
 from .exceptions import PropertyNotFoundError
 
@@ -38,29 +38,95 @@ def _create_regression(regression_type: str, **kwargs):
     """Factory function to create regression objects efficiently.
 
     Args:
-        regression_type: Type of regression (linear, polynomial, etc.)
-        **kwargs: Additional parameters (e.g., degree for polynomial)
+        regression_type: Type of regression with optional degree suffix
+                        Examples: 'linear', 'polynomial', 'polynomial_3', 'exponential-polynomial_4'
+        **kwargs: Additional parameters (deprecated, use suffix notation instead)
 
     Returns:
         Regression object instance
     """
     regression_type = regression_type.lower()
+
+    # Parse degree suffix (e.g., polynomial_3 → degree=3)
+    degree = None
+    if "_" in regression_type:
+        parts = regression_type.split("_")
+        try:
+            degree = int(parts[-1])
+            regression_type = "_".join(parts[:-1])  # Remove degree suffix
+        except ValueError:
+            pass  # Not a degree suffix, keep original
+
+    # Simple regression types
     if regression_type == "linear":
         return LinearRegression()
     elif regression_type == "logarithmic":
         return LogarithmicRegression()
     elif regression_type == "exponential":
         return ExponentialRegression()
-    elif regression_type == "polynomial":
-        degree = kwargs.get('degree', 2)
-        return PolynomialRegression(degree=degree)
     elif regression_type == "power":
         return PowerRegression()
-    else:
-        raise ValueError(
-            f"Unknown regression type: {regression_type}. "
-            f"Choose from: linear, logarithmic, exponential, polynomial, power"
+
+    # Polynomial with degree
+    elif regression_type == "polynomial":
+        # Use suffix degree, then kwargs, then default
+        if degree is None:
+            degree = kwargs.get('degree', 2)
+        return PolynomialRegression(degree=degree)
+
+    # Exponential-polynomial (renamed from polynomial-exponential)
+    elif regression_type == "exponential-polynomial":
+        if degree is None:
+            degree = kwargs.get('degree', 2)
+        return PolynomialExponentialRegression(degree=degree)
+
+    # Backward compatibility: old name polynomial-exponential
+    elif regression_type == "polynomial-exponential":
+        import warnings
+        warnings.warn(
+            "'polynomial-exponential' is deprecated. Use 'exponential-polynomial' instead.",
+            DeprecationWarning,
+            stacklevel=3
         )
+        if degree is None:
+            degree = kwargs.get('degree', 2)
+        return PolynomialExponentialRegression(degree=degree)
+
+    else:
+        # Create detailed error message with equation formats
+        error_msg = (
+            f"Unknown regression type: '{regression_type}'. "
+            f"Available types:\n\n"
+            f"  • linear:                 y = a*x + b\n"
+            f"  • logarithmic:            y = a*ln(x) + b\n"
+            f"  • exponential:            y = a*e^(b*x)\n"
+            f"  • polynomial:             y = a + b*x + c*x² (default: degree=2)\n"
+            f"    - polynomial_1:         y = a + b*x (1st degree)\n"
+            f"    - polynomial_3:         y = a + b*x + c*x² + d*x³ (3rd degree)\n"
+            f"  • exponential-polynomial: y = 10^(a + b*x + c*x²) (default: degree=2)\n"
+            f"    - exponential-polynomial_1: y = 10^(a + b*x) (1st degree)\n"
+            f"    - exponential-polynomial_3: y = 10^(a + b*x + c*x² + d*x³) (3rd degree)\n"
+            f"  • power:                  y = a*x^b\n\n"
+            f"Did you mean one of these?"
+        )
+
+        # Check for common typos
+        suggestions = []
+        if "expo" in regression_type or "exp" in regression_type:
+            suggestions.append("exponential or exponential-polynomial")
+        if "poly" in regression_type:
+            suggestions.append("polynomial or exponential-polynomial")
+        if "log" in regression_type:
+            suggestions.append("logarithmic")
+        if "lin" in regression_type:
+            suggestions.append("linear")
+        if "pow" in regression_type:
+            suggestions.append("power")
+
+        if suggestions:
+            error_msg += f"\n  Possible matches: {', '.join(suggestions)}"
+
+        raise ValueError(error_msg)
 
 
 def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: int = 2000) -> tuple[np.ndarray, np.ndarray]:
