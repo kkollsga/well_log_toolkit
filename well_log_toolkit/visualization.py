@@ -3667,6 +3667,7 @@ class Crossplot:
                 bbox_transform=self.fig.transFigure
             )
             shape_legend.get_title().set_fontweight('bold')
+            shape_legend.set_clip_on(False)  # Prevent clipping outside axes
             self.ax.add_artist(shape_legend)
 
             # Calculate offset for color legend below shape legend
@@ -3692,6 +3693,7 @@ class Crossplot:
                 bbox_transform=self.fig.transFigure
             )
             color_legend.get_title().set_fontweight('bold')
+            color_legend.set_clip_on(False)  # Prevent clipping outside axes
         else:
             # Place side by side for non-edge locations (top, bottom, center)
             # Estimate width of each legend
@@ -3713,6 +3715,7 @@ class Crossplot:
                     bbox_transform=self.fig.transFigure
                 )
                 shape_legend.get_title().set_fontweight('bold')
+                shape_legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(shape_legend)
 
                 color_legend = self.ax.legend(
@@ -3726,6 +3729,7 @@ class Crossplot:
                     bbox_transform=self.fig.transFigure
                 )
                 color_legend.get_title().set_fontweight('bold')
+                color_legend.set_clip_on(False)  # Prevent clipping outside axes
             else:
                 # For other positions, fall back to stacking
                 shape_legend = self.ax.legend(
@@ -3737,6 +3741,7 @@ class Crossplot:
                     edgecolor='black'
                 )
                 shape_legend.get_title().set_fontweight('bold')
+                shape_legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(shape_legend)
 
                 # Estimate offset
@@ -3757,6 +3762,7 @@ class Crossplot:
                     bbox_transform=self.fig.transFigure
                 )
                 color_legend.get_title().set_fontweight('bold')
+                color_legend.set_clip_on(False)  # Prevent clipping outside axes
 
     def _format_regression_label(self, name: str, reg, include_equation: bool = None, include_r2: bool = None) -> str:
         """Format a modern, compact regression label.
@@ -3786,11 +3792,8 @@ class Crossplot:
 
         # Add R² on second line if requested (will be styled grey later)
         if include_r2:
-            # Format R² with appropriate note
-            if self.y_log:
-                r2_label = f"R² = {reg.r_squared:.3f} (log)"
-            else:
-                r2_label = f"R² = {reg.r_squared:.3f}"
+            # Format R² (no suffix needed)
+            r2_label = f"R² = {reg.r_squared:.3f}"
             return f"{first_line}\n{r2_label}"
         else:
             return first_line
@@ -3833,6 +3836,16 @@ class Crossplot:
                 # Fallback if data not available
                 secondary_loc = 'lower right'
 
+            # Determine descriptive title based on regression type
+            if self.regression_by_color_and_shape:
+                regression_title = 'Regressions by color and shape'
+            elif self.regression_by_color:
+                regression_title = 'Regressions by color'
+            elif self.regression_by_group:
+                regression_title = 'Regressions by group'
+            else:
+                regression_title = 'Regressions'
+
             # Import legend from matplotlib
             from matplotlib.legend import Legend
 
@@ -3848,7 +3861,7 @@ class Crossplot:
                 fancybox=False,
                 shadow=False,
                 fontsize=9,
-                title='Regressions',
+                title=regression_title,
                 title_fontsize=10
             )
 
@@ -3902,20 +3915,16 @@ class Crossplot:
 
             # Determine grouping column based on what's being used for colors in the plot
             group_column = None
-            group_label = None
 
             if self.color and 'color_val' in data.columns:
                 # User specified explicit color mapping
                 group_column = 'color_val'
-                group_label = self.color
             elif self.shape == "well" and 'well' in data.columns:
                 # When shape="well", each well gets a different color in the plot
                 group_column = 'well'
-                group_label = 'well'
             elif self.shape and self.shape != "well" and 'shape_val' in data.columns:
                 # When shape is a property, each shape group gets a different color
                 group_column = 'shape_val'
-                group_label = self.shape
 
             if group_column is None:
                 warnings.warn(
@@ -3961,12 +3970,15 @@ class Crossplot:
                                     # Use the same color as the data points for this group
                                     group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
 
+                                # Get display label for group name (converts codes to formation names)
+                                group_display = self._get_display_label(group_name, 'color')
+
                                 # Skip legend update for all but last regression
                                 is_last = (idx == n_groups - 1)
                                 self._add_group_regression(
                                     x_vals[mask], y_vals[mask],
                                     reg_type,
-                                    name=f"{group_label}={group_name}",
+                                    name=group_display,
                                     config=group_config,
                                     update_legend=is_last
                                 )
@@ -3999,12 +4011,15 @@ class Crossplot:
                                 # Use the same color as the data points for this group
                                 group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
 
+                            # Get display label for group name (converts codes to formation names)
+                            group_display = self._get_display_label(group_name, 'color')
+
                             # Skip legend update for all but last regression
                             is_last = (idx == n_groups - 1)
                             self._add_group_regression(
                                 x_vals[mask], y_vals[mask],
                                 reg_type,
-                                name=f"{group_label}={group_name}",
+                                name=group_display,
                                 config=group_config,
                                 update_legend=is_last
                             )
@@ -4269,6 +4284,14 @@ class Crossplot:
         if self.y_log:
             self.ax.set_yscale('log')
 
+        # Disable scientific notation on axes
+        from matplotlib.ticker import ScalarFormatter
+        formatter = ScalarFormatter(useOffset=False)
+        formatter.set_scientific(False)
+        self.ax.yaxis.set_major_formatter(formatter)
+        if not self.x_log:
+            self.ax.xaxis.set_major_formatter(formatter)
+
         # Labels and title
         self.ax.set_xlabel(self.xlabel, fontsize=12, fontweight='bold')
         self.ax.set_ylabel(self.ylabel, fontsize=12, fontweight='bold')
@@ -4449,6 +4472,7 @@ class Crossplot:
                                       framealpha=0.9,
                                       edgecolor='black')
                 legend.get_title().set_fontweight('bold')
+                legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(legend)
             elif not is_categorical and self.show_colorbar:
                 # Add colorbar for continuous colors
