@@ -3475,22 +3475,48 @@ class Crossplot:
         Returns:
             Tuple of (segment_number, matplotlib_location_string)
         """
-        # Get x and y bounds
+        # Get x and y data values
         x_vals = data['x'].values
         y_vals = data['y'].values
 
-        # Handle log scales for binning
+        # Get axes limits to convert data coordinates to axes-normalized coordinates (0-1)
+        # This ensures we're dividing the GRAPH AREA, not the data space
+        if self.ax is not None:
+            x_lim = self.ax.get_xlim()
+            y_lim = self.ax.get_ylim()
+        else:
+            # Fallback if ax not available yet
+            x_lim = (np.nanmin(x_vals), np.nanmax(x_vals))
+            y_lim = (np.nanmin(y_vals), np.nanmax(y_vals))
+
+        # Handle logarithmic axes - transform to log space for proper visual segment calculation
+        # On log axes, equal visual spacing corresponds to equal ratios, not equal differences
         if self.x_log:
-            x_vals = np.log10(x_vals[x_vals > 0])
+            # Filter out non-positive values before log transform
+            x_valid = x_vals > 0
+            x_vals_transformed = np.where(x_valid, np.log10(x_vals), np.nan)
+            x_lim_transformed = (np.log10(max(x_lim[0], 1e-10)), np.log10(max(x_lim[1], 1e-10)))
+        else:
+            x_vals_transformed = x_vals
+            x_lim_transformed = x_lim
+
         if self.y_log:
-            y_vals = np.log10(y_vals[y_vals > 0])
+            # Filter out non-positive values before log transform
+            y_valid = y_vals > 0
+            y_vals_transformed = np.where(y_valid, np.log10(y_vals), np.nan)
+            y_lim_transformed = (np.log10(max(y_lim[0], 1e-10)), np.log10(max(y_lim[1], 1e-10)))
+        else:
+            y_vals_transformed = y_vals
+            y_lim_transformed = y_lim
 
-        x_min, x_max = np.nanmin(x_vals), np.nanmax(x_vals)
-        y_min, y_max = np.nanmin(y_vals), np.nanmax(y_vals)
+        # Normalize transformed coordinates to axes coordinates (0-1)
+        # This divides the visible graph area properly, accounting for log scales
+        x_norm = (x_vals_transformed - x_lim_transformed[0]) / (x_lim_transformed[1] - x_lim_transformed[0])
+        y_norm = (y_vals_transformed - y_lim_transformed[0]) / (y_lim_transformed[1] - y_lim_transformed[0])
 
-        # Create 3x3 grid and count points in each square
-        x_bins = np.linspace(x_min, x_max, 4)
-        y_bins = np.linspace(y_min, y_max, 4)
+        # Create 3x3 grid in axes-normalized space (0-1)
+        x_bins = np.linspace(0, 1, 4)
+        y_bins = np.linspace(0, 1, 4)
 
         # Map segments 1-9 to grid positions (i, j)
         # Segment numbering:
@@ -3522,12 +3548,12 @@ class Crossplot:
             9: 'lower right',
         }
 
-        # Count points in each segment
-        total_points = len(x_vals)
+        # Count points in each segment using normalized coordinates
+        total_points = len(x_norm)
         segment_counts = {}
         for segment, (i, j) in segment_to_grid.items():
-            x_mask = (x_vals >= x_bins[i]) & (x_vals < x_bins[i+1])
-            y_mask = (y_vals >= y_bins[j]) & (y_vals < y_bins[j+1])
+            x_mask = (x_norm >= x_bins[i]) & (x_norm < x_bins[i+1])
+            y_mask = (y_norm >= y_bins[j]) & (y_norm < y_bins[j+1])
             count = np.sum(x_mask & y_mask)
             segment_counts[segment] = count
 
@@ -3638,20 +3664,24 @@ class Crossplot:
         is_edge = self._is_edge_location(location)
 
         # Determine base anchor point from location string
-        # Map location to (x, y) coordinates in figure space
+        # Map location to (x, y) coordinates in AXES space (0-1 within the graph area)
+        # These match the segment corners:
+        # Segment 1=upper left (0,1), 2=upper center (0.5,1), 3=upper right (1,1)
+        # Segment 4=center left (0,0.5), 5=center (0.5,0.5), 6=center right (1,0.5)
+        # Segment 7=lower left (0,0), 8=lower center (0.5,0), 9=lower right (1,0)
         anchor_map = {
-            'upper left': (0.02, 0.98),
-            'upper center': (0.5, 0.98),
-            'upper right': (0.98, 0.98),
-            'center left': (0.02, 0.5),
+            'upper left': (0, 1),
+            'upper center': (0.5, 1),
+            'upper right': (1, 1),
+            'center left': (0, 0.5),
             'center': (0.5, 0.5),
-            'center right': (0.98, 0.5),
-            'lower left': (0.02, 0.02),
-            'lower center': (0.5, 0.02),
-            'lower right': (0.98, 0.02),
+            'center right': (1, 0.5),
+            'lower left': (0, 0),
+            'lower center': (0.5, 0),
+            'lower right': (1, 0),
         }
 
-        base_x, base_y = anchor_map.get(location, (0.98, 0.98))
+        base_x, base_y = anchor_map.get(location, (1, 1))
 
         if is_edge:
             # Stack vertically on edges
@@ -3664,23 +3694,23 @@ class Crossplot:
                 framealpha=0.9,
                 edgecolor='black',
                 bbox_to_anchor=(base_x, base_y),
-                bbox_transform=self.fig.transFigure
+                bbox_transform=self.ax.transAxes
             )
             shape_legend.get_title().set_fontweight('bold')
             shape_legend.set_clip_on(False)  # Prevent clipping outside axes
             self.ax.add_artist(shape_legend)
 
             # Calculate offset for color legend below shape legend
-            # Estimate shape legend height and add spacing
-            shape_height = len(shape_handles) * 0.025 + 0.05  # Rough estimate
+            # Estimate shape legend height in axes coordinates
+            shape_height = len(shape_handles) * 0.05 + 0.08  # Adjusted for axes space
 
             # Adjust y position for color legend
             if 'upper' in location:
-                color_y = base_y - shape_height - 0.02  # Stack below
+                color_y = base_y - shape_height  # Stack below
             elif 'lower' in location:
-                color_y = base_y + shape_height + 0.02  # Stack above
+                color_y = base_y + shape_height  # Stack above
             else:  # center
-                color_y = base_y - shape_height / 2 - 0.01  # Stack below
+                color_y = base_y - shape_height / 2  # Stack below
 
             color_legend = self.ax.legend(
                 handles=color_handles,
@@ -3690,19 +3720,19 @@ class Crossplot:
                 framealpha=0.9,
                 edgecolor='black',
                 bbox_to_anchor=(base_x, color_y),
-                bbox_transform=self.fig.transFigure
+                bbox_transform=self.ax.transAxes
             )
             color_legend.get_title().set_fontweight('bold')
             color_legend.set_clip_on(False)  # Prevent clipping outside axes
         else:
             # Place side by side for non-edge locations (top, bottom, center)
-            # Estimate width of each legend
-            legend_width = 0.15
+            # Estimate width of each legend in axes coordinates
+            legend_width = 0.20
 
             if 'center' in location and location != 'center left' and location != 'center right':
                 # For center positions, place them side by side
-                shape_x = base_x - legend_width / 2 - 0.01
-                color_x = base_x + legend_width / 2 + 0.01
+                shape_x = base_x - legend_width / 2
+                color_x = base_x + legend_width / 2
 
                 shape_legend = self.ax.legend(
                     handles=shape_handles,
@@ -3712,7 +3742,7 @@ class Crossplot:
                     framealpha=0.9,
                     edgecolor='black',
                     bbox_to_anchor=(shape_x, base_y),
-                    bbox_transform=self.fig.transFigure
+                    bbox_transform=self.ax.transAxes
                 )
                 shape_legend.get_title().set_fontweight('bold')
                 shape_legend.set_clip_on(False)  # Prevent clipping outside axes
@@ -3726,7 +3756,7 @@ class Crossplot:
                     framealpha=0.9,
                     edgecolor='black',
                     bbox_to_anchor=(color_x, base_y),
-                    bbox_transform=self.fig.transFigure
+                    bbox_transform=self.ax.transAxes
                 )
                 color_legend.get_title().set_fontweight('bold')
                 color_legend.set_clip_on(False)  # Prevent clipping outside axes
@@ -3738,18 +3768,20 @@ class Crossplot:
                     loc=location,
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='black'
+                    edgecolor='black',
+                    bbox_to_anchor=(base_x, base_y),
+                    bbox_transform=self.ax.transAxes
                 )
                 shape_legend.get_title().set_fontweight('bold')
                 shape_legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(shape_legend)
 
-                # Estimate offset
-                shape_height = len(shape_handles) * 0.025 + 0.05
+                # Estimate offset in axes coordinates
+                shape_height = len(shape_handles) * 0.05 + 0.08
                 if 'upper' in location:
-                    color_y = base_y - shape_height - 0.02
+                    color_y = base_y - shape_height
                 else:
-                    color_y = base_y + shape_height + 0.02
+                    color_y = base_y + shape_height
 
                 color_legend = self.ax.legend(
                     handles=color_handles,
@@ -3759,7 +3791,7 @@ class Crossplot:
                     framealpha=0.9,
                     edgecolor='black',
                     bbox_to_anchor=(base_x, color_y),
-                    bbox_transform=self.fig.transFigure
+                    bbox_transform=self.ax.transAxes
                 )
                 color_legend.get_title().set_fontweight('bold')
                 color_legend.set_clip_on(False)  # Prevent clipping outside axes
@@ -3837,14 +3869,32 @@ class Crossplot:
                 secondary_loc = 'lower right'
 
             # Determine descriptive title based on regression type
+            # Extract the regression type and add it to the title
+            reg_type_str = None
             if self.regression_by_color_and_shape:
-                regression_title = 'Regressions by color and shape'
+                base_title = 'Regressions by color and shape'
+                config = self._parse_regression_config(self.regression_by_color_and_shape)
+                reg_type_str = config.get('type', None)
             elif self.regression_by_color:
-                regression_title = 'Regressions by color'
+                base_title = 'Regressions by color'
+                config = self._parse_regression_config(self.regression_by_color)
+                reg_type_str = config.get('type', None)
             elif self.regression_by_group:
-                regression_title = 'Regressions by group'
+                base_title = 'Regressions by group'
+                config = self._parse_regression_config(self.regression_by_group)
+                reg_type_str = config.get('type', None)
             else:
-                regression_title = 'Regressions'
+                base_title = 'Regressions'
+                if self.regression:
+                    config = self._parse_regression_config(self.regression)
+                    reg_type_str = config.get('type', None)
+
+            # Add regression type to title (e.g., "Regressions by color - Power")
+            if reg_type_str:
+                reg_type_display = reg_type_str.capitalize()
+                regression_title = f"{base_title} - {reg_type_display}"
+            else:
+                regression_title = base_title
 
             # Import legend from matplotlib
             from matplotlib.legend import Legend
@@ -4284,11 +4334,15 @@ class Crossplot:
         if self.y_log:
             self.ax.set_yscale('log')
 
-        # Disable scientific notation on axes
+        # Disable scientific notation on linear axes only
+        # (log axes use matplotlib's default log formatter for proper log scale labels)
         from matplotlib.ticker import ScalarFormatter
         formatter = ScalarFormatter(useOffset=False)
         formatter.set_scientific(False)
-        self.ax.yaxis.set_major_formatter(formatter)
+
+        # Only apply to linear axes - log axes need their default formatter
+        if not self.y_log:
+            self.ax.yaxis.set_major_formatter(formatter)
         if not self.x_log:
             self.ax.xaxis.set_major_formatter(formatter)
 
