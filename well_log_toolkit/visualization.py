@@ -3072,6 +3072,10 @@ class Crossplot:
         # Data cache
         self._data = None
 
+        # Discrete property labels storage
+        # Maps property role ('shape', 'color', 'size') to labels dict {0: 'label0', 1: 'label1', ...}
+        self._discrete_labels = {}
+
     def add_layer(self, x: str, y: str, label: str):
         """
         Add a new data layer to the crossplot.
@@ -3136,6 +3140,32 @@ class Crossplot:
             # Only do expensive allclose if needed
             return not np.allclose(prop_depth, ref_depth)
 
+        # Helper function to align property values to target depth grid
+        def align_property(prop, target_depth):
+            """
+            Align property values to target depth grid.
+
+            Uses appropriate interpolation based on property type:
+            - Discrete properties: forward-fill/previous (geological zones extend from
+              their top/boundary until the next boundary is encountered)
+            - Continuous properties: linear interpolation
+
+            Args:
+                prop: Property object to align
+                target_depth: Target depth array
+
+            Returns:
+                Aligned values array
+            """
+            if prop.type == 'discrete':
+                # Use Property's resample method which handles discrete properties correctly
+                # (forward-fill to preserve integer codes and geological zone logic)
+                resampled = prop.resample(target_depth)
+                return resampled.values
+            else:
+                # For continuous properties, use linear interpolation
+                return np.interp(target_depth, prop.depth, prop.values, left=np.nan, right=np.nan)
+
         # Loop through each layer
         for layer in self._layers:
             layer_x = layer['x']
@@ -3153,9 +3183,9 @@ class Crossplot:
                     x_values = x_prop.values
                     y_values = y_prop.values
 
-                    # Align y values to x depth grid if needed
+                    # Align y values to x depth grid if needed using appropriate method
                     if needs_alignment(y_prop.depth, depths):
-                        y_values = np.interp(depths, y_prop.depth, y_prop.values, left=np.nan, right=np.nan)
+                        y_values = align_property(y_prop, depths)
 
                     # Create dataframe for this well and layer
                     df = pd.DataFrame({
@@ -3176,10 +3206,14 @@ class Crossplot:
                     elif self.color and self.color != "depth":
                         try:
                             color_prop = well.get_property(self.color)
-                            color_values = color_prop.values
-                            # Align to x depth grid
+                            # Store labels if discrete property (only once)
+                            if 'color' not in self._discrete_labels:
+                                self._store_discrete_labels(color_prop, 'color')
+                            # Align to x depth grid using appropriate method for property type
                             if needs_alignment(color_prop.depth, depths):
-                                color_values = np.interp(depths, color_prop.depth, color_prop.values, left=np.nan, right=np.nan)
+                                color_values = align_property(color_prop, depths)
+                            else:
+                                color_values = color_prop.values
                             df['color_val'] = color_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently use depth as fallback
@@ -3194,10 +3228,14 @@ class Crossplot:
                     elif self.size:
                         try:
                             size_prop = well.get_property(self.size)
-                            size_values = size_prop.values
-                            # Align to x depth grid
+                            # Store labels if discrete property (only once)
+                            if 'size' not in self._discrete_labels:
+                                self._store_discrete_labels(size_prop, 'size')
+                            # Align to x depth grid using appropriate method for property type
                             if needs_alignment(size_prop.depth, depths):
-                                size_values = np.interp(depths, size_prop.depth, size_prop.values, left=np.nan, right=np.nan)
+                                size_values = align_property(size_prop, depths)
+                            else:
+                                size_values = size_prop.values
                             df['size_val'] = size_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently skip if size property not found
@@ -3210,10 +3248,14 @@ class Crossplot:
                     elif self.shape and self.shape != "well":
                         try:
                             shape_prop = well.get_property(self.shape)
-                            shape_values = shape_prop.values
-                            # Align to x depth grid
+                            # Store labels if discrete property (only once)
+                            if 'shape' not in self._discrete_labels:
+                                self._store_discrete_labels(shape_prop, 'shape')
+                            # Align to x depth grid using appropriate method for property type
                             if needs_alignment(shape_prop.depth, depths):
-                                shape_values = np.interp(depths, shape_prop.depth, shape_prop.values, left=np.nan, right=np.nan)
+                                shape_values = align_property(shape_prop, depths)
+                            else:
+                                shape_values = shape_prop.values
                             df['shape_val'] = shape_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently skip if shape property not found
@@ -3376,6 +3418,201 @@ class Crossplot:
         second_best_pos = position_map[sorted_squares[1][0]]
 
         return best_pos, second_best_pos
+
+    def _store_discrete_labels(self, prop, role: str) -> None:
+        """
+        Store labels from a discrete property for later use in legends.
+
+        Args:
+            prop: Property object (must have type and labels attributes)
+            role: Property role - 'shape', 'color', or 'size'
+        """
+        if hasattr(prop, 'type') and prop.type == 'discrete' and hasattr(prop, 'labels') and prop.labels:
+            self._discrete_labels[role] = prop.labels.copy()
+
+    def _get_display_label(self, value, role: str) -> str:
+        """
+        Get display label for a value, using stored labels for discrete properties.
+
+        For discrete properties with labels, converts integer codes to readable names.
+        For continuous properties or discrete without labels, returns string value.
+
+        Args:
+            value: The value to get label for (could be int, float, or string)
+            role: Property role - 'shape', 'color', or 'size'
+
+        Returns:
+            Display label string
+
+        Examples:
+            >>> # For discrete property with labels {0: 'Agat top', 1: 'Cerisa Main top'}
+            >>> self._get_display_label(0.0, 'shape')
+            'Agat top'
+
+            >>> # For continuous property or no labels
+            >>> self._get_display_label(2.5, 'color')
+            '2.5'
+        """
+        if role in self._discrete_labels:
+            # Try to convert to integer and look up label
+            try:
+                int_val = int(np.round(float(value)))
+                return self._discrete_labels[role].get(int_val, str(value))
+            except (ValueError, TypeError):
+                return str(value)
+        return str(value)
+
+    def _is_edge_location(self, location: str) -> bool:
+        """Check if a legend location is on the left or right edge.
+
+        Args:
+            location: Matplotlib location string
+
+        Returns:
+            True if on left or right edge (for vertical stacking)
+        """
+        edge_locations = ['upper left', 'center left', 'lower left',
+                         'upper right', 'center right', 'lower right']
+        return location in edge_locations
+
+    def _create_grouped_legends(self,
+                                shape_handles, shape_title: str,
+                                color_handles, color_title: str,
+                                location: str) -> None:
+        """Create grouped legends in the same region, stacked or side-by-side.
+
+        When both shape and color legends are needed, this groups them in the same
+        1/9th section without overlap. Stacks vertically on edges, side-by-side elsewhere.
+
+        Args:
+            shape_handles: List of handles for shape legend
+            shape_title: Title for shape legend
+            color_handles: List of handles for color legend
+            color_title: Title for color legend
+            location: Matplotlib location string for positioning
+        """
+        is_edge = self._is_edge_location(location)
+
+        # Determine base anchor point from location string
+        # Map location to (x, y) coordinates in figure space
+        anchor_map = {
+            'upper left': (0.02, 0.98),
+            'upper center': (0.5, 0.98),
+            'upper right': (0.98, 0.98),
+            'center left': (0.02, 0.5),
+            'center': (0.5, 0.5),
+            'center right': (0.98, 0.5),
+            'lower left': (0.02, 0.02),
+            'lower center': (0.5, 0.02),
+            'lower right': (0.98, 0.02),
+        }
+
+        base_x, base_y = anchor_map.get(location, (0.98, 0.98))
+
+        if is_edge:
+            # Stack vertically on edges
+            # Position shape legend at the top
+            shape_legend = self.ax.legend(
+                handles=shape_handles,
+                title=shape_title,
+                loc=location,
+                frameon=True,
+                framealpha=0.9,
+                edgecolor='black',
+                bbox_to_anchor=(base_x, base_y),
+                bbox_transform=self.fig.transFigure
+            )
+            shape_legend.get_title().set_fontweight('bold')
+            self.ax.add_artist(shape_legend)
+
+            # Calculate offset for color legend below shape legend
+            # Estimate shape legend height and add spacing
+            shape_height = len(shape_handles) * 0.025 + 0.05  # Rough estimate
+
+            # Adjust y position for color legend
+            if 'upper' in location:
+                color_y = base_y - shape_height - 0.02  # Stack below
+            elif 'lower' in location:
+                color_y = base_y + shape_height + 0.02  # Stack above
+            else:  # center
+                color_y = base_y - shape_height / 2 - 0.01  # Stack below
+
+            color_legend = self.ax.legend(
+                handles=color_handles,
+                title=color_title,
+                loc=location,
+                frameon=True,
+                framealpha=0.9,
+                edgecolor='black',
+                bbox_to_anchor=(base_x, color_y),
+                bbox_transform=self.fig.transFigure
+            )
+            color_legend.get_title().set_fontweight('bold')
+        else:
+            # Place side by side for non-edge locations (top, bottom, center)
+            # Estimate width of each legend
+            legend_width = 0.15
+
+            if 'center' in location and location != 'center left' and location != 'center right':
+                # For center positions, place them side by side
+                shape_x = base_x - legend_width / 2 - 0.01
+                color_x = base_x + legend_width / 2 + 0.01
+
+                shape_legend = self.ax.legend(
+                    handles=shape_handles,
+                    title=shape_title,
+                    loc='center',
+                    frameon=True,
+                    framealpha=0.9,
+                    edgecolor='black',
+                    bbox_to_anchor=(shape_x, base_y),
+                    bbox_transform=self.fig.transFigure
+                )
+                shape_legend.get_title().set_fontweight('bold')
+                self.ax.add_artist(shape_legend)
+
+                color_legend = self.ax.legend(
+                    handles=color_handles,
+                    title=color_title,
+                    loc='center',
+                    frameon=True,
+                    framealpha=0.9,
+                    edgecolor='black',
+                    bbox_to_anchor=(color_x, base_y),
+                    bbox_transform=self.fig.transFigure
+                )
+                color_legend.get_title().set_fontweight('bold')
+            else:
+                # For other positions, fall back to stacking
+                shape_legend = self.ax.legend(
+                    handles=shape_handles,
+                    title=shape_title,
+                    loc=location,
+                    frameon=True,
+                    framealpha=0.9,
+                    edgecolor='black'
+                )
+                shape_legend.get_title().set_fontweight('bold')
+                self.ax.add_artist(shape_legend)
+
+                # Estimate offset
+                shape_height = len(shape_handles) * 0.025 + 0.05
+                if 'upper' in location:
+                    color_y = base_y - shape_height - 0.02
+                else:
+                    color_y = base_y + shape_height + 0.02
+
+                color_legend = self.ax.legend(
+                    handles=color_handles,
+                    title=color_title,
+                    loc=location,
+                    frameon=True,
+                    framealpha=0.9,
+                    edgecolor='black',
+                    bbox_to_anchor=(base_x, color_y),
+                    bbox_transform=self.fig.transFigure
+                )
+                color_legend.get_title().set_fontweight('bold')
 
     def _format_regression_label(self, name: str, reg, include_equation: bool = None, include_r2: bool = None) -> str:
         """Format a modern, compact regression label.
@@ -3898,7 +4135,7 @@ class Crossplot:
                 # Create custom legend handles
                 legend_elements = [Patch(facecolor=category_colors[cat],
                                        edgecolor=self.edge_color,
-                                       label=str(cat))
+                                       label=self._get_display_label(cat, 'color'))
                                  for cat in unique_categories]
 
                 colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
@@ -4008,15 +4245,48 @@ class Crossplot:
                 edgecolors=self.edge_color,
                 linewidths=self.edge_width,
                 marker=marker,
-                label=str(group_name)
+                label=self._get_display_label(group_name, 'shape')
             )
 
             if first_scatter is None and self.color and not is_categorical:
                 first_scatter = scatter
 
-        # Add legend with smart placement
-        if self.show_legend:
+        # Check if we need both shape and color legends (grouped layout)
+        need_shape_legend = self.show_legend
+        need_color_legend = self.color and is_categorical and self.show_legend
+
+        if need_shape_legend and need_color_legend:
+            # Create grouped legends in the same region
             # Get best location based on data density
+            if self._data is not None:
+                primary_loc, _ = self._find_best_legend_locations(self._data)
+            else:
+                primary_loc = 'best'
+
+            # Prepare shape legend handles (from scatter plots)
+            shape_handles, _ = self.ax.get_legend_handles_labels()
+
+            # Prepare color legend handles
+            c_vals_all = data['color_val'].values
+            unique_categories = pd.Series(c_vals_all).dropna().unique()
+            color_handles = [Patch(facecolor=category_colors[cat],
+                                  edgecolor=self.edge_color,
+                                  label=self._get_display_label(cat, 'color'))
+                            for cat in unique_categories]
+
+            colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
+
+            # Create grouped legends
+            self._create_grouped_legends(
+                shape_handles=shape_handles,
+                shape_title=group_label,
+                color_handles=color_handles,
+                color_title=colorbar_label,
+                location=primary_loc
+            )
+
+        elif need_shape_legend:
+            # Only shape legend needed
             if self._data is not None:
                 primary_loc, _ = self._find_best_legend_locations(self._data)
             else:
@@ -4030,43 +4300,15 @@ class Crossplot:
                 edgecolor='black'
             )
             legend.get_title().set_fontweight('bold')
-
             # Store the primary legend so it persists when regression legend is added
             self.ax.add_artist(legend)
 
-        # Add colorbar or color legend based on color type
-        if self.color:
-            if is_categorical and self.show_legend:
-                # Create separate legend for categorical colors
-                c_vals_all = data['color_val'].values
-                unique_categories = pd.Series(c_vals_all).dropna().unique()
-
-                # Create custom legend handles
-                legend_elements = [Patch(facecolor=category_colors[cat],
-                                       edgecolor=self.edge_color,
-                                       label=str(cat))
-                                 for cat in unique_categories]
-
-                colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
-
-                # Find a good location for the color legend (opposite corner from shape legend)
-                if self._data is not None:
-                    _, secondary_loc = self._find_best_legend_locations(self._data)
-                else:
-                    secondary_loc = 'upper right'
-
-                color_legend = self.ax.legend(handles=legend_elements,
-                                            title=colorbar_label,
-                                            loc=secondary_loc,
-                                            frameon=True,
-                                            framealpha=0.9,
-                                            edgecolor='black')
-                color_legend.get_title().set_fontweight('bold')
-            elif not is_categorical and self.show_colorbar and first_scatter:
-                # Add continuous colorbar
-                self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
-                colorbar_label = self.color if self.color != "depth" else "Depth"
-                self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+        # Add colorbar for continuous color mapping
+        if self.color and not is_categorical and self.show_colorbar and first_scatter:
+            # Add continuous colorbar
+            self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
+            colorbar_label = self.color if self.color != "depth" else "Depth"
+            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
 
     def add_regression(
         self,

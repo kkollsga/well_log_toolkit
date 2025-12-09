@@ -642,7 +642,7 @@ class Property(PropertyOperationsMixin):
 
     def resample(self, target_depth: Union[np.ndarray, 'Property']) -> 'Property':
         """
-        Resample property to a new depth grid using linear interpolation.
+        Resample property to a new depth grid using appropriate interpolation.
 
         This method creates a new Property object with values interpolated to match
         the target depth grid. This is required when combining properties with
@@ -663,7 +663,10 @@ class Property(PropertyOperationsMixin):
         Notes
         -----
         - Uses linear interpolation for continuous data
-        - Uses nearest-neighbor interpolation for discrete data
+        - Uses forward-fill (previous) for discrete data - geological zones extend
+          from their top/boundary until the next boundary is encountered. For example,
+          "Cerisa West top" at 2929.93m remains active until "Cerisa West SST 1 top"
+          at 2955.10m is intercepted.
         - Values outside the original depth range are set to NaN
         - NaN values in original data are excluded from interpolation
 
@@ -728,7 +731,11 @@ class Property(PropertyOperationsMixin):
 
         # Choose interpolation method based on type
         if self.type == 'discrete':
-            kind = 'nearest'
+            # Use 'previous' (forward-fill) for discrete properties
+            # This ensures geological zones extend from their top/boundary
+            # until the next top is encountered (e.g., "Cerisa West top" at 2929.93
+            # remains active until "Cerisa West SST 1 top" at 2955.10)
+            kind = 'previous'
         else:
             kind = 'linear'
 
