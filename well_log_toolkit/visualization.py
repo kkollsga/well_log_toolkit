@@ -3010,7 +3010,11 @@ class Crossplot:
             self.shape = "label"
         else:
             self.shape = shape
-        self.color = color
+        # Default color to "well" when layers are provided (for multi-well visualization)
+        if color is None and layers is not None and len(self.wells) > 1:
+            self.color = "well"
+        else:
+            self.color = color
         self.size = size
         self.colortemplate = colortemplate
         self.color_range = color_range
@@ -3166,6 +3170,9 @@ class Crossplot:
                     if self.color == "label":
                         # Use layer label for color
                         df['color_val'] = layer_label
+                    elif self.color == "well":
+                        # Use well name for color (categorical)
+                        df['color_val'] = well.name
                     elif self.color and self.color != "depth":
                         try:
                             color_prop = well.get_property(self.color)
