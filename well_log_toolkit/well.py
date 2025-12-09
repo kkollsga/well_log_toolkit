@@ -2471,8 +2471,9 @@ class Well:
 
     def Crossplot(
         self,
-        x: str,
-        y: str,
+        x: Optional[str] = None,
+        y: Optional[str] = None,
+        layers: Optional[dict[str, list[str]]] = None,
         shape: Optional[str] = None,
         color: Optional[str] = None,
         size: Optional[str] = None,
@@ -2603,6 +2604,7 @@ class Well:
             wells=self,
             x=x,
             y=y,
+            layers=layers,
             shape=shape,
             color=color,
             size=size,
