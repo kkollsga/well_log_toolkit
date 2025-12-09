@@ -1133,6 +1133,45 @@ plot = manager.Crossplot(
 plot.show()
 ```
 
+#### Multi-Layer Crossplots
+
+Combine different data types (Core vs Sidewall, different property pairs) in a single plot with automatic shape/color encoding:
+
+```python
+# Compare Core and Sidewall data with regression by well
+plot = manager.Crossplot(
+    layers={
+        "Core": ['CorePor', 'CorePerm'],
+        "Sidewall": ["SidewallPor", "SidewallPerm"]
+    },
+    color="Formation",              # Color by formation
+    shape="NetSand",                # Shape by net sand flag
+    regression_by_color="exponential-polynomial",  # Separate trend per formation
+    y_log=True,                     # Log scale for permeability
+    title="Core vs Sidewall Analysis"
+)
+plot.show()
+
+# Simpler version - automatic defaults
+manager.Crossplot(
+    layers={
+        "Core": ['CorePor', 'CorePerm'],
+        "Sidewall": ["SidewallPor", "SidewallPerm"]
+    },
+    y_log=True
+).show()
+# Automatically uses shape="label" (different markers per layer)
+# and color="well" (different colors per well)
+```
+
+**How it works:**
+
+- `layers` dict maps labels to [x, y] property pairs
+- Each layer gets combined in one plot with unified axes
+- Shape defaults to `"label"` (Core gets circles, Sidewall gets squares)
+- Color defaults to `"well"` for multi-well visualization
+- Perfect for comparing different measurement types (Core plugs vs Formation tests)
+
 ### Logarithmic Scales
 
 Perfect for permeability and resistivity data:
