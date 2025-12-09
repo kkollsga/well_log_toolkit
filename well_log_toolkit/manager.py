@@ -2598,7 +2598,7 @@ class WellDataManager:
         y: Optional[str] = None,
         wells: Optional[list[str]] = None,
         layers: Optional[dict[str, list[str]]] = None,
-        shape: str = "well",
+        shape: Optional[str] = None,
         color: Optional[str] = None,
         size: Optional[str] = None,
         colortemplate: str = "viridis",
@@ -2760,6 +2760,14 @@ class WellDataManager:
 
         if not well_objects:
             raise ValueError("No wells available for crossplot")
+
+        # Set default shape: "well" when no layers, "label" when layers provided
+        if shape is None and layers is None:
+            shape = "well"
+
+        # Set default color: "well" when shape defaults to "label" (i.e., when layers provided)
+        if color is None and layers is not None and shape is None:
+            color = "well"
 
         return CrossplotClass(
             wells=well_objects,

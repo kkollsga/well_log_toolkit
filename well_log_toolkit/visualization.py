@@ -12,9 +12,10 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import Normalize
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, Patch
 
 if TYPE_CHECKING:
     from .well import Well
@@ -2776,16 +2777,16 @@ class Crossplot:
         Dictionary mapping layer labels to [x_property, y_property] lists.
         Use this to combine multiple property pairs in a single plot.
         Example: {"Core": ["CorePor", "CorePerm"], "Sidewall": ["SWPor", "SWPerm"]}
-        When using layers, you can use "label" for color/shape/size to differentiate
-        between layer types. Default: None
+        When using layers, shape defaults to "label" and color defaults to "well" for
+        easy visualization of both layer types and wells. Default: None
     shape : str, optional
         Property name for shape mapping. Use "well" to map shapes by well name,
         or "label" (when using layers) to map shapes by layer type.
-        Default: None (single shape)
+        Default: "well" for multi-well plots, "label" when layers provided, None otherwise
     color : str, optional
         Property name for color mapping. Use "depth" to color by depth,
-        or "label" (when using layers) to color by layer type.
-        Default: None (single color)
+        "well" to color by well, or "label" (when using layers) to color by layer type.
+        Default: "well" when layers provided, None otherwise
     size : str, optional
         Property name for size mapping, or "label" (when using layers) to
         size by layer type.
@@ -2901,8 +2902,9 @@ class Crossplot:
     ...         "Core": ["CorePor_obds", "CorePerm_obds"],
     ...         "Sidewall": ["SidewallPor_ob", "SidewallPerm_ob"]
     ...     },
-    ...     shape="label",  # Different shapes for Core vs Sidewall
     ...     y_log=True
+    ...     # shape defaults to "label" - different shapes for Core vs Sidewall
+    ...     # color defaults to "well" - different colors for each well
     ... )
     >>> plot.show()
 
@@ -2912,6 +2914,7 @@ class Crossplot:
     ...     .add_layer("CorePor_obds", "CorePerm_obds", label="Core") \\
     ...     .add_layer("SidewallPor_ob", "SidewallPerm_ob", label="Sidewall") \\
     ...     .show()
+    ...     # Automatically uses shape="label" and color="well"
 
     Layers with regression by color (single trend per well):
 
@@ -2920,9 +2923,8 @@ class Crossplot:
     ...         "Core": ["CorePor_obds", "CorePerm_obds"],
     ...         "Sidewall": ["SidewallPor_ob", "SidewallPerm_ob"]
     ...     },
-    ...     shape="label",  # Different shapes for data types
-    ...     color="well",   # Color by well
     ...     regression_by_color="linear"  # One trend per well (combining both data types)
+    ...     # Defaults: shape="label" (different shapes), color="well" (different colors)
     ... )
     >>> plot.show()
 
@@ -3003,7 +3005,11 @@ class Crossplot:
         # Store parameters
         self.x = x
         self.y = y
-        self.shape = shape
+        # Default shape to "label" when layers are provided
+        if shape is None and layers is not None:
+            self.shape = "label"
+        else:
+            self.shape = shape
         self.color = color
         self.size = size
         self.colortemplate = colortemplate
@@ -3679,6 +3685,36 @@ class Crossplot:
         if update_legend and self.ax is not None:
             self._update_regression_legend()
 
+    def _is_categorical_color(self, color_values: np.ndarray) -> bool:
+        """
+        Determine if color values should be treated as categorical vs continuous.
+
+        Returns True if:
+        - Less than 50 unique values
+
+        This helps distinguish between:
+        - Categorical: well names, facies, zones, labels
+        - Continuous: depth, porosity, saturation
+        """
+        # Remove NaN values for analysis
+        valid_values = color_values[~pd.isna(color_values)]
+
+        if len(valid_values) == 0:
+            return False
+
+        unique_values = np.unique(valid_values)
+        n_unique = len(unique_values)
+
+        # Check if values are numeric - if not, it's categorical
+        try:
+            # Try to convert to float - if this fails, it's categorical (strings)
+            _ = unique_values.astype(float)
+        except (ValueError, TypeError):
+            return True
+
+        # Apply the criteria
+        return n_unique < 50
+
     def plot(self) -> 'Crossplot':
         """Generate the crossplot figure."""
         # Prepare data
@@ -3778,13 +3814,41 @@ class Crossplot:
         y_vals = data['y'].values
 
         # Determine colors
+        is_categorical = False
         if self.color:
-            c_vals = data['color_val'].values
-            cmap = self.colortemplate
-            if self.color_range:
-                vmin, vmax = self.color_range
+            c_vals_raw = data['color_val'].values
+
+            # Check if color data is categorical
+            is_categorical = self._is_categorical_color(c_vals_raw)
+
+            if is_categorical:
+                # Handle categorical colors with discrete palette
+                unique_categories = pd.Series(c_vals_raw).dropna().unique()
+                n_categories = len(unique_categories)
+
+                # Create color map for categories
+                if n_categories <= len(DEFAULT_COLORS):
+                    color_palette = DEFAULT_COLORS
+                else:
+                    # Use colormap for many categories
+                    cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
+                    color_palette = [cmap_obj(i) for i in range(n_categories)]
+
+                category_colors = {cat: color_palette[i % len(color_palette)]
+                                 for i, cat in enumerate(unique_categories)}
+
+                # Map each value to its color
+                c_vals = [category_colors.get(val, DEFAULT_COLORS[0]) for val in c_vals_raw]
+                cmap = None
+                vmin = vmax = None
             else:
-                vmin, vmax = np.nanmin(c_vals), np.nanmax(c_vals)
+                # Handle continuous colors
+                c_vals = c_vals_raw
+                cmap = self.colortemplate
+                if self.color_range:
+                    vmin, vmax = self.color_range
+                else:
+                    vmin, vmax = np.nanmin(c_vals), np.nanmax(c_vals)
         else:
             c_vals = DEFAULT_COLORS[0]
             cmap = None
@@ -3817,11 +3881,33 @@ class Crossplot:
             marker=self.marker
         )
 
-        # Add colorbar if using color mapping
-        if self.color and self.show_colorbar:
-            self.colorbar = self.fig.colorbar(self.scatter, ax=self.ax)
-            colorbar_label = self.color if self.color != "depth" else "Depth"
-            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+        # Add colorbar or legend based on color type
+        if self.color:
+            if is_categorical and self.show_legend:
+                # Create legend for categorical colors
+                c_vals_raw = data['color_val'].values
+                unique_categories = pd.Series(c_vals_raw).dropna().unique()
+
+                # Create custom legend handles
+                legend_elements = [Patch(facecolor=category_colors[cat],
+                                       edgecolor=self.edge_color,
+                                       label=str(cat))
+                                 for cat in unique_categories]
+
+                colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
+                legend = self.ax.legend(handles=legend_elements,
+                                      title=colorbar_label,
+                                      loc='best',
+                                      frameon=True,
+                                      framealpha=0.9,
+                                      edgecolor='black')
+                legend.get_title().set_fontweight('bold')
+                self.ax.add_artist(legend)
+            elif not is_categorical and self.show_colorbar:
+                # Add colorbar for continuous colors
+                self.colorbar = self.fig.colorbar(self.scatter, ax=self.ax)
+                colorbar_label = self.color if self.color != "depth" else "Depth"
+                self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
 
     def _plot_by_groups(self, data: pd.DataFrame) -> None:
         """Plot data grouped by shape/well."""
@@ -3836,6 +3922,27 @@ class Crossplot:
         # Define markers for different groups
         markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
 
+        # Check if colors are categorical (check once for all data)
+        is_categorical = False
+        category_colors = {}
+        if self.color:
+            c_vals_all = data['color_val'].values
+            is_categorical = self._is_categorical_color(c_vals_all)
+
+            if is_categorical:
+                # Prepare color mapping for categorical values
+                unique_categories = pd.Series(c_vals_all).dropna().unique()
+                n_categories = len(unique_categories)
+
+                if n_categories <= len(DEFAULT_COLORS):
+                    color_palette = DEFAULT_COLORS
+                else:
+                    cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
+                    color_palette = [cmap_obj(i) for i in range(n_categories)]
+
+                category_colors = {cat: color_palette[i % len(color_palette)]
+                                 for i, cat in enumerate(unique_categories)}
+
         # Track for colorbar (use first scatter)
         first_scatter = None
 
@@ -3848,13 +3955,22 @@ class Crossplot:
 
             # Determine colors
             if self.color:
-                c_vals = group_data['color_val'].values
-                cmap = self.colortemplate
-                if self.color_range:
-                    vmin, vmax = self.color_range
+                c_vals_raw = group_data['color_val'].values
+
+                if is_categorical:
+                    # Map categorical values to colors
+                    c_vals = [category_colors.get(val, DEFAULT_COLORS[0]) for val in c_vals_raw]
+                    cmap = None
+                    vmin = vmax = None
                 else:
-                    # Use global range from all data
-                    vmin, vmax = np.nanmin(data['color_val']), np.nanmax(data['color_val'])
+                    # Use continuous color mapping
+                    c_vals = c_vals_raw
+                    cmap = self.colortemplate
+                    if self.color_range:
+                        vmin, vmax = self.color_range
+                    else:
+                        # Use global range from all data
+                        vmin, vmax = np.nanmin(data['color_val']), np.nanmax(data['color_val'])
             else:
                 c_vals = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
                 cmap = None
@@ -3888,7 +4004,7 @@ class Crossplot:
                 label=str(group_name)
             )
 
-            if first_scatter is None and self.color:
+            if first_scatter is None and self.color and not is_categorical:
                 first_scatter = scatter
 
         # Add legend with smart placement
@@ -3911,11 +4027,39 @@ class Crossplot:
             # Store the primary legend so it persists when regression legend is added
             self.ax.add_artist(legend)
 
-        # Add colorbar if using color mapping
-        if self.color and self.show_colorbar and first_scatter:
-            self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
-            colorbar_label = self.color if self.color != "depth" else "Depth"
-            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+        # Add colorbar or color legend based on color type
+        if self.color:
+            if is_categorical and self.show_legend:
+                # Create separate legend for categorical colors
+                c_vals_all = data['color_val'].values
+                unique_categories = pd.Series(c_vals_all).dropna().unique()
+
+                # Create custom legend handles
+                legend_elements = [Patch(facecolor=category_colors[cat],
+                                       edgecolor=self.edge_color,
+                                       label=str(cat))
+                                 for cat in unique_categories]
+
+                colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
+
+                # Find a good location for the color legend (opposite corner from shape legend)
+                if self._data is not None:
+                    _, secondary_loc = self._find_best_legend_locations(self._data)
+                else:
+                    secondary_loc = 'upper right'
+
+                color_legend = self.ax.legend(handles=legend_elements,
+                                            title=colorbar_label,
+                                            loc=secondary_loc,
+                                            frameon=True,
+                                            framealpha=0.9,
+                                            edgecolor='black')
+                color_legend.get_title().set_fontweight('bold')
+            elif not is_categorical and self.show_colorbar and first_scatter:
+                # Add continuous colorbar
+                self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
+                colorbar_label = self.color if self.color != "depth" else "Depth"
+                self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
 
     def add_regression(
         self,
