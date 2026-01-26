@@ -1520,6 +1520,231 @@ class Property(PropertyOperationsMixin):
             precision=precision
         )
 
+    def discrete_summary(self, precision: int = 6) -> dict:
+        """
+        Compute summary statistics for discrete/categorical properties.
+
+        This method is designed for discrete logs (like facies, lithology flags,
+        or net/gross indicators) where categorical statistics are more meaningful
+        than continuous statistics like mean or standard deviation.
+
+        Parameters
+        ----------
+        precision : int, default 6
+            Number of decimal places for rounding numeric results
+
+        Returns
+        -------
+        dict
+            Nested dictionary with statistics for each discrete value.
+            If secondary properties (filters) exist, the structure is hierarchical.
+
+            For each discrete value, includes:
+            - label: Human-readable name (if labels defined)
+            - code: Numeric code for this category
+            - count: Number of samples with this value
+            - thickness: Total depth interval (meters) for this category
+            - fraction: Proportion of total thickness (0-1)
+            - depth_range: {min, max} depth extent
+
+        Examples
+        --------
+        >>> # Simple discrete summary (no filters)
+        >>> facies = well.get_property('Facies')
+        >>> stats = facies.discrete_summary()
+        >>> # {'Sand': {'code': 1, 'count': 150, 'thickness': 25.5, 'fraction': 0.45, ...},
+        >>> #  'Shale': {'code': 2, 'count': 180, 'thickness': 30.8, 'fraction': 0.55, ...}}
+
+        >>> # Grouped by zones
+        >>> filtered = facies.filter('Well_Tops')
+        >>> stats = filtered.discrete_summary()
+        >>> # {'Zone_A': {'Sand': {...}, 'Shale': {...}},
+        >>> #  'Zone_B': {'Sand': {...}, 'Shale': {...}}}
+
+        Notes
+        -----
+        For continuous properties, use `sums_avg()` instead.
+        """
+        # Calculate gross thickness for fraction calculation
+        full_intervals = compute_intervals(self.depth)
+        valid_mask = ~np.isnan(self.values)
+        gross_thickness = float(np.sum(full_intervals[valid_mask]))
+
+        if not self.secondary_properties:
+            # No filters, compute stats for all discrete values
+            return self._compute_discrete_stats(
+                np.ones(len(self.depth), dtype=bool),
+                gross_thickness=gross_thickness,
+                precision=precision
+            )
+
+        # Build hierarchical grouping
+        return self._recursive_discrete_group(
+            0,
+            np.ones(len(self.depth), dtype=bool),
+            gross_thickness=gross_thickness,
+            precision=precision
+        )
+
+    def _recursive_discrete_group(
+        self,
+        filter_idx: int,
+        mask: np.ndarray,
+        gross_thickness: float,
+        precision: int = 6
+    ) -> dict:
+        """
+        Recursively group discrete statistics by secondary properties.
+
+        Parameters
+        ----------
+        filter_idx : int
+            Index of current secondary property
+        mask : np.ndarray
+            Boolean mask for current group
+        gross_thickness : float
+            Total gross thickness for fraction calculation
+        precision : int, default 6
+            Number of decimal places for rounding
+
+        Returns
+        -------
+        dict
+            Discrete stats dict or nested dict of stats
+        """
+        if filter_idx >= len(self.secondary_properties):
+            # Base case: compute discrete statistics for this group
+            return self._compute_discrete_stats(mask, gross_thickness, precision)
+
+        # Get unique values for current filter
+        current_filter = self.secondary_properties[filter_idx]
+        current_filter_values = current_filter.values
+        filter_values = current_filter_values[mask]
+        unique_vals = np.unique(filter_values[~np.isnan(filter_values)])
+
+        if len(unique_vals) == 0:
+            # No valid values, return stats for current mask
+            return self._compute_discrete_stats(mask, gross_thickness, precision)
+
+        # Calculate parent thickness for fraction calculation in child groups
+        depth_array = self.depth
+        values_array = self.values
+        parent_intervals = compute_intervals(depth_array)
+        parent_valid = mask & ~np.isnan(values_array)
+        parent_thickness = float(np.sum(parent_intervals[parent_valid]))
+
+        # Group by each unique value
+        result = {}
+        for val in unique_vals:
+            sub_mask = mask & (current_filter_values == val)
+
+            # Create readable key with label if available
+            if current_filter.type == 'discrete':
+                int_val = int(val)
+            else:
+                int_val = int(val) if val == int(val) else None
+
+            if current_filter.labels is not None:
+                if int_val is not None and int_val in current_filter.labels:
+                    key = current_filter.labels[int_val]
+                elif val in current_filter.labels:
+                    key = current_filter.labels[val]
+                elif int_val is not None:
+                    key = f"{current_filter.name}_{int_val}"
+                else:
+                    key = f"{current_filter.name}_{val:.2f}"
+            elif int_val is not None:
+                key = f"{current_filter.name}_{int_val}"
+            else:
+                key = f"{current_filter.name}_{val:.2f}"
+
+            result[key] = self._recursive_discrete_group(
+                filter_idx + 1, sub_mask, parent_thickness, precision
+            )
+
+        return result
+
+    def _compute_discrete_stats(
+        self,
+        mask: np.ndarray,
+        gross_thickness: float,
+        precision: int = 6
+    ) -> dict:
+        """
+        Compute categorical statistics for discrete property values.
+
+        Parameters
+        ----------
+        mask : np.ndarray
+            Boolean mask selecting subset of data
+        gross_thickness : float
+            Total gross thickness for fraction calculation
+        precision : int, default 6
+            Number of decimal places for rounding
+
+        Returns
+        -------
+        dict
+            Dictionary with stats for each discrete value:
+            {value_label: {code, count, thickness, fraction, depth_range}}
+        """
+        values_array = self.values
+        depth_array = self.depth
+
+        values = values_array[mask]
+        depths = depth_array[mask]
+
+        # Compute intervals on full array then mask
+        full_intervals = compute_intervals(depth_array)
+        intervals = full_intervals[mask]
+
+        # Find unique discrete values
+        valid_mask_local = ~np.isnan(values)
+        valid_values = values[valid_mask_local]
+        valid_depths = depths[valid_mask_local]
+        valid_intervals = intervals[valid_mask_local]
+
+        if len(valid_values) == 0:
+            return {}
+
+        unique_vals = np.unique(valid_values)
+
+        result = {}
+        for val in unique_vals:
+            val_mask = valid_values == val
+            val_intervals = valid_intervals[val_mask]
+            val_depths = valid_depths[val_mask]
+
+            thickness = float(np.sum(val_intervals))
+            count = int(np.sum(val_mask))
+            fraction = thickness / gross_thickness if gross_thickness > 0 else 0.0
+
+            # Determine the key and label
+            int_val = int(val)
+            if self.labels is not None and int_val in self.labels:
+                key = self.labels[int_val]
+                label = self.labels[int_val]
+            else:
+                key = f"{self.name}_{int_val}"
+                label = None
+
+            stats = {
+                'code': int_val,
+                'count': count,
+                'thickness': round(thickness, precision),
+                'fraction': round(fraction, precision),
+                'depth_range': {
+                    'min': round(float(np.min(val_depths)), precision),
+                    'max': round(float(np.max(val_depths)), precision)
+                }
+            }
+            if label is not None:
+                stats['label'] = label
+
+            result[key] = stats
+
+        return result
+
     def _recursive_group(
         self,
         filter_idx: int,
