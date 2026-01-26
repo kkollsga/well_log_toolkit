@@ -425,7 +425,10 @@ template.add_track(track_type="continuous", logs=[...], title="Resistivity")
 template.add_track(track_type="discrete", logs=[...], title="Facies")
 template.add_track(track_type="depth", width=0.3, title="Depth")
 
-# Save for reuse
+# Add to project (saves with manager.save())
+manager.add_template(template)  # Uses template name "reservoir"
+
+# Or save standalone file
 template.save("reservoir_template.json")
 ```
 
@@ -773,8 +776,8 @@ view.show()
 
 **Option 2: Store in manager (recommended for multi-well projects)**
 ```python
-# Store template in manager
-manager.set_template("reservoir", template)
+# Store template in manager (uses template.name automatically)
+manager.add_template(template)
 
 # Use by name in any well
 view = well.WellView(depth_range=[2800, 3000], template="reservoir")
@@ -821,8 +824,8 @@ template.remove_track(2)
 template.add_track(track_type="continuous", logs=[{"name": "RT"}])
 
 # Save changes
-manager.set_template("reservoir", template)  # Update in manager
-template.save("updated_template.json")        # Save to file
+manager.add_template(template)          # Update in manager (uses template.name)
+template.save("updated_template.json")  # Save to file
 ```
 
 ### Customization
@@ -968,8 +971,8 @@ template.add_track(track_type="depth", width=0.3, title="MD (m)")
 # Add formation tops spanning all tracks
 template.add_tops(property_name='Zone')
 
-# Save and display
-manager.set_template("comprehensive", template)
+# Add to project and display
+manager.add_template(template)
 view = well.WellView(depth_range=[2800, 3200], template="comprehensive")
 view.save("comprehensive_log.png", dpi=300)
 ```
@@ -1848,7 +1851,8 @@ from well_log_toolkit import WellDataManager, Well, Property, LasFile
 - `remove_well(name)` - Remove well
 - `save(directory)` - Save project
 - `load(directory)` - Load project
-- `set_template(name, template)` - Store template
+- `add_template(template)` - Store template (uses template.name)
+- `set_template(name, template)` - Store template with custom name
 - `get_template(name)` - Retrieve template
 - `list_templates()` - List template names
 - `Crossplot(x, y, wells=None, shape="well", ...)` - Create multi-well crossplot
@@ -2015,7 +2019,7 @@ template.add_track(
     logs=[{"name": "GR", "x_range": [0, 150], "color": "green"}],
     title="Gamma Ray"
 )
-manager.set_template("custom", template)
+manager.add_template(template)  # Stored as "custom"
 view = well.WellView(template="custom")
 view.save("log.png", dpi=300)
 ```

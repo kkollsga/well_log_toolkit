@@ -1120,17 +1120,18 @@ class WellView:
             )
 
         # Collect all tops data from all tops groups
-        all_tops_data = {}  # depth -> name mapping
+        all_tops_list = []
         for tops_group in self.tops:
-            tops_data = tops_group['tops']
-            all_tops_data.update(tops_data)
+            entries = tops_group.get('entries', [])
+            for entry in entries:
+                all_tops_list.append((entry['depth'], entry['name']))
 
         # Find depths for specified tops
         tops_depths = []
         not_found = []
         for top_name in tops_list:
             found = False
-            for depth, name in all_tops_data.items():
+            for depth, name in all_tops_list:
                 if name == top_name:
                     tops_depths.append(depth)
                     found = True
@@ -1140,7 +1141,7 @@ class WellView:
 
         # Only raise error if NONE of the tops were found
         if not tops_depths:
-            available_tops = list(set(all_tops_data.values()))
+            available_tops = list(set(name for _, name in all_tops_list))
             raise ValueError(
                 f"None of the specified formation tops were found: {tops_list}. "
                 f"Available tops: {available_tops}"
@@ -1338,11 +1339,8 @@ class WellView:
         if property_name is not None and tops_dict is not None:
             raise ValueError("Cannot specify both 'property_name' and 'tops_dict'")
 
-        # Get tops data
-        tops_data = {}  # depth -> formation name
-        color_data = {}  # depth -> color
-        style_data = {}  # depth -> line style
-        thickness_data = {}  # depth -> line thickness
+        # Get tops data as list of entries (supports multiple tops at same depth)
+        tops_entries = []  # List of {'depth': d, 'name': n, 'color': c, 'style': s, 'thickness': t}
 
         if property_name is not None:
             # Load from discrete property
@@ -1375,7 +1373,7 @@ class WellView:
                 if valid_values[i] != valid_values[i-1]:
                     boundaries.append(i)
 
-            # Build tops dictionary
+            # Build tops entries list
             for idx in boundaries:
                 depth = float(valid_depth[idx])
                 value = int(valid_values[idx])
@@ -1386,42 +1384,43 @@ class WellView:
                 else:
                     formation_name = f"Zone {value}"
 
-                tops_data[depth] = formation_name
+                entry = {'depth': depth, 'name': formation_name}
 
                 # Get color if available (colors parameter overrides property colors)
                 if colors is not None and value in colors:
-                    color_data[depth] = colors[value]
+                    entry['color'] = colors[value]
                 elif prop.colors and value in prop.colors:
-                    color_data[depth] = prop.colors[value]
+                    entry['color'] = prop.colors[value]
 
                 # Get style if available (styles parameter overrides property styles)
                 if styles is not None and value in styles:
-                    style_data[depth] = styles[value]
+                    entry['style'] = styles[value]
                 elif prop.styles and value in prop.styles:
-                    style_data[depth] = prop.styles[value]
+                    entry['style'] = prop.styles[value]
 
                 # Get thickness if available (thicknesses parameter overrides property thicknesses)
                 if thicknesses is not None and value in thicknesses:
-                    thickness_data[depth] = thicknesses[value]
+                    entry['thickness'] = thicknesses[value]
                 elif prop.thicknesses and value in prop.thicknesses:
-                    thickness_data[depth] = prop.thicknesses[value]
+                    entry['thickness'] = prop.thicknesses[value]
+
+                tops_entries.append(entry)
 
         else:
-            # Use provided dictionary
-            tops_data = tops_dict
-            if colors is not None:
-                color_data = colors
-            if styles is not None:
-                style_data = styles
-            if thicknesses is not None:
-                thickness_data = thicknesses
+            # Use provided dictionary - convert to list format
+            for depth, name in tops_dict.items():
+                entry = {'depth': depth, 'name': name}
+                if colors is not None and depth in colors:
+                    entry['color'] = colors[depth]
+                if styles is not None and depth in styles:
+                    entry['style'] = styles[depth]
+                if thicknesses is not None and depth in thicknesses:
+                    entry['thickness'] = thicknesses[depth]
+                tops_entries.append(entry)
 
         # Store tops for rendering
         self.tops.append({
-            'tops': tops_data,
-            'colors': color_data if color_data else None,
-            'styles': style_data if style_data else None,
-            'thicknesses': thickness_data if thickness_data else None
+            'entries': tops_entries
         })
 
     def _get_depth_mask(self, depth: np.ndarray) -> np.ndarray:
@@ -1451,34 +1450,21 @@ class WellView:
 
         # For each tops group
         for tops_group in self.tops:
-            tops_data = tops_group['tops']
-            colors_data = tops_group['colors']
-            styles_data = tops_group['styles']
-            thicknesses_data = tops_group['thicknesses']
+            entries = tops_group.get('entries', [])
 
             # Draw each top
-            for depth, formation_name in tops_data.items():
+            for entry in entries:
+                depth = entry['depth']
+                formation_name = entry['name']
+
                 # Skip tops outside depth range
                 if depth < self.depth_range[0] or depth > self.depth_range[1]:
                     continue
 
-                # Get color for this top
-                if colors_data and depth in colors_data:
-                    color = colors_data[depth]
-                else:
-                    color = 'black'  # Default color
-
-                # Get line style for this top
-                if styles_data and depth in styles_data:
-                    linestyle = styles_data[depth]
-                else:
-                    linestyle = 'solid'  # Default style
-
-                # Get line thickness for this top
-                if thicknesses_data and depth in thicknesses_data:
-                    linewidth = thicknesses_data[depth]
-                else:
-                    linewidth = 1.5  # Default thickness
+                # Get color, style, thickness from entry (with defaults)
+                color = entry.get('color', 'black')
+                linestyle = entry.get('style', 'solid')
+                linewidth = entry.get('thickness', 1.5)
 
                 # Draw line across all non-depth tracks
                 for ax in non_depth_axes:
