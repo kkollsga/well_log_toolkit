@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.collections import PolyCollection
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, LogNorm
 from matplotlib.patches import Rectangle, Patch
 
 if TYPE_CHECKING:
@@ -2137,6 +2137,20 @@ class WellView:
         crossover_mask = left_values > right_values
         left_values = np.where(crossover_mask, right_values, left_values)
 
+        # Create valid mask - skip points where boundary values are NaN
+        boundary_valid_mask = ~(np.isnan(left_values) | np.isnan(right_values))
+
+        # Filter arrays to only valid points
+        if not np.all(boundary_valid_mask):
+            left_values = left_values[boundary_valid_mask]
+            right_values = right_values[boundary_valid_mask]
+            depth_for_fill = depth_for_fill[boundary_valid_mask]
+            n_points = len(depth_for_fill)
+
+            if n_points < 2:
+                # Not enough valid points to draw fill
+                return
+
         # Apply fill
         fill_color = fill.get("color", "lightblue")
         fill_alpha = fill.get("alpha", 0.3)
@@ -2171,6 +2185,10 @@ class WellView:
                     warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
                     return
 
+            # Apply same boundary mask to colormap values
+            if not np.all(boundary_valid_mask):
+                colormap_values = colormap_values[boundary_valid_mask]
+
             # Get color range for normalization
             # Check if we have valid values
             valid_mask = ~np.isnan(colormap_values)
@@ -2179,7 +2197,17 @@ class WellView:
                 return
 
             color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
-            norm = Normalize(vmin=color_range[0], vmax=color_range[1])
+            # Default color_log to track's log_scale setting
+            color_log = fill.get("color_log", track_log_scale)
+
+            # Use LogNorm for log scale colormap, Normalize for linear
+            if color_log:
+                # Ensure positive values for log scale
+                vmin = max(color_range[0], 1e-10)
+                vmax = max(color_range[1], vmin * 10)
+                norm = LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = Normalize(vmin=color_range[0], vmax=color_range[1])
             cmap = plt.get_cmap(cmap_name)
 
             # Create horizontal bands - each depth interval gets a color based on the curve value
@@ -2274,7 +2302,8 @@ class WellView:
         ax: plt.Axes,
         fill: dict,
         plotted_curves: dict,
-        depth: np.ndarray
+        depth: np.ndarray,
+        track_log_scale: bool = False
     ) -> None:
         """
         Add fill between curves or values.
@@ -2349,6 +2378,20 @@ class WellView:
         crossover_mask = left_values > right_values
         left_values = np.where(crossover_mask, right_values, left_values)
 
+        # Create valid mask - skip points where boundary values are NaN
+        boundary_valid_mask = ~(np.isnan(left_values) | np.isnan(right_values))
+
+        # Filter arrays to only valid points
+        depth_for_fill = depth  # Use local variable for consistency
+        if not np.all(boundary_valid_mask):
+            left_values = left_values[boundary_valid_mask]
+            right_values = right_values[boundary_valid_mask]
+            depth_for_fill = depth[boundary_valid_mask]
+
+            if len(depth_for_fill) < 2:
+                # Not enough valid points to draw fill
+                return
+
         # Apply fill
         fill_color = fill.get("color", "lightblue")
         fill_alpha = fill.get("alpha", 0.3)
@@ -2383,6 +2426,10 @@ class WellView:
                     warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
                     return
 
+            # Apply same boundary mask to colormap values
+            if not np.all(boundary_valid_mask):
+                colormap_values = colormap_values[boundary_valid_mask]
+
             # Get color range for normalization
             # Check if we have valid values
             valid_mask = ~np.isnan(colormap_values)
@@ -2391,12 +2438,22 @@ class WellView:
                 return
 
             color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
-            norm = Normalize(vmin=color_range[0], vmax=color_range[1])
+            # Default color_log to track's log_scale setting
+            color_log = fill.get("color_log", track_log_scale)
+
+            # Use LogNorm for log scale colormap, Normalize for linear
+            if color_log:
+                # Ensure positive values for log scale
+                vmin = max(color_range[0], 1e-10)
+                vmax = max(color_range[1], vmin * 10)
+                norm = LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = Normalize(vmin=color_range[0], vmax=color_range[1])
             cmap = plt.get_cmap(cmap_name)
 
             # Create horizontal bands - each depth interval gets a color based on the curve value
             # Use PolyCollection for performance (1000x faster than loop with fill_betweenx)
-            n_intervals = len(depth) - 1
+            n_intervals = len(depth_for_fill) - 1
 
             # Compute color values for each interval (average of adjacent points)
             color_values = (colormap_values[:-1] + colormap_values[1:]) / 2
@@ -2407,10 +2464,10 @@ class WellView:
             verts = []
             for i in range(n_intervals):
                 verts.append([
-                    (left_values[i], depth[i]),
-                    (right_values[i], depth[i]),
-                    (right_values[i+1], depth[i+1]),
-                    (left_values[i+1], depth[i+1])
+                    (left_values[i], depth_for_fill[i]),
+                    (right_values[i], depth_for_fill[i]),
+                    (right_values[i+1], depth_for_fill[i+1]),
+                    (left_values[i+1], depth_for_fill[i+1])
                 ])
 
             # Create PolyCollection with all polygons at once
