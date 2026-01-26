@@ -1626,17 +1626,18 @@ class Property(PropertyOperationsMixin):
             # No valid values, return stats for current mask
             return self._compute_discrete_stats(mask, gross_thickness, precision)
 
-        # Calculate parent thickness for fraction calculation in child groups
+        # Group by each unique value
         depth_array = self.depth
         values_array = self.values
-        parent_intervals = compute_intervals(depth_array)
-        parent_valid = mask & ~np.isnan(values_array)
-        parent_thickness = float(np.sum(parent_intervals[parent_valid]))
+        full_intervals = compute_intervals(depth_array)
 
-        # Group by each unique value
         result = {}
         for val in unique_vals:
             sub_mask = mask & (current_filter_values == val)
+
+            # Calculate thickness for THIS group specifically (not the parent)
+            group_valid = sub_mask & ~np.isnan(values_array)
+            group_thickness = float(np.sum(full_intervals[group_valid]))
 
             # Create readable key with label if available
             if current_filter.type == 'discrete':
@@ -1659,7 +1660,7 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_discrete_group(
-                filter_idx + 1, sub_mask, parent_thickness, precision
+                filter_idx + 1, sub_mask, group_thickness, precision
             )
 
         return result
