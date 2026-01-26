@@ -357,12 +357,18 @@ class Property(PropertyOperationsMixin):
         """
         Set the label mapping and mark source as modified.
 
+        Also sets property type to 'discrete' if not already set,
+        since labels are only meaningful for discrete properties.
+
         Parameters
         ----------
         value : Optional[dict[int, str]]
             Mapping of numeric values to label strings
         """
         if value != self._labels:
+            # Auto-set type to discrete if labels are being set
+            if value is not None and self._type != 'discrete':
+                self.type = 'discrete'  # Use setter to trigger value rounding
             self._labels = value
             self._mark_source_modified()
 

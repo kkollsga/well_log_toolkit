@@ -384,11 +384,18 @@ class _ManagerPropertyProxy:
 
     @labels.setter
     def labels(self, value: dict):
-        """Set labels for this property in all wells."""
+        """Set labels for this property in all wells.
+
+        Also sets property type to 'discrete' if not already set,
+        since labels are only meaningful for discrete properties.
+        """
         count = 0
         for well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
+                # Auto-set type to discrete if labels are being set
+                if prop.type != 'discrete':
+                    prop.type = 'discrete'
                 prop.labels = value
                 count += 1
             except (AttributeError, PropertyNotFoundError):
@@ -2481,37 +2488,52 @@ class WellDataManager:
         if well.name in self._name_mapping:
             del self._name_mapping[well.name]
 
+    def add_template(self, template: 'Template') -> None:
+        """
+        Store a template using its built-in name.
+
+        Parameters
+        ----------
+        template : Template
+            Template object (uses template.name as the key)
+
+        Examples
+        --------
+        >>> from well_log_toolkit import Template
+        >>>
+        >>> template = Template("reservoir")
+        >>> template.add_track(track_type="continuous", logs=[...])
+        >>> manager.add_template(template)  # Stored as "reservoir"
+        >>>
+        >>> # Use in WellView
+        >>> view = well.WellView(template="reservoir")
+        """
+        from .visualization import Template
+
+        if not isinstance(template, Template):
+            raise TypeError(f"template must be Template, got {type(template).__name__}")
+
+        self._templates[template.name] = template
+
     def set_template(self, name: str, template: Union['Template', dict]) -> None:
         """
-        Store a display template in the manager.
+        Store a template with a custom name (overrides template.name).
 
-        Templates can be referenced by name when creating WellView displays.
+        Use add_template() for the simpler case where the template's
+        built-in name should be used.
 
         Parameters
         ----------
         name : str
-            Template name for reference
+            Template name for reference (overrides template.name)
         template : Union[Template, dict]
             Template object or dictionary configuration
 
         Examples
         --------
-        >>> from well_log_toolkit.visualization import Template
-        >>>
-        >>> # Create and store template
+        >>> # Store with a different name than the template's built-in name
         >>> template = Template("reservoir")
-        >>> template.add_track(
-        ...     track_type="continuous",
-        ...     logs=[{"name": "GR", "x_range": [0, 150], "color": "green"}]
-        ... )
-        >>> manager.set_template("reservoir", template)
-        >>>
-        >>> # Use template in WellView
-        >>> from well_log_toolkit.visualization import WellView
-        >>> view = manager.well_36_7_5_A.WellView(
-        ...     depth_range=[2800, 3000],
-        ...     template="reservoir"
-        ... )
+        >>> manager.set_template("reservoir_v2", template)
         """
         from .visualization import Template
 
