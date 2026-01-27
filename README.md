@@ -250,6 +250,74 @@ stats = well.PHIE.filter('Zone').filter('Facies').sums_avg()
 - `samples` - Number of valid measurements
 - `range`, `depth_range` - Min/max values and depths
 
+### Custom Interval Filtering
+
+Define custom depth intervals without needing a discrete property in the well:
+
+```python
+# Define intervals with name, top, and base
+intervals = [
+    {"name": "Zone_A", "top": 2500, "base": 2650},
+    {"name": "Zone_B", "top": 2650, "base": 2800}
+]
+
+# Use with sums_avg or discrete_summary
+stats = well.PHIE.filter_intervals(intervals).sums_avg()
+# → {'Zone_A': {'mean': 0.18, ...}, 'Zone_B': {'mean': 0.21, ...}}
+
+facies_stats = well.Facies.filter_intervals(intervals).discrete_summary()
+```
+
+**Overlapping intervals** are supported - each interval is calculated independently:
+
+```python
+# These intervals overlap at 2600-2700m
+intervals = [
+    {"name": "Full_Reservoir", "top": 2500, "base": 2800},
+    {"name": "Upper_Section", "top": 2500, "base": 2700}
+]
+# Depths 2500-2700 are counted in BOTH zones
+stats = well.PHIE.filter_intervals(intervals).sums_avg()
+```
+
+**Save intervals for reuse:**
+
+```python
+# Save intervals to the well
+well.PHIE.filter_intervals(intervals, save="Reservoir_Zones")
+
+# Use saved intervals by name
+stats = well.PHIE.filter_intervals("Reservoir_Zones").sums_avg()
+
+# List saved intervals
+print(well.saved_intervals)  # ['Reservoir_Zones']
+
+# Retrieve intervals
+intervals = well.get_intervals("Reservoir_Zones")
+```
+
+**Save different intervals for multiple wells:**
+
+```python
+# Define well-specific intervals
+manager.well_A.PHIE.filter_intervals({
+    "Well_A": [{"name": "Zone_A", "top": 2500, "base": 2700}],
+    "Well_B": [{"name": "Zone_A", "top": 2600, "base": 2800}]
+}, save="My_Zones")
+
+# Both wells now have "My_Zones" saved with their respective intervals
+```
+
+**Chain with other filters:**
+
+```python
+# Combine custom intervals with property filters
+stats = well.PHIE.filter_intervals(intervals).filter("NetFlag").sums_avg()
+# → {'Zone_A': {'Net': {...}, 'NonNet': {...}}, 'Zone_B': {...}}
+```
+
+> **💡 Key Difference:** Unlike `.filter('Well_Tops')` where each depth belongs to exactly one zone, `filter_intervals()` allows overlapping intervals where the same depths can contribute to multiple zones.
+
 ### Property Operations
 
 Create computed properties using natural mathematical syntax:

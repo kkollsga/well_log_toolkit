@@ -1872,7 +1872,8 @@ class Property(PropertyOperationsMixin):
         Compute discrete statistics for each custom interval independently.
 
         This allows overlapping intervals where the same depths can
-        contribute to multiple zones.
+        contribute to multiple zones. Zone-level metadata (depth_range, thickness)
+        is shown at the interval level, and fractions are relative to zone thickness.
         """
         result = {}
 
@@ -1884,21 +1885,48 @@ class Property(PropertyOperationsMixin):
             # Create mask for this interval (top <= depth < base)
             interval_mask = (self.depth >= top) & (self.depth < base)
 
+            # Calculate zone thickness for fraction calculation
+            full_intervals = compute_intervals(self.depth)
+            valid_mask = ~np.isnan(self.values) & interval_mask
+            zone_thickness = float(np.sum(full_intervals[valid_mask]))
+
+            # Get actual depth range within the interval (where we have data)
+            if np.any(valid_mask):
+                zone_depths = self.depth[valid_mask]
+                zone_depth_range = {
+                    'min': round(float(np.min(zone_depths)), precision),
+                    'max': round(float(np.max(zone_depths)), precision)
+                }
+            else:
+                zone_depth_range = {'min': top, 'max': base}
+
+            # Build interval result with zone-level metadata
+            interval_result = {
+                'depth_range': zone_depth_range,
+                'thickness': round(zone_thickness, precision)
+            }
+
             # If there are secondary properties, group within this interval
             if self.secondary_properties:
-                result[interval_name] = self._recursive_discrete_group(
+                facies_stats = self._recursive_discrete_group(
                     0,
                     interval_mask,
-                    gross_thickness=gross_thickness,
-                    precision=precision
+                    gross_thickness=zone_thickness,  # Use zone thickness for fractions
+                    precision=precision,
+                    include_depth_range=False  # Don't include depth_range per facies
                 )
             else:
                 # No secondary properties, compute stats directly for interval
-                result[interval_name] = self._compute_discrete_stats(
+                facies_stats = self._compute_discrete_stats(
                     interval_mask,
-                    gross_thickness=gross_thickness,
-                    precision=precision
+                    gross_thickness=zone_thickness,  # Use zone thickness for fractions
+                    precision=precision,
+                    include_depth_range=False  # Don't include depth_range per facies
                 )
+
+            # Nest facies stats under 'facies' key for cleaner structure
+            interval_result['facies'] = facies_stats
+            result[interval_name] = interval_result
 
         return result
 
@@ -1907,7 +1935,8 @@ class Property(PropertyOperationsMixin):
         filter_idx: int,
         mask: np.ndarray,
         gross_thickness: float,
-        precision: int = 6
+        precision: int = 6,
+        include_depth_range: bool = True
     ) -> dict:
         """
         Recursively group discrete statistics by secondary properties.
@@ -1922,6 +1951,8 @@ class Property(PropertyOperationsMixin):
             Total gross thickness for fraction calculation
         precision : int, default 6
             Number of decimal places for rounding
+        include_depth_range : bool, default True
+            Whether to include depth_range in per-facies stats
 
         Returns
         -------
@@ -1930,7 +1961,7 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute discrete statistics for this group
-            return self._compute_discrete_stats(mask, gross_thickness, precision)
+            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range)
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -1940,7 +1971,7 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_discrete_stats(mask, gross_thickness, precision)
+            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range)
 
         # Group by each unique value
         depth_array = self.depth
@@ -1976,7 +2007,7 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_discrete_group(
-                filter_idx + 1, sub_mask, group_thickness, precision
+                filter_idx + 1, sub_mask, group_thickness, precision, include_depth_range
             )
 
         return result
@@ -1985,7 +2016,8 @@ class Property(PropertyOperationsMixin):
         self,
         mask: np.ndarray,
         gross_thickness: float,
-        precision: int = 6
+        precision: int = 6,
+        include_depth_range: bool = True
     ) -> dict:
         """
         Compute categorical statistics for discrete property values.
@@ -1998,12 +2030,15 @@ class Property(PropertyOperationsMixin):
             Total gross thickness for fraction calculation
         precision : int, default 6
             Number of decimal places for rounding
+        include_depth_range : bool, default True
+            Whether to include depth_range in per-facies stats.
+            Set to False when using filter_intervals (depth_range shown at zone level).
 
         Returns
         -------
         dict
             Dictionary with stats for each discrete value:
-            {value_label: {code, count, thickness, fraction, depth_range}}
+            {value_label: {code, count, thickness, fraction, [depth_range]}}
         """
         values_array = self.values
         depth_array = self.depth
@@ -2049,12 +2084,13 @@ class Property(PropertyOperationsMixin):
                 'code': int_val,
                 'count': count,
                 'thickness': round(thickness, precision),
-                'fraction': round(fraction, precision),
-                'depth_range': {
+                'fraction': round(fraction, precision)
+            }
+            if include_depth_range:
+                stats['depth_range'] = {
                     'min': round(float(np.min(val_depths)), precision),
                     'max': round(float(np.max(val_depths)), precision)
                 }
-            }
             if label is not None:
                 stats['label'] = label
 
