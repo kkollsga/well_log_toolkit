@@ -1789,7 +1789,11 @@ class Property(PropertyOperationsMixin):
 
         return result
 
-    def discrete_summary(self, precision: int = 6) -> dict:
+    def discrete_summary(
+        self,
+        precision: int = 6,
+        skip: Optional[list[str]] = None
+    ) -> dict:
         """
         Compute summary statistics for discrete/categorical properties.
 
@@ -1801,6 +1805,9 @@ class Property(PropertyOperationsMixin):
         ----------
         precision : int, default 6
             Number of decimal places for rounding numeric results
+        skip : list[str], optional
+            List of field names to exclude from the output.
+            Valid fields: 'code', 'count', 'thickness', 'fraction', 'depth_range'
 
         Returns
         -------
@@ -1808,8 +1815,7 @@ class Property(PropertyOperationsMixin):
             Nested dictionary with statistics for each discrete value.
             If secondary properties (filters) exist, the structure is hierarchical.
 
-            For each discrete value, includes:
-            - label: Human-readable name (if labels defined)
+            For each discrete value, includes (unless skipped):
             - code: Numeric code for this category
             - count: Number of samples with this value
             - thickness: Total depth interval (meters) for this category
@@ -1823,6 +1829,10 @@ class Property(PropertyOperationsMixin):
         >>> stats = facies.discrete_summary()
         >>> # {'Sand': {'code': 1, 'count': 150, 'thickness': 25.5, 'fraction': 0.45, ...},
         >>> #  'Shale': {'code': 2, 'count': 180, 'thickness': 30.8, 'fraction': 0.55, ...}}
+
+        >>> # Skip certain fields
+        >>> stats = facies.discrete_summary(skip=['code', 'count'])
+        >>> # {'Sand': {'thickness': 25.5, 'fraction': 0.45}, ...}
 
         >>> # Grouped by zones
         >>> filtered = facies.filter('Well_Tops')
@@ -1842,26 +1852,43 @@ class Property(PropertyOperationsMixin):
         # Check for custom intervals (from filter_intervals)
         # These are processed independently, allowing overlaps
         if hasattr(self, '_custom_intervals') and self._custom_intervals:
-            return self._compute_discrete_stats_by_intervals(
+            result = self._compute_discrete_stats_by_intervals(
                 gross_thickness=gross_thickness,
                 precision=precision
             )
-
-        if not self.secondary_properties:
+        elif not self.secondary_properties:
             # No filters, compute stats for all discrete values
-            return self._compute_discrete_stats(
+            result = self._compute_discrete_stats(
+                np.ones(len(self.depth), dtype=bool),
+                gross_thickness=gross_thickness,
+                precision=precision
+            )
+        else:
+            # Build hierarchical grouping
+            result = self._recursive_discrete_group(
+                0,
                 np.ones(len(self.depth), dtype=bool),
                 gross_thickness=gross_thickness,
                 precision=precision
             )
 
-        # Build hierarchical grouping
-        return self._recursive_discrete_group(
-            0,
-            np.ones(len(self.depth), dtype=bool),
-            gross_thickness=gross_thickness,
-            precision=precision
-        )
+        # Remove skipped fields from output
+        if skip:
+            result = self._remove_keys_recursive(result, skip)
+
+        return result
+
+    def _remove_keys_recursive(self, d: dict, keys_to_remove: list[str]) -> dict:
+        """Recursively remove specified keys from nested dicts."""
+        result = {}
+        for key, value in d.items():
+            if key in keys_to_remove:
+                continue
+            if isinstance(value, dict):
+                result[key] = self._remove_keys_recursive(value, keys_to_remove)
+            else:
+                result[key] = value
+        return result
 
     def _compute_discrete_stats_by_intervals(
         self,
@@ -2071,14 +2098,12 @@ class Property(PropertyOperationsMixin):
             count = int(np.sum(val_mask))
             fraction = thickness / gross_thickness if gross_thickness > 0 else 0.0
 
-            # Determine the key and label
+            # Determine the key (use label if available, otherwise name_code)
             int_val = int(val)
             if self.labels is not None and int_val in self.labels:
                 key = self.labels[int_val]
-                label = self.labels[int_val]
             else:
                 key = f"{self.name}_{int_val}"
-                label = None
 
             stats = {
                 'code': int_val,
@@ -2091,8 +2116,6 @@ class Property(PropertyOperationsMixin):
                     'min': round(float(np.min(val_depths)), precision),
                     'max': round(float(np.max(val_depths)), precision)
                 }
-            if label is not None:
-                stats['label'] = label
 
             result[key] = stats
 
