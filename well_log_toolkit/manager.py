@@ -132,11 +132,12 @@ class _ManagerPropertyProxy:
     When assigned to a manager attribute, the operation is broadcast to all wells.
     """
 
-    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None, filters=None):
+    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None, filters=None, custom_intervals=None):
         self._manager = manager
         self._property_name = property_name
         self._operation = operation  # Function to apply to each property
         self._filters = filters or []  # List of (filter_name, insert_boundaries) tuples
+        self._custom_intervals = custom_intervals  # For filter_intervals: str (saved name) or dict (well-specific)
 
     def _apply_operation(self, prop: Property):
         """Apply stored operation to a property."""
@@ -147,9 +148,50 @@ class _ManagerPropertyProxy:
             # Apply the operation
             return self._operation(prop)
 
+    def _apply_filter_intervals(self, prop: Property, well):
+        """
+        Apply filter_intervals to a property if custom_intervals is set.
+
+        Returns None if the well doesn't have the required saved intervals.
+        """
+        if not self._custom_intervals:
+            return prop
+
+        intervals_config = self._custom_intervals
+        intervals = intervals_config['intervals']
+        name = intervals_config['name']
+        insert_boundaries = intervals_config['insert_boundaries']
+        save = intervals_config['save']
+
+        # Resolve intervals for this well
+        if isinstance(intervals, str):
+            # Saved filter name - check if this well has it
+            if intervals not in well._saved_filter_intervals:
+                return None  # Skip wells that don't have this saved filter
+            well_intervals = intervals
+        elif isinstance(intervals, dict):
+            # Well-specific intervals
+            well_intervals = None
+            if well.name in intervals:
+                well_intervals = intervals[well.name]
+            elif well.sanitized_name in intervals:
+                well_intervals = intervals[well.sanitized_name]
+            if well_intervals is None:
+                return None  # Skip wells not in the dict
+        else:
+            return None
+
+        # Apply filter_intervals
+        return prop.filter_intervals(
+            well_intervals,
+            name=name,
+            insert_boundaries=insert_boundaries,
+            save=save
+        )
+
     def _create_proxy_with_operation(self, operation):
         """Create a new proxy with an operation."""
-        return _ManagerPropertyProxy(self._manager, self._property_name, operation, self._filters)
+        return _ManagerPropertyProxy(self._manager, self._property_name, operation, self._filters, self._custom_intervals)
 
     def _extract_statistic_from_grouped(self, grouped_result: dict, stat_name: str, **kwargs) -> dict:
         """
@@ -1115,7 +1157,141 @@ class _ManagerPropertyProxy:
         new_filters = self._filters + [(property_name, insert_boundaries)]
 
         # Return new proxy with filter added
-        return _ManagerPropertyProxy(self._manager, self._property_name, self._operation, new_filters)
+        return _ManagerPropertyProxy(self._manager, self._property_name, self._operation, new_filters, self._custom_intervals)
+
+    def filter_intervals(
+        self,
+        intervals: Union[str, dict],
+        name: str = "Custom_Intervals",
+        insert_boundaries: Optional[bool] = None,
+        save: Optional[str] = None
+    ) -> '_ManagerPropertyProxy':
+        """
+        Filter by custom depth intervals across all wells.
+
+        Parameters
+        ----------
+        intervals : str | dict
+            - str: Name of saved filter intervals (looks up per-well)
+            - dict: Well-specific intervals {well_name: [intervals]}
+        name : str, default "Custom_Intervals"
+            Name for the filter property (used in output labels)
+        insert_boundaries : bool, optional
+            If True, insert synthetic samples at interval boundaries.
+        save : str, optional
+            If provided, save the intervals to the well(s) under this name.
+
+        Returns
+        -------
+        _ManagerPropertyProxy
+            New proxy with intervals filter added
+
+        Examples
+        --------
+        >>> # Use saved intervals (only wells with saved intervals are included)
+        >>> manager.Facies.filter_intervals("Reservoir_Zones").discrete_summary()
+
+        >>> # Well-specific intervals
+        >>> manager.Facies.filter_intervals({
+        ...     "well_A": [{"name": "Zone1", "top": 2500, "base": 2700}],
+        ...     "well_B": [{"name": "Zone1", "top": 2600, "base": 2800}]
+        ... }).discrete_summary()
+        """
+        # Store intervals config for use when computing stats
+        intervals_config = {
+            'intervals': intervals,
+            'name': name,
+            'insert_boundaries': insert_boundaries,
+            'save': save
+        }
+
+        return _ManagerPropertyProxy(
+            self._manager, self._property_name, self._operation,
+            self._filters, intervals_config
+        )
+
+    def discrete_summary(
+        self,
+        precision: int = 6,
+        skip: Optional[list] = None
+    ) -> dict:
+        """
+        Compute discrete summary statistics across all wells.
+
+        Parameters
+        ----------
+        precision : int, default 6
+            Number of decimal places for rounding numeric results
+        skip : list[str], optional
+            List of field names to exclude from the output.
+            Valid fields: 'code', 'count', 'thickness', 'fraction', 'depth_range'
+
+        Returns
+        -------
+        dict
+            Nested dictionary with structure:
+            {
+                "well_name": {
+                    "zone_name": {
+                        "depth_range": {...},
+                        "thickness": ...,
+                        "facies": {...}
+                    }
+                }
+            }
+
+        Examples
+        --------
+        >>> # Use saved intervals
+        >>> manager.Facies.filter_intervals("Reservoir_Zones").discrete_summary()
+
+        >>> # Skip certain fields
+        >>> manager.Facies.filter_intervals("Zones").discrete_summary(skip=["code", "count"])
+        """
+        if not self._custom_intervals:
+            raise ValueError(
+                "discrete_summary() requires filter_intervals(). "
+                "Use .filter_intervals('saved_name') or .filter_intervals({...}) first."
+            )
+
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            well_result = self._compute_discrete_summary_for_well(well, precision, skip)
+            if well_result is not None:
+                result[well_name] = well_result
+
+        return _sanitize_for_json(result)
+
+    def _compute_discrete_summary_for_well(
+        self,
+        well,
+        precision: int,
+        skip: Optional[list]
+    ):
+        """
+        Helper to compute discrete_summary for a property in a well.
+        """
+        try:
+            prop = well.get_property(self._property_name)
+            prop = self._apply_operation(prop)
+
+            # Apply filter_intervals
+            prop = self._apply_filter_intervals(prop, well)
+            if prop is None:
+                return None  # Well doesn't have the saved intervals
+
+            # Apply any additional filters
+            for filter_name, filter_insert_boundaries in self._filters:
+                if filter_insert_boundaries is not None:
+                    prop = prop.filter(filter_name, insert_boundaries=filter_insert_boundaries)
+                else:
+                    prop = prop.filter(filter_name)
+
+            return prop.discrete_summary(precision=precision, skip=skip)
+
+        except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+            return None
 
     def sums_avg(
         self,
@@ -1206,11 +1382,19 @@ class _ManagerPropertyProxy:
         >>> #         "core": {"Zone_1": {...}}
         >>> #     }
         >>> # }
+
+        >>> # With custom intervals
+        >>> manager.PHIE.filter_intervals("Reservoir_Zones").sums_avg()
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {"Zone_1": {"mean": 0.18, ...}},
+        >>> #     "well_B": {"Zone_1": {"mean": 0.21, ...}}
+        >>> # }
         """
-        if not self._filters:
+        if not self._filters and not self._custom_intervals:
             raise ValueError(
-                "sums_avg() requires at least one filter. "
-                "Use .filter('property_name') before calling sums_avg()"
+                "sums_avg() requires at least one filter or filter_intervals(). "
+                "Use .filter('property_name') or .filter_intervals(...) before calling sums_avg()"
             )
 
         result = {}
@@ -1247,6 +1431,11 @@ class _ManagerPropertyProxy:
                     prop = well.get_property(self._property_name, source=source_name)
                     prop = self._apply_operation(prop)
 
+                    # Apply filter_intervals if set
+                    prop = self._apply_filter_intervals(prop, well)
+                    if prop is None:
+                        continue  # Well doesn't have the saved intervals
+
                     # Apply all filters (specify source to avoid ambiguity)
                     # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
                     for filter_name, insert_boundaries in self._filters:
@@ -1274,6 +1463,11 @@ class _ManagerPropertyProxy:
             prop = well.get_property(self._property_name)
             prop = self._apply_operation(prop)
 
+            # Apply filter_intervals if set
+            prop = self._apply_filter_intervals(prop, well)
+            if prop is None:
+                return None  # Well doesn't have the saved intervals
+
             # Apply all filters
             for filter_name, insert_boundaries in self._filters:
                 if insert_boundaries is not None:
@@ -1298,6 +1492,11 @@ class _ManagerPropertyProxy:
                     try:
                         prop = well.get_property(self._property_name, source=source_name)
                         prop = self._apply_operation(prop)
+
+                        # Apply filter_intervals if set
+                        prop = self._apply_filter_intervals(prop, well)
+                        if prop is None:
+                            continue  # Well doesn't have the saved intervals
 
                         # Apply all filters (specify source to avoid ambiguity)
                         # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
