@@ -1165,6 +1165,10 @@ class Property(PropertyOperationsMixin):
         new_prop._original_sample_count = len(self.depth)
         new_prop._boundary_samples_inserted = len(new_depth) - len(self.depth)
 
+        # Preserve custom intervals if they exist (from filter_intervals)
+        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+            new_prop._custom_intervals = self._custom_intervals
+
         return new_prop
 
     def filter_intervals(

@@ -1618,6 +1618,346 @@ class _ManagerPropertyProxy:
             )
 
 
+class _ManagerMultiPropertyProxy:
+    """
+    Proxy for computing statistics across multiple properties on all wells.
+
+    Supports filter(), filter_intervals(), and sums_avg() methods.
+    Multi-property results nest property-specific stats under property names
+    while keeping common stats (depth_range, samples, thickness, etc.) at
+    the group level.
+    """
+
+    # Stats that are specific to each property (nested under property name)
+    PROPERTY_STATS = {'mean', 'median', 'mode', 'sum', 'std_dev', 'percentile', 'range'}
+
+    # Stats that are common across properties (stay at group level)
+    COMMON_STATS = {'depth_range', 'samples', 'thickness', 'gross_thickness', 'thickness_fraction', 'calculation'}
+
+    def __init__(
+        self,
+        manager: 'WellDataManager',
+        property_names: list[str],
+        filters: Optional[list[tuple]] = None,
+        custom_intervals: Optional[dict] = None
+    ):
+        self._manager = manager
+        self._property_names = property_names
+        self._filters = filters or []
+        self._custom_intervals = custom_intervals
+
+    def filter(
+        self,
+        property_name: str,
+        insert_boundaries: Optional[bool] = None
+    ) -> '_ManagerMultiPropertyProxy':
+        """
+        Add a filter (discrete property) to group statistics by.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of discrete property to group by
+        insert_boundaries : bool, optional
+            Whether to insert boundary values at filter transitions
+
+        Returns
+        -------
+        _ManagerMultiPropertyProxy
+            New proxy with filter added
+        """
+        new_filters = self._filters + [(property_name, insert_boundaries)]
+        return _ManagerMultiPropertyProxy(
+            self._manager, self._property_names, new_filters, self._custom_intervals
+        )
+
+    def filter_intervals(
+        self,
+        intervals: Union[str, list, dict],
+        name: str = "Custom_Intervals",
+        insert_boundaries: Optional[bool] = None,
+        save: Optional[str] = None
+    ) -> '_ManagerMultiPropertyProxy':
+        """
+        Filter by custom depth intervals.
+
+        Parameters
+        ----------
+        intervals : str, list, or dict
+            - str: Name of saved intervals to retrieve from each well
+            - list: List of interval dicts [{"name": "Zone_A", "top": 2500, "base": 2700}, ...]
+            - dict: Well-specific intervals {"well_name": [...], ...}
+        name : str, default "Custom_Intervals"
+            Name for the interval filter in results
+        insert_boundaries : bool, optional
+            Whether to insert boundary values at interval edges
+        save : str, optional
+            If provided, save intervals to wells with this name
+
+        Returns
+        -------
+        _ManagerMultiPropertyProxy
+            New proxy with custom intervals set
+        """
+        intervals_config = {
+            'intervals': intervals,
+            'name': name,
+            'insert_boundaries': insert_boundaries,
+            'save': save
+        }
+        return _ManagerMultiPropertyProxy(
+            self._manager, self._property_names, self._filters, intervals_config
+        )
+
+    def sums_avg(
+        self,
+        weighted: Optional[bool] = None,
+        arithmetic: Optional[bool] = None,
+        precision: int = 6
+    ) -> dict:
+        """
+        Compute statistics for multiple properties across all wells.
+
+        Multi-property results nest property-specific stats (mean, median, etc.)
+        under each property name, while common stats (depth_range, samples,
+        thickness, etc.) remain at the group level.
+
+        Parameters
+        ----------
+        weighted : bool, optional
+            Include depth-weighted statistics.
+            Default: True for continuous/discrete, False for sampled
+        arithmetic : bool, optional
+            Include arithmetic (unweighted) statistics.
+            Default: False for continuous/discrete, True for sampled
+        precision : int, default 6
+            Number of decimal places for rounding numeric results
+
+        Returns
+        -------
+        dict
+            Nested dictionary with structure:
+            {
+                "well_name": {
+                    "interval_name": {  # if using filter_intervals
+                        "filter_value": {
+                            "PropertyA": {"mean": ..., "median": ..., ...},
+                            "PropertyB": {"mean": ..., "median": ..., ...},
+                            "depth_range": {...},
+                            "samples": ...,
+                            "thickness": ...,
+                            ...
+                        }
+                    }
+                }
+            }
+
+        Examples
+        --------
+        >>> manager.properties(['PHIE', 'PERM']).filter('Facies').sums_avg()
+        >>> # Returns stats for both properties grouped by facies
+
+        >>> manager.properties(['PHIE', 'PERM']).filter_intervals("Zones").sums_avg()
+        >>> # Returns stats for both properties grouped by custom intervals
+        """
+        if not self._filters and not self._custom_intervals:
+            raise ValueError(
+                "sums_avg() requires at least one filter or filter_intervals(). "
+                "Use .filter('property_name') or .filter_intervals(...) first."
+            )
+
+        result = {}
+
+        for well_name, well in self._manager._wells.items():
+            well_result = self._compute_sums_avg_for_well(
+                well, weighted, arithmetic, precision
+            )
+            if well_result is not None:
+                result[well_name] = well_result
+
+        return _sanitize_for_json(result)
+
+    def _compute_sums_avg_for_well(
+        self,
+        well,
+        weighted: Optional[bool],
+        arithmetic: Optional[bool],
+        precision: int
+    ):
+        """
+        Compute multi-property sums_avg for a single well.
+        """
+        # Collect results for each property
+        property_results = {}
+
+        for prop_name in self._property_names:
+            try:
+                prop = well.get_property(prop_name)
+
+                # Apply filter_intervals if set
+                if self._custom_intervals:
+                    prop = self._apply_filter_intervals(prop, well)
+                    if prop is None:
+                        return None  # Well doesn't have the saved intervals
+
+                # Apply all filters
+                for filter_name, insert_boundaries in self._filters:
+                    if insert_boundaries is not None:
+                        prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                    else:
+                        prop = prop.filter(filter_name)
+
+                # Compute sums_avg
+                result = prop.sums_avg(
+                    weighted=weighted,
+                    arithmetic=arithmetic,
+                    precision=precision
+                )
+                property_results[prop_name] = result
+
+            except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+                # Property doesn't exist in this well, skip it
+                pass
+
+        if not property_results:
+            return None
+
+        # Merge results: nest property-specific stats, keep common stats at group level
+        return self._merge_property_results(property_results)
+
+    def _apply_filter_intervals(self, prop, well):
+        """
+        Apply filter_intervals to a property if custom_intervals is set.
+
+        Returns None if the well doesn't have the required saved intervals.
+        """
+        if not self._custom_intervals:
+            return prop
+
+        intervals_config = self._custom_intervals
+        intervals = intervals_config['intervals']
+        name = intervals_config['name']
+        insert_boundaries = intervals_config['insert_boundaries']
+        save = intervals_config['save']
+
+        # Resolve intervals for this well
+        if isinstance(intervals, str):
+            # Saved filter name - check if this well has it
+            if intervals not in well._saved_filter_intervals:
+                return None  # Skip wells that don't have this saved filter
+            well_intervals = intervals
+        elif isinstance(intervals, dict):
+            # Well-specific intervals
+            well_intervals = None
+            if well.name in intervals:
+                well_intervals = intervals[well.name]
+            elif well.sanitized_name in intervals:
+                well_intervals = intervals[well.sanitized_name]
+            if well_intervals is None:
+                return None  # Skip wells not in the dict
+        elif isinstance(intervals, list):
+            # Direct list of intervals
+            well_intervals = intervals
+        else:
+            return None
+
+        # Apply filter_intervals
+        return prop.filter_intervals(
+            well_intervals,
+            name=name,
+            insert_boundaries=insert_boundaries,
+            save=save
+        )
+
+    def _merge_property_results(self, property_results: dict) -> dict:
+        """
+        Merge results from multiple properties.
+
+        Nests property-specific stats under property names while keeping
+        common stats at the group level.
+
+        Parameters
+        ----------
+        property_results : dict
+            {property_name: sums_avg_result}
+
+        Returns
+        -------
+        dict
+            Merged result with structure:
+            {
+                "group_value": {
+                    "PropertyA": {"mean": ..., ...},
+                    "PropertyB": {"mean": ..., ...},
+                    "depth_range": {...},
+                    "samples": ...,
+                    ...
+                }
+            }
+        """
+        if not property_results:
+            return {}
+
+        # Use first property result as the structure template
+        first_prop = next(iter(property_results.keys()))
+        first_result = property_results[first_prop]
+
+        return self._merge_recursive(property_results, first_result)
+
+    def _merge_recursive(self, property_results: dict, template: dict) -> dict:
+        """
+        Recursively merge property results following the template structure.
+        """
+        result = {}
+
+        for key, value in template.items():
+            if isinstance(value, dict):
+                # Check if this is a stats dict (has property-specific keys)
+                if any(k in value for k in self.PROPERTY_STATS):
+                    # This is a leaf stats dict - merge property stats here
+                    merged = {}
+
+                    # Add property-specific stats for each property
+                    for prop_name, prop_result in property_results.items():
+                        # Navigate to the same key in this property's result
+                        prop_value = self._get_nested_value(prop_result, key)
+                        if prop_value and isinstance(prop_value, dict):
+                            # Extract property-specific stats
+                            prop_stats = {
+                                k: v for k, v in prop_value.items()
+                                if k in self.PROPERTY_STATS
+                            }
+                            if prop_stats:
+                                merged[prop_name] = prop_stats
+
+                    # Add common stats from the first property
+                    for k, v in value.items():
+                        if k in self.COMMON_STATS:
+                            merged[k] = v
+
+                    result[key] = merged
+                else:
+                    # This is an intermediate nesting level - recurse
+                    # Collect corresponding sub-dicts from all properties
+                    sub_property_results = {}
+                    for prop_name, prop_result in property_results.items():
+                        prop_value = self._get_nested_value(prop_result, key)
+                        if prop_value and isinstance(prop_value, dict):
+                            sub_property_results[prop_name] = prop_value
+
+                    if sub_property_results:
+                        result[key] = self._merge_recursive(sub_property_results, value)
+            else:
+                # Non-dict value, just copy from template
+                result[key] = value
+
+        return result
+
+    def _get_nested_value(self, d: dict, key: str):
+        """Get value from dict, returning None if key doesn't exist."""
+        return d.get(key) if isinstance(d, dict) else None
+
+
 class WellDataManager:
     """
     Global orchestrator for multi-well analysis.
@@ -1709,6 +2049,60 @@ class WellDataManager:
         # Otherwise, treat as property name for broadcasting
         # Return a proxy that can be used for operations across all wells
         return _ManagerPropertyProxy(self, name)
+
+    def properties(self, property_names: list[str]) -> _ManagerMultiPropertyProxy:
+        """
+        Create a multi-property proxy for computing statistics across multiple properties.
+
+        This allows computing statistics for multiple properties at once, with
+        property-specific stats (mean, median, etc.) nested under property names
+        and common stats (depth_range, samples, thickness, etc.) at the group level.
+
+        Parameters
+        ----------
+        property_names : list[str]
+            List of property names to include in statistics
+
+        Returns
+        -------
+        _ManagerMultiPropertyProxy
+            Proxy that supports filter(), filter_intervals(), and sums_avg()
+
+        Examples
+        --------
+        >>> # Compute stats for multiple properties grouped by facies
+        >>> manager.properties(['PHIE', 'PERM']).filter('Facies').sums_avg()
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {
+        >>> #         "Sand": {
+        >>> #             "PHIE": {"mean": 0.18, "median": 0.17, ...},
+        >>> #             "PERM": {"mean": 150, "median": 120, ...},
+        >>> #             "depth_range": {...},
+        >>> #             "samples": 387,
+        >>> #             "thickness": 29.4,
+        >>> #             ...
+        >>> #         }
+        >>> #     }
+        >>> # }
+
+        >>> # With custom intervals
+        >>> manager.properties(['PHIE', 'PERM']).filter('Facies').filter_intervals("Zones").sums_avg()
+        >>> # Returns:
+        >>> # {
+        >>> #     "well_A": {
+        >>> #         "Zone_1": {
+        >>> #             "Sand": {
+        >>> #                 "PHIE": {"mean": 0.18, ...},
+        >>> #                 "PERM": {"mean": 150, ...},
+        >>> #                 "depth_range": {...},
+        >>> #                 ...
+        >>> #             }
+        >>> #         }
+        >>> #     }
+        >>> # }
+        """
+        return _ManagerMultiPropertyProxy(self, property_names)
 
     def load_las(
         self,
