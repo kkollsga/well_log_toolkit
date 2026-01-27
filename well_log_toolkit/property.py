@@ -1167,6 +1167,220 @@ class Property(PropertyOperationsMixin):
 
         return new_prop
 
+    def filter_intervals(
+        self,
+        intervals: Union[list[dict], dict[str, list[dict]], str],
+        name: str = "Custom_Intervals",
+        insert_boundaries: Optional[bool] = None,
+        save: Optional[str] = None
+    ) -> 'Property':
+        """
+        Filter by custom depth intervals defined as top/base pairs.
+
+        Each interval is processed independently, allowing overlapping intervals
+        where the same depths can be counted in multiple zones.
+
+        Parameters
+        ----------
+        intervals : list[dict] | dict[str, list[dict]] | str
+            Interval definitions. Can be:
+            - list[dict]: Direct list of intervals for the current well
+            - dict[str, list[dict]]: Well-specific intervals keyed by well name.
+              Current well must be included or raises error.
+            - str: Name of a previously saved filter to use
+        name : str, default "Custom_Intervals"
+            Name for the filter property (used in output labels)
+        insert_boundaries : bool, optional
+            If True, insert synthetic samples at interval boundaries.
+            Default is True for continuous properties, False for sampled properties.
+        save : str, optional
+            If provided, save the intervals to the well(s) under this name.
+            Overwrites any existing filter with the same name.
+
+        Returns
+        -------
+        Property
+            New property instance with custom intervals as filter dimension
+
+        Examples
+        --------
+        >>> # Filter by custom zones
+        >>> intervals = [
+        ...     {"name": "Zone_A", "top": 2500, "base": 2600},
+        ...     {"name": "Zone_B", "top": 2600, "base": 2750},
+        ... ]
+        >>> filtered = well.PHIE.filter_intervals(intervals)
+        >>> filtered.sums_avg()
+
+        >>> # Save intervals for reuse
+        >>> well.PHIE.filter_intervals(intervals, save="Reservoir_Zones")
+        >>> # Later, use saved filter by name
+        >>> well.PHIE.filter_intervals("Reservoir_Zones").sums_avg()
+
+        >>> # Save different intervals for multiple wells
+        >>> manager.well_A.PHIE.filter_intervals({
+        ...     "well_A": intervals_a,
+        ...     "well_B": intervals_b
+        ... }, save="My_Zones")
+        >>> # Now both wells have "My_Zones" saved
+
+        >>> # Overlapping intervals - each calculated independently
+        >>> intervals = [
+        ...     {"name": "Full_Reservoir", "top": 2500, "base": 2800},
+        ...     {"name": "Upper_Only", "top": 2500, "base": 2650}
+        ... ]
+        >>> # Depths 2500-2650 will be counted in BOTH zones
+
+        Notes
+        -----
+        Intervals can overlap or have gaps. Depths outside all intervals
+        are excluded from statistics. Overlapping intervals are calculated
+        independently - the same depths can contribute to multiple zones.
+        """
+        # Handle string input (saved filter name)
+        if isinstance(intervals, str):
+            filter_name = intervals
+            if self.parent_well is None:
+                raise PropertyNotFoundError(
+                    f"Cannot use saved filter '{filter_name}': no parent well reference."
+                )
+            if filter_name not in self.parent_well._saved_filter_intervals:
+                available = list(self.parent_well._saved_filter_intervals.keys())
+                raise PropertyNotFoundError(
+                    f"Saved filter '{filter_name}' not found in well '{self.parent_well.name}'. "
+                    f"Available filters: {available if available else 'none'}"
+                )
+            intervals = self.parent_well._saved_filter_intervals[filter_name]
+            # Use filter name as the output name if not overridden
+            if name == "Custom_Intervals":
+                name = filter_name
+
+        # Handle dict input (well-specific intervals)
+        elif isinstance(intervals, dict):
+            if self.parent_well is None:
+                raise PropertyNotFoundError(
+                    "Cannot use well-specific intervals: no parent well reference."
+                )
+
+            well_name = self.parent_well.name
+            sanitized_name = self.parent_well.sanitized_name
+
+            # Check if current well is in the dict (by name or sanitized name)
+            current_well_intervals = []  # Default to empty if not found
+            if well_name in intervals:
+                current_well_intervals = intervals[well_name]
+            elif sanitized_name in intervals:
+                current_well_intervals = intervals[sanitized_name]
+
+            # Save to all specified wells if save parameter provided
+            if save and self.parent_well.parent_manager:
+                manager = self.parent_well.parent_manager
+                for key, well_intervals in intervals.items():
+                    # Find well by name or sanitized name
+                    target_well = None
+                    for w in manager._wells.values():
+                        if w.name == key or w.sanitized_name == key:
+                            target_well = w
+                            break
+                    if target_well:
+                        self._validate_intervals(well_intervals)
+                        target_well._saved_filter_intervals[save] = well_intervals
+
+            intervals = current_well_intervals
+
+        # Validate and save if we have intervals
+        if intervals:
+            # Validate interval structure
+            self._validate_intervals(intervals)
+
+            # Save to current well if save parameter provided
+            if save and self.parent_well:
+                self.parent_well._saved_filter_intervals[save] = intervals
+
+        # Determine if we should insert boundaries
+        if insert_boundaries is None:
+            insert_boundaries = self.type != 'sampled'
+
+        # Collect all boundary depths from intervals for boundary insertion
+        if insert_boundaries and intervals:
+            boundary_depths = []
+            for interval in intervals:
+                boundary_depths.append(float(interval['top']))
+                boundary_depths.append(float(interval['base']))
+            boundary_depths = np.unique(boundary_depths)
+
+            # Create a temporary discrete property just for boundary insertion
+            # Values don't matter here, only the depths
+            temp_discrete = Property(
+                name=name,
+                depth=boundary_depths,
+                values=np.arange(len(boundary_depths), dtype=float),
+                parent_well=self.parent_well,
+                prop_type='discrete'
+            )
+            new_depth, new_values, new_secondaries = self._insert_boundary_samples(temp_discrete)
+        else:
+            new_depth = self.depth.copy()
+            new_values = self.values.copy()
+            new_secondaries = [sp for sp in self.secondary_properties]
+
+        # Create new Property instance
+        new_prop = Property(
+            name=self.name,
+            depth=new_depth,
+            values=new_values,
+            parent_well=self.parent_well,
+            unit=self.unit,
+            prop_type=self.type,
+            description=self.description,
+            null_value=-999.25,
+            labels=self.labels,
+            colors=self.colors,
+            styles=self.styles,
+            thicknesses=self.thicknesses,
+            source_las=self.source_las,
+            source_name=self.source_name,
+            original_name=self.original_name
+        )
+        new_prop.secondary_properties = new_secondaries
+
+        # Store custom intervals for independent processing in sums_avg/discrete_summary
+        new_prop._custom_intervals = intervals
+        new_prop._custom_intervals_name = name
+
+        # Track filtering metadata
+        new_prop._is_filtered = True
+        new_prop._original_sample_count = len(self.depth)
+        new_prop._boundary_samples_inserted = len(new_depth) - len(self.depth)
+
+        return new_prop
+
+    def _validate_intervals(self, intervals: list[dict]) -> None:
+        """
+        Validate interval structure.
+
+        Parameters
+        ----------
+        intervals : list[dict]
+            List of interval definitions to validate
+
+        Raises
+        ------
+        ValueError
+            If any interval is invalid
+        """
+        for i, interval in enumerate(intervals):
+            if not isinstance(interval, dict):
+                raise ValueError(f"Interval {i} must be a dict, got {type(interval)}")
+            for key in ('name', 'top', 'base'):
+                if key not in interval:
+                    raise ValueError(f"Interval {i} missing required key '{key}'")
+            if interval['top'] >= interval['base']:
+                raise ValueError(
+                    f"Interval '{interval['name']}': top ({interval['top']}) must be "
+                    f"less than base ({interval['base']})"
+                )
+
     def _insert_boundary_samples(
         self,
         discrete_prop: 'Property'
@@ -1500,6 +1714,16 @@ class Property(PropertyOperationsMixin):
         valid_mask = ~np.isnan(self.values)
         gross_thickness = float(np.sum(full_intervals[valid_mask]))
 
+        # Check for custom intervals (from filter_intervals)
+        # These are processed independently, allowing overlaps
+        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+            return self._compute_stats_by_intervals(
+                weighted=weighted,
+                arithmetic=arithmetic,
+                gross_thickness=gross_thickness,
+                precision=precision
+            )
+
         if not self.secondary_properties:
             # No filters, simple statistics
             return self._compute_stats(
@@ -1519,6 +1743,51 @@ class Property(PropertyOperationsMixin):
             gross_thickness=gross_thickness,
             precision=precision
         )
+
+    def _compute_stats_by_intervals(
+        self,
+        weighted: bool,
+        arithmetic: bool,
+        gross_thickness: float,
+        precision: int
+    ) -> dict:
+        """
+        Compute statistics for each custom interval independently.
+
+        This allows overlapping intervals where the same depths can
+        contribute to multiple zones.
+        """
+        result = {}
+
+        for interval in self._custom_intervals:
+            interval_name = interval['name']
+            top = float(interval['top'])
+            base = float(interval['base'])
+
+            # Create mask for this interval (top <= depth < base)
+            interval_mask = (self.depth >= top) & (self.depth < base)
+
+            # If there are secondary properties, group within this interval
+            if self.secondary_properties:
+                result[interval_name] = self._recursive_group(
+                    0,
+                    interval_mask,
+                    weighted=weighted,
+                    arithmetic=arithmetic,
+                    gross_thickness=gross_thickness,
+                    precision=precision
+                )
+            else:
+                # No secondary properties, compute stats directly for interval
+                result[interval_name] = self._compute_stats(
+                    interval_mask,
+                    weighted=weighted,
+                    arithmetic=arithmetic,
+                    gross_thickness=gross_thickness,
+                    precision=precision
+                )
+
+        return result
 
     def discrete_summary(self, precision: int = 6) -> dict:
         """
@@ -1570,6 +1839,14 @@ class Property(PropertyOperationsMixin):
         valid_mask = ~np.isnan(self.values)
         gross_thickness = float(np.sum(full_intervals[valid_mask]))
 
+        # Check for custom intervals (from filter_intervals)
+        # These are processed independently, allowing overlaps
+        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+            return self._compute_discrete_stats_by_intervals(
+                gross_thickness=gross_thickness,
+                precision=precision
+            )
+
         if not self.secondary_properties:
             # No filters, compute stats for all discrete values
             return self._compute_discrete_stats(
@@ -1585,6 +1862,45 @@ class Property(PropertyOperationsMixin):
             gross_thickness=gross_thickness,
             precision=precision
         )
+
+    def _compute_discrete_stats_by_intervals(
+        self,
+        gross_thickness: float,
+        precision: int
+    ) -> dict:
+        """
+        Compute discrete statistics for each custom interval independently.
+
+        This allows overlapping intervals where the same depths can
+        contribute to multiple zones.
+        """
+        result = {}
+
+        for interval in self._custom_intervals:
+            interval_name = interval['name']
+            top = float(interval['top'])
+            base = float(interval['base'])
+
+            # Create mask for this interval (top <= depth < base)
+            interval_mask = (self.depth >= top) & (self.depth < base)
+
+            # If there are secondary properties, group within this interval
+            if self.secondary_properties:
+                result[interval_name] = self._recursive_discrete_group(
+                    0,
+                    interval_mask,
+                    gross_thickness=gross_thickness,
+                    precision=precision
+                )
+            else:
+                # No secondary properties, compute stats directly for interval
+                result[interval_name] = self._compute_discrete_stats(
+                    interval_mask,
+                    gross_thickness=gross_thickness,
+                    precision=precision
+                )
+
+        return result
 
     def _recursive_discrete_group(
         self,

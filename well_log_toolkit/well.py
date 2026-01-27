@@ -220,6 +220,8 @@ class Well:
         self._deleted_sources: list[str] = []  # List of source names to delete
         # Track sources marked for rename (to rename files on save)
         self._renamed_sources: dict[str, str] = {}  # {old_name: new_name}
+        # Saved filter intervals for use with filter_intervals()
+        self._saved_filter_intervals: dict[str, list[dict]] = {}  # {filter_name: [intervals]}
 
     def __setattr__(self, name: str, value):
         """
@@ -1226,7 +1228,58 @@ class Well:
             f"Property '{name}' not found in well '{self.name}'. "
             f"Available properties: {available or 'none'}"
         )
-    
+
+    def get_intervals(self, name: str) -> list[dict]:
+        """
+        Get saved filter intervals by name.
+
+        Parameters
+        ----------
+        name : str
+            Name of the saved filter intervals
+
+        Returns
+        -------
+        list[dict]
+            List of interval definitions, each with keys 'name', 'top', 'base'
+
+        Raises
+        ------
+        KeyError
+            If no intervals with this name exist
+
+        Examples
+        --------
+        >>> # Save intervals
+        >>> well.PHIE.filter_intervals([
+        ...     {"name": "Zone_A", "top": 2500, "base": 2650}
+        ... ], save="My_Zones")
+        >>>
+        >>> # Retrieve them later
+        >>> intervals = well.get_intervals("My_Zones")
+        >>> print(intervals)
+        [{'name': 'Zone_A', 'top': 2500, 'base': 2650}]
+        """
+        if name not in self._saved_filter_intervals:
+            available = list(self._saved_filter_intervals.keys())
+            raise KeyError(
+                f"Filter intervals '{name}' not found in well '{self.name}'. "
+                f"Available: {available if available else 'none'}"
+            )
+        return self._saved_filter_intervals[name]
+
+    @property
+    def saved_intervals(self) -> list[str]:
+        """
+        List of saved filter interval names.
+
+        Returns
+        -------
+        list[str]
+            Names of all saved filter intervals
+        """
+        return list(self._saved_filter_intervals.keys())
+
     @staticmethod
     def _is_regular_grid(depth: np.ndarray, tolerance: float = 1e-6) -> tuple[bool, Optional[float]]:
         """
