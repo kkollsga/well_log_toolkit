@@ -1646,6 +1646,19 @@ class _ManagerMultiPropertyProxy:
         self._filters = filters or []
         self._custom_intervals = custom_intervals
 
+    def __getattr__(self, name: str) -> '_ManagerMultiPropertyProxy':
+        """
+        Attribute access as shorthand for filter().
+
+        Allows: manager.properties(['A', 'B']).Facies.sums_avg()
+        Same as: manager.properties(['A', 'B']).filter('Facies').sums_avg()
+        """
+        # Avoid recursion for private attributes
+        if name.startswith('_'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        # Treat as filter
+        return self.filter(name)
+
     def filter(
         self,
         property_name: str,
@@ -1759,13 +1772,10 @@ class _ManagerMultiPropertyProxy:
 
         >>> manager.properties(['PHIE', 'PERM']).filter_intervals("Zones").sums_avg()
         >>> # Returns stats for both properties grouped by custom intervals
-        """
-        if not self._filters and not self._custom_intervals:
-            raise ValueError(
-                "sums_avg() requires at least one filter or filter_intervals(). "
-                "Use .filter('property_name') or .filter_intervals(...) first."
-            )
 
+        >>> # No filters - compute stats for full well
+        >>> manager.properties(['PHIE', 'PERM']).sums_avg()
+        """
         result = {}
 
         for well_name, well in self._manager._wells.items():
@@ -1787,6 +1797,18 @@ class _ManagerMultiPropertyProxy:
         """
         Compute multi-property sums_avg for a single well.
         """
+        # Check if this well has the required saved intervals (if using saved name)
+        if self._custom_intervals:
+            intervals = self._custom_intervals.get('intervals')
+            if isinstance(intervals, str):
+                # Saved filter name - check if this well has it
+                if intervals not in well._saved_filter_intervals:
+                    return None  # Skip wells that don't have this saved filter
+            elif isinstance(intervals, dict):
+                # Well-specific intervals - check if this well is in the dict
+                if well.name not in intervals and well.sanitized_name not in intervals:
+                    return None  # Skip wells not in the dict
+
         # Collect results for each property
         property_results = {}
 
@@ -1798,7 +1820,7 @@ class _ManagerMultiPropertyProxy:
                 if self._custom_intervals:
                     prop = self._apply_filter_intervals(prop, well)
                     if prop is None:
-                        return None  # Well doesn't have the saved intervals
+                        continue  # Skip this property if intervals can't be applied
 
                 # Apply all filters
                 for filter_name, insert_boundaries in self._filters:
@@ -1815,12 +1837,16 @@ class _ManagerMultiPropertyProxy:
                 )
                 property_results[prop_name] = result
 
-            except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
-                # Property doesn't exist in this well, skip it
+            except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError):
+                # Property doesn't exist in this well or filter error, skip it
                 pass
 
         if not property_results:
             return None
+
+        # If no filters/intervals, return simple merged result (no grouping)
+        if not self._filters and not self._custom_intervals:
+            return self._merge_flat_results(property_results)
 
         # Merge results: nest property-specific stats, keep common stats at group level
         return self._merge_property_results(property_results)
@@ -1868,6 +1894,54 @@ class _ManagerMultiPropertyProxy:
             insert_boundaries=insert_boundaries,
             save=save
         )
+
+    def _merge_flat_results(self, property_results: dict) -> dict:
+        """
+        Merge results when no filters are applied (flat structure).
+
+        Returns a single dict with property-specific stats nested under property
+        names and common stats at the top level.
+
+        Parameters
+        ----------
+        property_results : dict
+            {property_name: sums_avg_result}
+
+        Returns
+        -------
+        dict
+            {
+                "PropertyA": {"mean": ..., "median": ..., ...},
+                "PropertyB": {"mean": ..., ...},
+                "depth_range": {...},
+                "samples": ...,
+                ...
+            }
+        """
+        if not property_results:
+            return {}
+
+        result = {}
+
+        # Add property-specific stats for each property
+        for prop_name, prop_result in property_results.items():
+            if isinstance(prop_result, dict):
+                # Extract property-specific stats
+                prop_stats = {
+                    k: v for k, v in prop_result.items()
+                    if k in self.PROPERTY_STATS
+                }
+                if prop_stats:
+                    result[prop_name] = prop_stats
+
+        # Add common stats from first property
+        first_result = next(iter(property_results.values()))
+        if isinstance(first_result, dict):
+            for k, v in first_result.items():
+                if k in self.COMMON_STATS:
+                    result[k] = v
+
+        return result
 
     def _merge_property_results(self, property_results: dict) -> dict:
         """
@@ -2867,6 +2941,18 @@ class WellDataManager:
             # Delete sources marked for deletion
             well.delete_marked_sources(well_folder)
 
+            # Save filter intervals if any exist
+            if hasattr(well, '_saved_filter_intervals') and well._saved_filter_intervals:
+                import json
+                intervals_file = well_folder / "intervals.json"
+                with open(intervals_file, 'w') as f:
+                    json.dump(well._saved_filter_intervals, f, indent=2)
+            else:
+                # Remove intervals file if no intervals (in case they were deleted)
+                intervals_file = well_folder / "intervals.json"
+                if intervals_file.exists():
+                    intervals_file.unlink()
+
         # Save templates
         if self._templates:
             templates_folder = save_path / "templates"
@@ -2956,6 +3042,20 @@ class WellDataManager:
             las_files = sorted(well_folder.glob("*.las"))
             for las_file in las_files:
                 self.load_las(las_file, silent=True)
+
+            # Load saved filter intervals if they exist
+            intervals_file = well_folder / "intervals.json"
+            if intervals_file.exists():
+                import json
+                try:
+                    with open(intervals_file, 'r') as f:
+                        saved_intervals = json.load(f)
+                    # Find the well for this folder and set its intervals
+                    well_key = well_folder.name  # e.g., "well_35_9_16_A"
+                    if well_key in self._wells:
+                        self._wells[well_key]._saved_filter_intervals = saved_intervals
+                except Exception as e:
+                    warnings.warn(f"Could not load intervals from {intervals_file}: {e}")
 
         return self
 
