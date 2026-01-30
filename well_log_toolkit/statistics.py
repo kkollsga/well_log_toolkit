@@ -61,6 +61,83 @@ def compute_intervals(depth: np.ndarray) -> np.ndarray:
     return intervals
 
 
+def compute_zone_intervals(
+    depth: np.ndarray,
+    top: float,
+    base: float
+) -> np.ndarray:
+    """
+    Compute depth intervals truncated to zone boundaries.
+
+    Uses the midpoint method but truncates intervals at zone boundaries
+    to ensure thickness is correctly attributed to each zone.
+
+    Parameters
+    ----------
+    depth : np.ndarray
+        Depth values (must be sorted ascending)
+    top : float
+        Zone top depth (inclusive)
+    base : float
+        Zone base depth (exclusive)
+
+    Returns
+    -------
+    np.ndarray
+        Interval thickness for each depth point, truncated to zone boundaries.
+        Points outside the zone have zero interval.
+
+    Examples
+    --------
+    >>> depth = np.array([2708.0, 2708.3, 2708.4, 2708.6])
+    >>> # Zone from 2708.0 to 2708.4
+    >>> compute_zone_intervals(depth, 2708.0, 2708.4)
+    array([0.15, 0.2, 0.05, 0.0])
+
+    The intervals are truncated at zone boundary 2708.4:
+    - 2708.0: from 2708.0 to midpoint(2708.0, 2708.3)=2708.15 = 0.15m
+    - 2708.3: from 2708.15 to midpoint(2708.3, 2708.4)=2708.35 = 0.2m
+    - 2708.4: from 2708.35 to 2708.4 (zone boundary) = 0.05m (truncated)
+    - 2708.6: outside zone = 0.0m
+    """
+    if len(depth) == 0:
+        return np.array([])
+
+    if len(depth) == 1:
+        # Single point - check if it's in the zone
+        if top <= depth[0] < base:
+            return np.array([base - top])
+        return np.array([0.0])
+
+    zone_intervals = np.zeros(len(depth))
+
+    for i in range(len(depth)):
+        d = depth[i]
+
+        # Calculate midpoint bounds for this sample
+        if i == 0:
+            lower_bound = d - (depth[1] - d) / 2.0  # Mirror first interval
+        else:
+            lower_bound = (depth[i - 1] + d) / 2.0
+
+        if i == len(depth) - 1:
+            upper_bound = d + (d - depth[-2]) / 2.0  # Mirror last interval
+        else:
+            upper_bound = (d + depth[i + 1]) / 2.0
+
+        # Truncate to zone boundaries
+        effective_lower = max(lower_bound, top)
+        effective_upper = min(upper_bound, base)
+
+        # Only count if there's overlap with the zone
+        if effective_upper > effective_lower:
+            zone_intervals[i] = effective_upper - effective_lower
+        else:
+            zone_intervals[i] = 0.0
+
+    return zone_intervals
+
+
 def mean(
     values: np.ndarray,
     weights: Optional[np.ndarray] = None,

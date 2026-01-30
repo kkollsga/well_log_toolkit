@@ -11,6 +11,7 @@ from scipy.interpolate import interp1d
 from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
 from .statistics import (
     compute_intervals,
+    compute_zone_intervals,
     mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
 )
 from .utils import filter_names
@@ -1429,8 +1430,8 @@ class Property(PropertyOperationsMixin):
         max_valid_depth = valid_depths.max()
 
         # Find boundaries that fall within the valid data range
-        # Filter to boundaries within valid range first
-        mask = (boundary_depths > min_valid_depth) & (boundary_depths < max_valid_depth)
+        # Filter to boundaries within valid range (inclusive on both ends)
+        mask = (boundary_depths >= min_valid_depth) & (boundary_depths <= max_valid_depth)
         potential_boundaries = boundary_depths[mask]
 
         if len(potential_boundaries) == 0:
@@ -1760,6 +1761,9 @@ class Property(PropertyOperationsMixin):
 
         This allows overlapping intervals where the same depths can
         contribute to multiple zones.
+
+        Uses zone-aware intervals that are truncated at zone boundaries to ensure
+        thickness is correctly attributed to each zone.
         """
         result = {}
 
@@ -1768,8 +1772,12 @@ class Property(PropertyOperationsMixin):
             top = float(interval['top'])
             base = float(interval['base'])
 
-            # Create mask for this interval (top <= depth < base)
-            interval_mask = (self.depth >= top) & (self.depth < base)
+            # Compute zone-aware intervals truncated at zone boundaries
+            zone_intervals = compute_zone_intervals(self.depth, top, base)
+
+            # Create mask based on zone intervals - includes any sample that
+            # contributes to this zone (even boundary samples with partial intervals)
+            interval_mask = zone_intervals > 0
 
             # If there are secondary properties, group within this interval
             if self.secondary_properties:
@@ -1779,7 +1787,8 @@ class Property(PropertyOperationsMixin):
                     weighted=weighted,
                     arithmetic=arithmetic,
                     gross_thickness=gross_thickness,
-                    precision=precision
+                    precision=precision,
+                    zone_intervals=zone_intervals
                 )
             else:
                 # No secondary properties, compute stats directly for interval
@@ -1788,7 +1797,8 @@ class Property(PropertyOperationsMixin):
                     weighted=weighted,
                     arithmetic=arithmetic,
                     gross_thickness=gross_thickness,
-                    precision=precision
+                    precision=precision,
+                    zone_intervals=zone_intervals
                 )
 
         return result
@@ -1905,6 +1915,9 @@ class Property(PropertyOperationsMixin):
         This allows overlapping intervals where the same depths can
         contribute to multiple zones. Zone-level metadata (depth_range, thickness)
         is shown at the interval level, and fractions are relative to zone thickness.
+
+        Uses zone-aware intervals that are truncated at zone boundaries to ensure
+        thickness is correctly attributed to each zone.
         """
         result = {}
 
@@ -1913,13 +1926,16 @@ class Property(PropertyOperationsMixin):
             top = float(interval['top'])
             base = float(interval['base'])
 
-            # Create mask for this interval (top <= depth < base)
-            interval_mask = (self.depth >= top) & (self.depth < base)
+            # Compute zone-aware intervals truncated at zone boundaries
+            zone_intervals = compute_zone_intervals(self.depth, top, base)
 
-            # Calculate zone thickness for fraction calculation
-            full_intervals = compute_intervals(self.depth)
+            # Create mask based on zone intervals - includes any sample that
+            # contributes to this zone (even boundary samples with partial intervals)
+            interval_mask = zone_intervals > 0
+
+            # Calculate zone thickness using zone-aware intervals
             valid_mask = ~np.isnan(self.values) & interval_mask
-            zone_thickness = float(np.sum(full_intervals[valid_mask]))
+            zone_thickness = float(np.sum(zone_intervals[valid_mask]))
 
             # Get actual depth range within the interval (where we have data)
             if np.any(valid_mask):
@@ -1944,7 +1960,8 @@ class Property(PropertyOperationsMixin):
                     interval_mask,
                     gross_thickness=zone_thickness,  # Use zone thickness for fractions
                     precision=precision,
-                    include_depth_range=False  # Don't include depth_range per facies
+                    include_depth_range=False,  # Don't include depth_range per facies
+                    zone_intervals=zone_intervals  # Pass zone-aware intervals
                 )
             else:
                 # No secondary properties, compute stats directly for interval
@@ -1952,7 +1969,8 @@ class Property(PropertyOperationsMixin):
                     interval_mask,
                     gross_thickness=zone_thickness,  # Use zone thickness for fractions
                     precision=precision,
-                    include_depth_range=False  # Don't include depth_range per facies
+                    include_depth_range=False,  # Don't include depth_range per facies
+                    zone_intervals=zone_intervals  # Pass zone-aware intervals
                 )
 
             # Nest facies stats under 'facies' key for cleaner structure
@@ -1967,7 +1985,8 @@ class Property(PropertyOperationsMixin):
         mask: np.ndarray,
         gross_thickness: float,
         precision: int = 6,
-        include_depth_range: bool = True
+        include_depth_range: bool = True,
+        zone_intervals: Optional[np.ndarray] = None
     ) -> dict:
         """
         Recursively group discrete statistics by secondary properties.
@@ -1984,6 +2003,9 @@ class Property(PropertyOperationsMixin):
             Number of decimal places for rounding
         include_depth_range : bool, default True
             Whether to include depth_range in per-facies stats
+        zone_intervals : np.ndarray, optional
+            Pre-computed zone-aware intervals truncated at zone boundaries.
+            If None, computes intervals using standard midpoint method.
 
         Returns
         -------
@@ -1992,7 +2014,7 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute discrete statistics for this group
-            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range)
+            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range, zone_intervals)
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -2002,12 +2024,16 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range)
+            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range, zone_intervals)
 
         # Group by each unique value
         depth_array = self.depth
         values_array = self.values
-        full_intervals = compute_intervals(depth_array)
+        # Use zone intervals if provided, otherwise compute on full array
+        if zone_intervals is not None:
+            full_intervals = zone_intervals
+        else:
+            full_intervals = compute_intervals(depth_array)
 
         result = {}
         for val in unique_vals:
@@ -2038,7 +2064,7 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_discrete_group(
-                filter_idx + 1, sub_mask, group_thickness, precision, include_depth_range
+                filter_idx + 1, sub_mask, group_thickness, precision, include_depth_range, zone_intervals
             )
 
         return result
@@ -2048,7 +2074,8 @@ class Property(PropertyOperationsMixin):
         mask: np.ndarray,
         gross_thickness: float,
         precision: int = 6,
-        include_depth_range: bool = True
+        include_depth_range: bool = True,
+        zone_intervals: Optional[np.ndarray] = None
     ) -> dict:
         """
         Compute categorical statistics for discrete property values.
@@ -2064,6 +2091,9 @@ class Property(PropertyOperationsMixin):
         include_depth_range : bool, default True
             Whether to include depth_range in per-facies stats.
             Set to False when using filter_intervals (depth_range shown at zone level).
+        zone_intervals : np.ndarray, optional
+            Pre-computed zone-aware intervals truncated at zone boundaries.
+            If None, computes intervals using standard midpoint method.
 
         Returns
         -------
@@ -2077,9 +2107,12 @@ class Property(PropertyOperationsMixin):
         values = values_array[mask]
         depths = depth_array[mask]
 
-        # Compute intervals on full array then mask
-        full_intervals = compute_intervals(depth_array)
-        intervals = full_intervals[mask]
+        # Use zone intervals if provided, otherwise compute on full array
+        if zone_intervals is not None:
+            intervals = zone_intervals[mask]
+        else:
+            full_intervals = compute_intervals(depth_array)
+            intervals = full_intervals[mask]
 
         # Find unique discrete values
         valid_mask_local = ~np.isnan(values)
@@ -2132,7 +2165,8 @@ class Property(PropertyOperationsMixin):
         weighted: bool,
         arithmetic: bool,
         gross_thickness: float,
-        precision: int = 6
+        precision: int = 6,
+        zone_intervals: Optional[np.ndarray] = None
     ) -> dict:
         """
         Recursively group by secondary properties.
@@ -2151,6 +2185,9 @@ class Property(PropertyOperationsMixin):
             Total gross thickness for fraction calculation
         precision : int, default 6
             Number of decimal places for rounding
+        zone_intervals : np.ndarray, optional
+            Pre-computed zone-aware intervals truncated at zone boundaries.
+            If None, computes intervals using standard midpoint method.
 
         Returns
         -------
@@ -2159,7 +2196,7 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute statistics for this group
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision)
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision, zone_intervals)
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -2170,14 +2207,18 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision)
+            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision, zone_intervals)
 
         # Calculate parent thickness BEFORE subdividing
         # This becomes the gross_thickness for all child groups
         # Cache property access to avoid overhead
         depth_array = self.depth
         values_array = self.values
-        parent_intervals = compute_intervals(depth_array)
+        # Use zone intervals if provided, otherwise compute on full array
+        if zone_intervals is not None:
+            parent_intervals = zone_intervals
+        else:
+            parent_intervals = compute_intervals(depth_array)
         parent_valid = mask & ~np.isnan(values_array)
         parent_thickness = float(np.sum(parent_intervals[parent_valid]))
 
@@ -2212,7 +2253,7 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_group(
-                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness, precision
+                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness, precision, zone_intervals
             )
 
         return result
@@ -2223,7 +2264,8 @@ class Property(PropertyOperationsMixin):
         weighted: bool = True,
         arithmetic: bool = False,
         gross_thickness: float = 0.0,
-        precision: int = 6
+        precision: int = 6,
+        zone_intervals: Optional[np.ndarray] = None
     ) -> dict:
         """
         Compute statistics for values selected by mask.
@@ -2244,6 +2286,9 @@ class Property(PropertyOperationsMixin):
             Total gross thickness for fraction calculation
         precision : int, default 6
             Number of decimal places for rounding
+        zone_intervals : np.ndarray, optional
+            Pre-computed zone-aware intervals truncated at zone boundaries.
+            If None, computes intervals using standard midpoint method.
 
         Returns
         -------
@@ -2263,12 +2308,17 @@ class Property(PropertyOperationsMixin):
         values = values_array[mask]
         valid = values[~np.isnan(values)]
 
-        # Compute depth intervals on FULL depth array first, then mask
-        # This is critical! Intervals must be computed on full grid so that
-        # zone boundary samples get correct weights based on their neighbors
-        # in the full sequence, not just within their zone.
-        full_intervals = compute_intervals(depth_array)
-        intervals = full_intervals[mask]
+        # Use zone intervals if provided, otherwise compute on full array
+        # Zone intervals are truncated at zone boundaries for accurate thickness
+        if zone_intervals is not None:
+            intervals = zone_intervals[mask]
+        else:
+            # Compute depth intervals on FULL depth array first, then mask
+            # This is critical! Intervals must be computed on full grid so that
+            # zone boundary samples get correct weights based on their neighbors
+            # in the full sequence, not just within their zone.
+            full_intervals = compute_intervals(depth_array)
+            intervals = full_intervals[mask]
         valid_mask_local = ~np.isnan(values)
         valid_intervals = intervals[valid_mask_local]
 
