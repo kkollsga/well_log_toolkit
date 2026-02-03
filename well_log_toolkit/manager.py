@@ -1445,11 +1445,22 @@ class _ManagerPropertyProxy:
                             prop = prop.filter(filter_name, source=source_name)
 
                     # Compute sums_avg
-                    source_results[source_name] = prop.sums_avg(
+                    result = prop.sums_avg(
                         weighted=weighted,
                         arithmetic=arithmetic,
                         precision=precision
                     )
+
+                    # Add well-level thickness for this source if using filter_intervals
+                    if self._custom_intervals and result:
+                        well_thickness = 0.0
+                        for key, value in result.items():
+                            if isinstance(value, dict) and 'thickness' in value:
+                                well_thickness += value['thickness']
+                        if well_thickness > 0:
+                            result['thickness'] = round(well_thickness, precision)
+
+                    source_results[source_name] = result
 
                 except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
                     # Property or filter doesn't exist in this source, or filter isn't discrete - skip it
@@ -1476,11 +1487,22 @@ class _ManagerPropertyProxy:
                     prop = prop.filter(filter_name)
 
             # Compute sums_avg
-            return prop.sums_avg(
+            result = prop.sums_avg(
                 weighted=weighted,
                 arithmetic=arithmetic,
                 precision=precision
             )
+
+            # Add well-level thickness (sum of all zone thicknesses) if using filter_intervals
+            if self._custom_intervals and result:
+                well_thickness = 0.0
+                for key, value in result.items():
+                    if isinstance(value, dict) and 'thickness' in value:
+                        well_thickness += value['thickness']
+                if well_thickness > 0:
+                    result['thickness'] = round(well_thickness, precision)
+
+            return result
 
         except PropertyNotFoundError as e:
             # Check if it's ambiguous (exists in multiple sources)
@@ -1512,6 +1534,16 @@ class _ManagerPropertyProxy:
                             arithmetic=arithmetic,
                             precision=precision
                         )
+
+                        # Add well-level thickness for this source if using filter_intervals
+                        if self._custom_intervals and result:
+                            well_thickness = 0.0
+                            for key, value in result.items():
+                                if isinstance(value, dict) and 'thickness' in value:
+                                    well_thickness += value['thickness']
+                            if well_thickness > 0:
+                                result['thickness'] = round(well_thickness, precision)
+
                         source_results[source_name] = result
 
                     except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
@@ -1632,7 +1664,7 @@ class _ManagerMultiPropertyProxy:
     PROPERTY_STATS = {'mean', 'median', 'mode', 'sum', 'std_dev', 'percentile', 'range'}
 
     # Stats that are common across properties (stay at group level)
-    COMMON_STATS = {'depth_range', 'samples', 'thickness', 'gross_thickness', 'thickness_fraction', 'calculation'}
+    COMMON_STATS = {'depth_range', 'samples', 'thickness', 'thickness_fraction', 'calculation'}
 
     def __init__(
         self,
@@ -1849,7 +1881,17 @@ class _ManagerMultiPropertyProxy:
             return self._merge_flat_results(property_results)
 
         # Merge results: nest property-specific stats, keep common stats at group level
-        return self._merge_property_results(property_results)
+        merged = self._merge_property_results(property_results)
+
+        # Add well-level thickness (sum of all zone thicknesses)
+        if self._custom_intervals and merged:
+            well_thickness = 0.0
+            for key, value in merged.items():
+                if isinstance(value, dict) and 'thickness' in value:
+                    well_thickness += value['thickness']
+            merged['thickness'] = round(well_thickness, 6)
+
+        return merged
 
     def _apply_filter_intervals(self, prop, well):
         """
@@ -3108,7 +3150,70 @@ class WellDataManager:
         ['well_12_3_2_B', 'well_12_3_2_A']
         """
         return list(self._wells.keys())
-    
+
+    @property
+    def saved_intervals(self) -> dict[str, list[str]]:
+        """
+        List saved interval names for all wells.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Dictionary mapping well names to their saved interval names
+
+        Examples
+        --------
+        >>> manager.saved_intervals
+        {'well_A': ['Reservoir_Zones', 'Slump_Zones'], 'well_B': ['Reservoir_Zones']}
+        """
+        result = {}
+        for well_name, well in self._wells.items():
+            if well.saved_intervals:
+                result[well_name] = well.saved_intervals
+        return result
+
+    def get_intervals(self, name: str) -> dict[str, list[dict]]:
+        """
+        Get saved filter intervals by name from all wells that have them.
+
+        Parameters
+        ----------
+        name : str
+            Name of the saved filter intervals
+
+        Returns
+        -------
+        dict[str, list[dict]]
+            Dictionary mapping well names to their interval definitions
+
+        Raises
+        ------
+        KeyError
+            If no wells have intervals with the given name
+
+        Examples
+        --------
+        >>> manager.get_intervals("Slump_Zones")
+        {'well_A': [{'name': 'Zone_A', 'top': 2500, 'base': 2650}],
+         'well_B': [{'name': 'Zone_A', 'top': 2600, 'base': 2750}]}
+        """
+        result = {}
+        for well_name, well in self._wells.items():
+            if name in well.saved_intervals:
+                result[well_name] = well.get_intervals(name)
+
+        if not result:
+            # Collect all available interval names for error message
+            all_names = set()
+            for well in self._wells.values():
+                all_names.update(well.saved_intervals)
+            raise KeyError(
+                f"No wells have saved intervals named '{name}'. "
+                f"Available: {sorted(all_names) if all_names else 'none'}"
+            )
+
+        return result
+
     def get_well(self, name: str) -> Well:
         """
         Get well by original or sanitized name.

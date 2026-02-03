@@ -1779,24 +1779,31 @@ class Property(PropertyOperationsMixin):
             # contributes to this zone (even boundary samples with partial intervals)
             interval_mask = zone_intervals > 0
 
+            # Calculate zone thickness (sum of valid intervals within zone)
+            valid_mask = interval_mask & ~np.isnan(self.values)
+            zone_thickness = float(np.sum(zone_intervals[valid_mask]))
+
             # If there are secondary properties, group within this interval
             if self.secondary_properties:
-                result[interval_name] = self._recursive_group(
+                interval_result = self._recursive_group(
                     0,
                     interval_mask,
                     weighted=weighted,
                     arithmetic=arithmetic,
-                    gross_thickness=gross_thickness,
+                    gross_thickness=zone_thickness,  # Pass zone thickness as gross for children
                     precision=precision,
                     zone_intervals=zone_intervals
                 )
+                # Add zone-level thickness
+                interval_result['thickness'] = round(zone_thickness, precision)
+                result[interval_name] = interval_result
             else:
                 # No secondary properties, compute stats directly for interval
                 result[interval_name] = self._compute_stats(
                     interval_mask,
                     weighted=weighted,
                     arithmetic=arithmetic,
-                    gross_thickness=gross_thickness,
+                    gross_thickness=zone_thickness,  # Use zone thickness for fraction calc
                     precision=precision,
                     zone_intervals=zone_intervals
                 )
@@ -2416,7 +2423,6 @@ class Property(PropertyOperationsMixin):
             'depth_range': _round_value(depth_range_dict),
             'samples': int(len(valid)),
             'thickness': round(thickness, precision),
-            'gross_thickness': round(gross_thickness, precision),
             'thickness_fraction': round(fraction, precision),
             'calculation': calc_method,
         }
