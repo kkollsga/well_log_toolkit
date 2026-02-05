@@ -676,11 +676,15 @@ class _ManagerPropertyProxy:
             well_intervals = intervals
         elif isinstance(intervals, dict):
             # Well-specific intervals
+            # Check original name, sanitized name, and well_-prefixed sanitized name
             well_intervals = None
+            prefixed_name = f"well_{well.sanitized_name}"
             if well.name in intervals:
                 well_intervals = intervals[well.name]
             elif well.sanitized_name in intervals:
                 well_intervals = intervals[well.sanitized_name]
+            elif prefixed_name in intervals:
+                well_intervals = intervals[prefixed_name]
             if well_intervals is None:
                 return None  # Skip wells not in the dict
         else:
@@ -2343,7 +2347,9 @@ class _ManagerMultiPropertyProxy:
                     return None  # Skip wells that don't have this saved filter
             elif isinstance(intervals, dict):
                 # Well-specific intervals - check if this well is in the dict
-                if well.name not in intervals and well.sanitized_name not in intervals:
+                # Check original name, sanitized name, and well_-prefixed sanitized name
+                prefixed_name = f"well_{well.sanitized_name}"
+                if well.name not in intervals and well.sanitized_name not in intervals and prefixed_name not in intervals:
                     return None  # Skip wells not in the dict
 
         # Collect results for each property
@@ -2421,11 +2427,15 @@ class _ManagerMultiPropertyProxy:
             well_intervals = intervals
         elif isinstance(intervals, dict):
             # Well-specific intervals
+            # Check original name, sanitized name, and well_-prefixed sanitized name
             well_intervals = None
+            prefixed_name = f"well_{well.sanitized_name}"
             if well.name in intervals:
                 well_intervals = intervals[well.name]
             elif well.sanitized_name in intervals:
                 well_intervals = intervals[well.sanitized_name]
+            elif prefixed_name in intervals:
+                well_intervals = intervals[prefixed_name]
             if well_intervals is None:
                 return None  # Skip wells not in the dict
         elif isinstance(intervals, list):
