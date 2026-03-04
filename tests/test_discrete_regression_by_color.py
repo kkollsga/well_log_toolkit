@@ -11,7 +11,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_well_with_discrete_property():
     """Create a well with discrete Well_Tops property."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -134,7 +134,7 @@ def test_continuous_property_warns():
     print("="*70)
 
     # Create a well with continuous property used as color
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):

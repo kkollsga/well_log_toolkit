@@ -10,6 +10,25 @@ To add a changelog entry, create a file in the `changes/` directory.
 
 <!-- towncrier release notes start -->
 
+## [0.1.154] - 2026-03-05
+
+### Breaking Changes
+
+- Restructured package into domain-driven subpackages. Direct imports from flat
+  modules (e.g., `from well_log_toolkit.statistics import mean`) must now use
+  subpackage paths (e.g., `from well_log_toolkit.analysis.statistics import mean`).
+  Top-level imports (`from well_log_toolkit import Well, Property`) are unchanged.
+
+### Internal Changes
+
+- Created `io/` subpackage with `las_file.py` for LAS file I/O.
+- Created `core/` subpackage with `well.py`, `property.py`, `operations.py`.
+- Created `analysis/` subpackage with `statistics.py`, `regression.py`, `sums_avg.py`.
+- Created `manager/` subpackage, splitting 3500-line `manager.py` into `data_manager.py` and `proxy.py`.
+- Created `visualization/` subpackage, splitting 5050-line `visualization.py` into `template.py`, `wellview.py`, `crossplot.py`.
+- Extracted `_version.py` for dynamic version detection.
+- Updated all test imports to match new package structure.
+
 ## [0.1.153] - 2026-03-04
 
 ### Internal Changes

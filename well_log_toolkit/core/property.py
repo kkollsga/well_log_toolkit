@@ -8,18 +8,18 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
-from .exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
-from .statistics import (
+from ..exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
+from ..analysis.statistics import (
     compute_intervals,
     compute_zone_intervals,
     mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
 )
-from .utils import filter_names
+from ..utils import filter_names
 from .operations import PropertyOperationsMixin
 
 if TYPE_CHECKING:
     from .well import Well
-    from .las_file import LasFile
+    from ..io.las_file import LasFile
 
 
 class Property(PropertyOperationsMixin):
@@ -955,7 +955,7 @@ class Property(PropertyOperationsMixin):
         >>> discrete_prop.mode()  # For discrete: most common value
         1.0
         """
-        from .statistics import mode as stat_mode
+        from ..analysis.statistics import mode as stat_mode
 
         if weighted:
             intervals = compute_intervals(self.depth)
@@ -2347,7 +2347,7 @@ class Property(PropertyOperationsMixin):
             stat_method = 'arithmetic'
 
         # Compute stats using unified functions
-        from .statistics import mode as stat_mode
+        from ..analysis.statistics import mode as stat_mode
 
         mean_result = stat_mean(values, intervals, method=stat_method)
         sum_result = stat_sum(values, intervals, method=stat_method)
@@ -2623,7 +2623,7 @@ class Property(PropertyOperationsMixin):
         >>> filtered.export_to_las('filtered_phie.las', well_name='12/3-2 B')
         """
         # Import here to avoid circular import
-        from .las_file import LasFile
+        from ..io.las_file import LasFile
 
         # Determine well name
         if well_name is None:

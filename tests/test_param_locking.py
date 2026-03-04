@@ -1,7 +1,7 @@
 """Test script demonstrating parameter locking functionality."""
 
 import numpy as np
-from well_log_toolkit.regression import (
+from well_log_toolkit.analysis.regression import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,

@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from well_log_toolkit import WellDataManager, Template
-from well_log_toolkit.property import Property
+from well_log_toolkit.core.property import Property
 
 
 def test_labels_auto_sets_discrete_type_on_property():

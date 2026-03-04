@@ -3,8 +3,8 @@
 import numpy as np
 import pandas as pd
 from well_log_toolkit.manager import WellDataManager
-from well_log_toolkit.well import Well
-from well_log_toolkit.property import Property
+from well_log_toolkit.core.well import Well
+from well_log_toolkit.core.property import Property
 
 print("=" * 70)
 print("STANDARDIZED MD (Measured Depth) AND WELL ACCESS")

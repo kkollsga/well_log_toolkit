@@ -14,7 +14,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_well_with_tops():
     """Create a mock well with continuous logs and sparse discrete tops."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -168,7 +168,7 @@ def test_discrete_vs_continuous_alignment():
     print("TEST 2: Discrete forward-fill (previous) vs continuous interpolation")
     print("="*70)
 
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     # Create a discrete property with sparse samples (like well tops)
     discrete_depth = np.array([2800.0, 2850.0, 2900.0, 2950.0, 3000.0])

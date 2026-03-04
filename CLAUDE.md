@@ -12,13 +12,29 @@ mypy well_log_toolkit/                        # type check
 
 ## Architecture
 
-- **I/O layer** (`las_file.py`): LAS 2.0 reader with lazy loading (headers on init, data on `.data()`).
-- **Core objects** (`well.py`, `property.py`, `operations.py`): `Well` → `Property` → `PropertyOperationsMixin`.
-- **Statistics** (`statistics.py`): Depth-weighted calculations using midpoint interval method.
-- **Multi-well** (`manager.py`): `WellDataManager` + `_ManagerPropertyProxy` for broadcasting + `SumsAvgResult`.
-- **Visualization** (`visualization.py`): `Template`, `WellView`, `Crossplot` classes.
-- **Regression** (`regression.py`): 6 types (linear, polynomial, exponential, logarithmic, power, poly-exp).
-- **Exceptions** (`exceptions.py`): `WellLogError` base with typed subclasses.
+```text
+well_log_toolkit/
+├── io/              LAS 2.0 reader with lazy loading (headers on init, data on .data())
+│   └── las_file.py
+├── core/            Well → Property → PropertyOperationsMixin
+│   ├── well.py
+│   ├── property.py
+│   └── operations.py
+├── analysis/        Depth-weighted statistics, regression models, SumsAvgResult
+│   ├── statistics.py
+│   ├── regression.py
+│   └── sums_avg.py
+├── manager/         WellDataManager + proxy classes for broadcasting across wells
+│   ├── data_manager.py
+│   └── proxy.py
+├── visualization/   Template, WellView, Crossplot for Jupyter Lab displays
+│   ├── template.py
+│   ├── wellview.py
+│   └── crossplot.py
+├── exceptions.py    WellLogError base with typed subclasses
+├── utils.py         Name sanitization and filtering helpers
+└── _version.py      Dynamic version from package metadata
+```
 
 ## Key Patterns
 
@@ -35,7 +51,7 @@ mypy well_log_toolkit/                        # type check
 - **Type hints:** Modern syntax (`dict[str, str]` not `Dict`), use `Optional[T]`, `Union[T1, T2]`
 - **Docstrings:** NumPy style (Parameters, Returns, Raises, Examples, See Also)
 - **Line length:** 100 (black + ruff)
-- **Imports:** Relative within package (`from .well import Well`)
+- **Imports:** Relative within package (`from .property import Property`, `from ..exceptions import ...`)
 - **Errors:** Custom exceptions from `exceptions.py`, never bare `except:`
 
 ## Changelog

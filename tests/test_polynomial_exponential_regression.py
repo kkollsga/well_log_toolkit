@@ -6,7 +6,7 @@ which is ideal for petrophysical relationships like porosity-permeability.
 """
 
 import numpy as np
-from well_log_toolkit.regression import PolynomialExponentialRegression
+from well_log_toolkit.analysis.regression import PolynomialExponentialRegression
 from well_log_toolkit.visualization import Crossplot
 
 
@@ -109,7 +109,7 @@ def test_polynomial_exponential_in_crossplot():
     print("TEST 3: Polynomial-Exponential in Crossplot")
     print("="*70)
 
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -194,7 +194,7 @@ def test_improved_error_message():
     print("TEST 4: Improved Error Message")
     print("="*70)
 
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self):

@@ -12,7 +12,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_well_with_labeled_tops():
     """Create a well with discrete Well_Tops that have string labels."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):

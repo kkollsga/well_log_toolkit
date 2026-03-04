@@ -14,7 +14,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_demo_wells_with_clustered_data():
     """Create wells with data clustered in the center (segment 5)."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):

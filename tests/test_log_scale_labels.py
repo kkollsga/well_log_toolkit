@@ -9,7 +9,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_test_well_log_data():
     """Create a well with wide-range permeability data."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):

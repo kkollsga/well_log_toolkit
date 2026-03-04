@@ -7,7 +7,7 @@ for fast array computations.
 import numpy as np
 import time
 from well_log_toolkit import Well, Property
-from well_log_toolkit.statistics import compute_intervals
+from well_log_toolkit.analysis.statistics import compute_intervals
 
 
 def test_compute_intervals_correctness():

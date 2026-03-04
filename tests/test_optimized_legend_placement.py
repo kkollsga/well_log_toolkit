@@ -21,7 +21,7 @@ def create_test_wells_with_data_in_segment(segment: int, num_wells=3):
         4  5  6     (center left, center, center right)
         7  8  9     (lower left, lower center, lower right)
     """
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name, segment_focus):
@@ -170,7 +170,7 @@ def test_shape_color_sharing():
     print("="*70)
 
     # Create a scenario with both shape and color legends (small)
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name):

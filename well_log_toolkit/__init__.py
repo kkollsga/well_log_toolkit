@@ -40,37 +40,15 @@ Examples
 >>> well.export_to_las('output.las')
 """
 
-# Get version from package metadata (installed) or pyproject.toml (development)
-def _get_version():
-    """Get version from installed package metadata or pyproject.toml."""
-    try:
-        # Try to get version from installed package metadata (Python 3.8+)
-        from importlib.metadata import version
-        return version("well-log-toolkit")
-    except Exception:
-        # Fall back to reading from pyproject.toml (for development)
-        try:
-            from pathlib import Path
-            import re
-            pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
-            if pyproject_path.exists():
-                content = pyproject_path.read_text()
-                match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
-                if match:
-                    return match.group(1)
-        except Exception:
-            pass
-    # Final fallback
-    return "unknown"
+from ._version import _get_version
 
 __version__ = _get_version()
 
 from .manager import WellDataManager
-from .well import Well
-from .property import Property
-from .las_file import LasFile
+from .core import Well, Property
+from .io import LasFile
 from .utils import sanitize_well_name, sanitize_property_name
-from .statistics import (
+from .analysis.statistics import (
     compute_intervals,
     mean,
     sum,
@@ -91,7 +69,7 @@ from .exceptions import (
     DepthAlignmentError,
 )
 from .visualization import Template, WellView, Crossplot
-from .regression import (
+from .analysis.regression import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,

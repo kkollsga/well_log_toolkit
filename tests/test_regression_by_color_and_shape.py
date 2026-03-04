@@ -11,7 +11,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_multi_well_with_formations():
     """Create multiple wells with formation data."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):

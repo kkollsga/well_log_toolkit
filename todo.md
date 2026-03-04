@@ -4,12 +4,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Source lines | 18,380 across 11 modules |
+| Source lines | ~18,380 across 21 modules (restructured from 11) |
 | Classes | 28 (7 public, 21 internal/regression) |
 | Public methods | 320 |
 | Tests | 152 passing in `tests/` (CI runs them as of v0.1.153) |
-| PyPI version | 0.1.153 |
-| Largest files | visualization.py (5,050), manager.py (4,145), property.py (2,718) |
+| PyPI version | 0.1.154 |
+| Largest files | property.py (2,718), well.py (2,697), data_manager.py (1,553) |
 
 ---
 
@@ -110,21 +110,23 @@ well_log_toolkit/
 4. No circular imports — the dependency graph flows: `io → core → analysis → manager → visualization`
 
 **Tasks:**
-- [ ] Create subpackage directories: `io/`, `core/`, `analysis/`, `manager/`, `visualization/`, `analysis/regression/`
-- [ ] Extract `visualization.py` → `visualization/template.py`, `visualization/wellview.py`, `visualization/crossplot.py`, `visualization/_helpers.py`
-- [ ] Extract `manager.py` → `manager/core.py`, `manager/proxy.py`, `analysis/sums_avg.py`
-- [ ] Extract `regression.py` → `analysis/regression/` subpackage (one file per class)
-- [ ] Move `las_file.py` → `io/las2.py`, extract export logic → `io/export.py`
-- [ ] Move `well.py` → `core/well.py`, `property.py` → `core/property.py`, `operations.py` → `core/operations.py`
-- [ ] Move `statistics.py` → `analysis/statistics.py`
-- [ ] Extract version logic from `__init__.py` → `_version.py`
-- [ ] Write all subpackage `__init__.py` files with proper re-exports
-- [ ] Update top-level `__init__.py` to import from new subpackages
-- [ ] Update all internal imports across all files
-- [ ] Run full test suite to verify zero breakage
-- [ ] Verify `from well_log_toolkit import WellDataManager, Well, Property, LasFile` still works
+- [x] Extract version logic from `__init__.py` → `_version.py`
+- [x] Create `io/` subpackage, move `las_file.py` → `io/las_file.py`
+- [x] Create `visualization/` subpackage, split 5050-line `visualization.py` into `template.py`, `wellview.py`, `crossplot.py`
+- [x] Create `analysis/` subpackage with `statistics.py`, `regression.py`, `sums_avg.py` (extracted from manager.py)
+- [x] Create `core/` subpackage, move `well.py`, `property.py`, `operations.py`
+- [x] Create `manager/` subpackage, split 3500-line `manager.py` into `data_manager.py` and `proxy.py`
+- [x] Write all subpackage `__init__.py` files with proper re-exports
+- [x] Update top-level `__init__.py` to import from new subpackages
+- [x] Update all internal imports across all files
+- [x] Update all test imports to match new package structure
+- [x] Run full test suite — 152 tests pass, zero breakage
+- [ ] Further split `regression.py` into one file per class — deferred (low priority)
+- [ ] Extract LAS export logic → `io/export.py` — deferred (low priority)
 
-**Files touched:** Everything. This is the largest single step.
+**Status: DONE (v0.1.154)**
+
+**Files touched:** Everything. This was the largest single step.
 
 ---
 

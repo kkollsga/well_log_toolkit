@@ -8,24 +8,11 @@ These tests ensure:
 4. Statistics (mean, sum, etc.) are correctly thickness-weighted
 5. Edge cases are handled correctly
 """
-import sys
-import os
-import importlib.util
-
 import numpy as np
 import pytest
 
-# Import statistics module directly to avoid matplotlib dependency from main __init__
-_stats_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'well_log_toolkit', 'statistics.py'
-)
-_spec = importlib.util.spec_from_file_location("statistics", _stats_path)
-_statistics = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_statistics)
-
-compute_intervals = _statistics.compute_intervals
-compute_zone_intervals = _statistics.compute_zone_intervals
+# Import statistics functions
+from well_log_toolkit.analysis.statistics import compute_intervals, compute_zone_intervals
 
 
 # =============================================================================

@@ -67,7 +67,7 @@ def align_properties(prop1: 'Property', prop2: 'Property') -> tuple[np.ndarray, 
     >>> core_resampled = well.CorePHIE.resample(well.PHIE.depth)
     >>> result = well.PHIE + core_resampled
     """
-    from .exceptions import DepthAlignmentError
+    from ..exceptions import DepthAlignmentError
 
     # Check if grids are identical (within tolerance)
     if len(prop1.depth) == len(prop2.depth) and np.allclose(prop1.depth, prop2.depth, rtol=1e-9, atol=1e-9):

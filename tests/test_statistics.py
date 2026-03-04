@@ -3,7 +3,7 @@ Tests for weighted and arithmetic statistics functions.
 """
 import numpy as np
 import pytest
-from well_log_toolkit.statistics import (
+from well_log_toolkit.analysis.statistics import (
     compute_intervals,
     mean,
     sum as stat_sum,  # Avoid shadowing builtin

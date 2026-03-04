@@ -7,14 +7,14 @@ from typing import Optional, TYPE_CHECKING, Union
 import numpy as np
 import pandas as pd
 
-from .exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
+from ..exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
 from .property import Property
-from .las_file import LasFile
-from .utils import sanitize_property_name, sanitize_well_name, filter_names
+from ..io import LasFile
+from ..utils import sanitize_property_name, sanitize_well_name, filter_names
 
 if TYPE_CHECKING:
-    from .manager import WellDataManager
-    from .visualization import Template, WellView
+    from ..manager import WellDataManager
+    from ..visualization import Template, WellView
 
 
 class SourceView:
@@ -266,7 +266,7 @@ class Well:
             Property object to add
         """
         # Sanitize the name
-        from .utils import sanitize_property_name
+        from ..utils import sanitize_property_name
         sanitized_name = sanitize_property_name(name)
 
         # Update property metadata
@@ -302,7 +302,7 @@ class Well:
         new_prop : Property
             Property object with new data
         """
-        from .utils import sanitize_property_name
+        from ..utils import sanitize_property_name
         sanitized_name = sanitize_property_name(name)
 
         # Find which source contains this property
@@ -2510,7 +2510,7 @@ class Well:
         ...     header_config={"header_log_spacing": 0.04}
         ... )
         """
-        from .visualization import WellView as WellViewClass
+        from ..visualization import WellView as WellViewClass
 
         return WellViewClass(
             well=self,
@@ -2651,7 +2651,7 @@ class Well:
         >>> plot = well.Crossplot(x="PERM", y="PHIE", x_log=True)
         >>> plot.show()
         """
-        from .visualization import Crossplot as CrossplotClass
+        from ..visualization import Crossplot as CrossplotClass
 
         return CrossplotClass(
             wells=self,

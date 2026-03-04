@@ -8,8 +8,8 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 
-from .exceptions import LasFileError, UnsupportedVersionError
-from .utils import parse_las_line, filter_names
+from ..exceptions import LasFileError, UnsupportedVersionError
+from ..utils import parse_las_line, filter_names
 
 
 class LasFile:

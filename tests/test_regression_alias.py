@@ -10,7 +10,7 @@ from well_log_toolkit.visualization import Crossplot
 
 def create_test_wells():
     """Create wells for testing."""
-    from well_log_toolkit.property import Property
+    from well_log_toolkit.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):
