@@ -4,6 +4,7 @@ SumsAvgResult container and helper functions for multi-well statistical aggregat
 Provides the SumsAvgResult dictionary subclass with cross-well reporting capabilities,
 along with helper functions for JSON sanitization and DataFrame flattening.
 """
+
 from typing import Optional
 
 import numpy as np
@@ -59,7 +60,7 @@ class SumsAvgResult(dict):
         zones: list[str],
         groups: dict[str, list[str]],
         columns: list[dict],
-        print_report: bool = True
+        print_report: bool = True,
     ) -> Optional[dict]:
         """
         Generate a structured report with cross-well aggregation.
@@ -125,26 +126,25 @@ class SumsAvgResult(dict):
         """Validate column specifications."""
         # Check required fields
         for i, col in enumerate(columns):
-            if 'property' not in col:
+            if "property" not in col:
                 raise ValueError(f"Column {i} missing required 'property' field")
-            if 'stat' not in col:
+            if "stat" not in col:
                 raise ValueError(f"Column {i} missing required 'stat' field")
 
         # Check pooled std_dev has corresponding mean
         for col in columns:
-            agg = col.get('agg')
-            stat = col.get('stat')
-            prop = col.get('property')
+            agg = col.get("agg")
+            stat = col.get("stat")
+            prop = col.get("property")
 
             # Default agg for std_dev is pooled
-            if stat == 'std_dev' and agg is None:
-                agg = 'pooled'
+            if stat == "std_dev" and agg is None:
+                agg = "pooled"
 
-            if agg == 'pooled':
+            if agg == "pooled":
                 # Find corresponding mean column
                 has_mean = any(
-                    c.get('property') == prop and c.get('stat') == 'mean'
-                    for c in columns
+                    c.get("property") == prop and c.get("stat") == "mean" for c in columns
                 )
                 if not has_mean:
                     raise ValueError(
@@ -155,30 +155,30 @@ class SumsAvgResult(dict):
 
     def _get_column_defaults(self, col: dict) -> dict:
         """Get column spec with defaults applied."""
-        stat = col.get('stat', 'mean')
+        stat = col.get("stat", "mean")
 
         # Default aggregation based on stat type
-        if stat == 'std_dev':
-            default_agg = 'pooled'
+        if stat == "std_dev":
+            default_agg = "pooled"
         else:
-            default_agg = 'arithmetic'
+            default_agg = "arithmetic"
 
         return {
-            'property': col['property'],
-            'stat': stat,
-            'label': col.get('label', stat),
-            'format': col.get('format', '.4f'),
-            'unit': col.get('unit', ''),
-            'factor': col.get('factor', 1.0),
-            'agg': col.get('agg', default_agg),
+            "property": col["property"],
+            "stat": stat,
+            "label": col.get("label", stat),
+            "format": col.get("format", ".4f"),
+            "unit": col.get("unit", ""),
+            "factor": col.get("factor", 1.0),
+            "agg": col.get("agg", default_agg),
         }
 
     def _extract_value(self, facies_data: dict, col: dict) -> Optional[float]:
         """Extract a value from facies data based on column spec."""
         col = self._get_column_defaults(col)
-        prop = col['property']
-        stat = col['stat']
-        factor = col['factor']
+        prop = col["property"]
+        stat = col["stat"]
+        factor = col["factor"]
 
         if prop not in facies_data:
             return None
@@ -194,10 +194,7 @@ class SumsAvgResult(dict):
         return value * factor
 
     def _generate_report_data(
-        self,
-        zones: list[str],
-        groups: dict[str, list[str]],
-        columns: list[dict]
+        self, zones: list[str], groups: dict[str, list[str]], columns: list[dict]
     ) -> dict:
         """Generate structured report data from results."""
         report = {}
@@ -223,10 +220,10 @@ class SumsAvgResult(dict):
                 # Calculate total zone thickness from all facies
                 zone_thickness = 0.0
                 for facies_name, facies_data in zone_data.items():
-                    if isinstance(facies_data, dict) and 'thickness' in facies_data:
-                        zone_thickness += facies_data['thickness']
+                    if isinstance(facies_data, dict) and "thickness" in facies_data:
+                        zone_thickness += facies_data["thickness"]
 
-                zone_report['thickness'] = zone_thickness
+                zone_report["thickness"] = zone_thickness
 
                 # Process each group
                 for group_name, facies_list in groups.items():
@@ -236,12 +233,15 @@ class SumsAvgResult(dict):
 
                     group_report = {}
                     group_thickness = sum(
-                        zone_data[f]['thickness'] for f in existing_facies
-                        if isinstance(zone_data[f], dict) and 'thickness' in zone_data[f]
+                        zone_data[f]["thickness"]
+                        for f in existing_facies
+                        if isinstance(zone_data[f], dict) and "thickness" in zone_data[f]
                     )
 
-                    group_report['thickness'] = group_thickness
-                    group_report['fraction'] = group_thickness / zone_thickness if zone_thickness > 0 else 0.0
+                    group_report["thickness"] = group_thickness
+                    group_report["fraction"] = (
+                        group_thickness / zone_thickness if zone_thickness > 0 else 0.0
+                    )
 
                     # Process each facies in the group
                     for facies_name in existing_facies:
@@ -249,19 +249,21 @@ class SumsAvgResult(dict):
                         if not isinstance(facies_data, dict):
                             continue
 
-                        facies_thickness = facies_data.get('thickness', 0.0)
+                        facies_thickness = facies_data.get("thickness", 0.0)
                         if facies_thickness <= 0:
                             continue
 
                         facies_report = {
-                            'thickness': facies_thickness,
-                            'fraction': facies_thickness / group_thickness if group_thickness > 0 else 0.0,
+                            "thickness": facies_thickness,
+                            "fraction": (
+                                facies_thickness / group_thickness if group_thickness > 0 else 0.0
+                            ),
                         }
 
                         # Extract column values
                         for col in columns:
                             col_def = self._get_column_defaults(col)
-                            label = col_def['label']
+                            label = col_def["label"]
                             value = self._extract_value(facies_data, col)
                             facies_report[label] = value
 
@@ -274,19 +276,20 @@ class SumsAvgResult(dict):
                             aggregation_data[zone_name][group_name] = {}
                         if facies_name not in aggregation_data[zone_name][group_name]:
                             aggregation_data[zone_name][group_name][facies_name] = {
-                                'thick': [], 'values': {}
+                                "thick": [],
+                                "values": {},
                             }
 
                         agg_facies = aggregation_data[zone_name][group_name][facies_name]
-                        agg_facies['thick'].append(facies_thickness)
+                        agg_facies["thick"].append(facies_thickness)
 
                         for col in columns:
                             col_def = self._get_column_defaults(col)
-                            label = col_def['label']
+                            label = col_def["label"]
                             value = self._extract_value(facies_data, col)
-                            if label not in agg_facies['values']:
-                                agg_facies['values'][label] = []
-                            agg_facies['values'][label].append(value)
+                            if label not in agg_facies["values"]:
+                                agg_facies["values"][label] = []
+                            agg_facies["values"][label].append(value)
 
                     zone_report[group_name] = group_report
 
@@ -299,7 +302,7 @@ class SumsAvgResult(dict):
         # Generate Summary
         summary = self._generate_summary(aggregation_data, columns, zones, groups)
         if summary:
-            report['Summary'] = summary
+            report["Summary"] = summary
 
         return report
 
@@ -308,7 +311,7 @@ class SumsAvgResult(dict):
         aggregation_data: dict,
         columns: list[dict],
         zones: list[str],
-        groups: dict[str, list[str]]
+        groups: dict[str, list[str]],
     ) -> dict:
         """Generate cross-well summary using thickness-weighted aggregation."""
         summary = {}
@@ -321,17 +324,17 @@ class SumsAvgResult(dict):
         for zone_name, zone_agg in aggregation_data.items():
             for group_name, group_agg in zone_agg.items():
                 for facies_name, facies_agg in group_agg.items():
-                    thicks = np.array(facies_agg['thick'])
+                    thicks = np.array(facies_agg["thick"])
                     total_thick = np.sum(thicks)
                     if total_thick <= 0:
                         continue
 
                     for col in columns:
                         col_def = self._get_column_defaults(col)
-                        if col_def['stat'] == 'mean':
-                            label = col_def['label']
-                            prop = col_def['property']
-                            values = facies_agg['values'].get(label, [])
+                        if col_def["stat"] == "mean":
+                            label = col_def["label"]
+                            prop = col_def["property"]
+                            values = facies_agg["values"].get(label, [])
 
                             valid_mask = [v is not None for v in values]
                             if not any(valid_mask):
@@ -351,35 +354,35 @@ class SumsAvgResult(dict):
                 continue
 
             zone_agg = aggregation_data[zone_name]
-            zone_summary = {'thickness': 0.0}
+            zone_summary = {"thickness": 0.0}
 
             for group_name, facies_list in groups.items():
                 if group_name not in zone_agg:
                     continue
 
                 group_agg = zone_agg[group_name]
-                group_summary = {'thickness': 0.0}
+                group_summary = {"thickness": 0.0}
 
                 for facies_name in facies_list:
                     if facies_name not in group_agg:
                         continue
 
                     facies_agg = group_agg[facies_name]
-                    thicks = np.array(facies_agg['thick'])
+                    thicks = np.array(facies_agg["thick"])
                     total_thick = np.sum(thicks)
 
                     if total_thick <= 0:
                         continue
 
-                    facies_summary = {'thickness': total_thick, 'fraction': 0.0}
+                    facies_summary = {"thickness": total_thick, "fraction": 0.0}
 
                     for col in columns:
                         col_def = self._get_column_defaults(col)
-                        label = col_def['label']
-                        prop = col_def['property']
-                        agg_method = col_def['agg']
+                        label = col_def["label"]
+                        prop = col_def["property"]
+                        agg_method = col_def["agg"]
 
-                        values = facies_agg['values'].get(label, [])
+                        values = facies_agg["values"].get(label, [])
                         valid_mask = [v is not None for v in values]
 
                         if not any(valid_mask):
@@ -394,11 +397,11 @@ class SumsAvgResult(dict):
                             facies_summary[label] = None
                             continue
 
-                        if agg_method == 'arithmetic':
+                        if agg_method == "arithmetic":
                             # Thickness-weighted arithmetic mean
                             agg_value = np.sum(valid_vals * valid_thicks) / valid_total
 
-                        elif agg_method == 'geometric':
+                        elif agg_method == "geometric":
                             # Thickness-weighted geometric mean
                             # Filter out non-positive values for log
                             pos_mask = valid_vals > 0
@@ -410,7 +413,7 @@ class SumsAvgResult(dict):
                             pos_total = np.sum(pos_thicks)
                             agg_value = np.exp(np.sum(np.log(pos_vals) * pos_thicks) / pos_total)
 
-                        elif agg_method == 'pooled':
+                        elif agg_method == "pooled":
                             # Pooled standard deviation
                             # Requires the grand mean from the corresponding mean column
                             grand_mean = grand_means.get((zone_name, group_name, facies_name, prop))
@@ -423,15 +426,15 @@ class SumsAvgResult(dict):
                             mean_label = None
                             for c in columns:
                                 c_def = self._get_column_defaults(c)
-                                if c_def['property'] == prop and c_def['stat'] == 'mean':
-                                    mean_label = c_def['label']
+                                if c_def["property"] == prop and c_def["stat"] == "mean":
+                                    mean_label = c_def["label"]
                                     break
 
                             if mean_label is None:
                                 facies_summary[label] = None
                                 continue
 
-                            mean_values = facies_agg['values'].get(mean_label, [])
+                            mean_values = facies_agg["values"].get(mean_label, [])
                             std_values = values  # current column values (stds)
 
                             # Both must be valid
@@ -443,19 +446,29 @@ class SumsAvgResult(dict):
                                 facies_summary[label] = None
                                 continue
 
-                            combined_means = np.array([v for v, m in zip(mean_values, combined_mask) if m])
-                            combined_stds = np.array([v for v, m in zip(std_values, combined_mask) if m])
-                            combined_thicks = np.array([t for t, m in zip(thicks, combined_mask) if m])
+                            combined_means = np.array(
+                                [v for v, m in zip(mean_values, combined_mask) if m]
+                            )
+                            combined_stds = np.array(
+                                [v for v, m in zip(std_values, combined_mask) if m]
+                            )
+                            combined_thicks = np.array(
+                                [t for t, m in zip(thicks, combined_mask) if m]
+                            )
                             combined_total = np.sum(combined_thicks)
 
                             # Pooled variance formula:
                             # var_pooled = sum(thick * (std^2 + (mean - grand_mean)^2)) / total_thick
-                            pooled_var = np.sum(
-                                combined_thicks * (combined_stds**2 + (combined_means - grand_mean)**2)
-                            ) / combined_total
+                            pooled_var = (
+                                np.sum(
+                                    combined_thicks
+                                    * (combined_stds**2 + (combined_means - grand_mean) ** 2)
+                                )
+                                / combined_total
+                            )
                             agg_value = np.sqrt(pooled_var)
 
-                        elif agg_method == 'sum':
+                        elif agg_method == "sum":
                             agg_value = np.sum(valid_vals)
 
                         else:
@@ -465,27 +478,33 @@ class SumsAvgResult(dict):
                         facies_summary[label] = agg_value
 
                     group_summary[facies_name] = facies_summary
-                    group_summary['thickness'] += total_thick
+                    group_summary["thickness"] += total_thick
 
                 # Update facies fractions based on group total
-                group_thick = group_summary['thickness']
+                group_thick = group_summary["thickness"]
                 for facies_name in facies_list:
-                    if facies_name in group_summary and isinstance(group_summary[facies_name], dict):
-                        f_thick = group_summary[facies_name].get('thickness', 0)
-                        group_summary[facies_name]['fraction'] = f_thick / group_thick if group_thick > 0 else 0.0
+                    if facies_name in group_summary and isinstance(
+                        group_summary[facies_name], dict
+                    ):
+                        f_thick = group_summary[facies_name].get("thickness", 0)
+                        group_summary[facies_name]["fraction"] = (
+                            f_thick / group_thick if group_thick > 0 else 0.0
+                        )
 
-                if group_summary['thickness'] > 0:
+                if group_summary["thickness"] > 0:
                     zone_summary[group_name] = group_summary
-                    zone_summary['thickness'] += group_summary['thickness']
+                    zone_summary["thickness"] += group_summary["thickness"]
 
             # Calculate group fractions
-            zone_thick = zone_summary['thickness']
+            zone_thick = zone_summary["thickness"]
             for group_name in groups:
                 if group_name in zone_summary and isinstance(zone_summary[group_name], dict):
-                    g_thick = zone_summary[group_name].get('thickness', 0)
-                    zone_summary[group_name]['fraction'] = g_thick / zone_thick if zone_thick > 0 else 0.0
+                    g_thick = zone_summary[group_name].get("thickness", 0)
+                    zone_summary[group_name]["fraction"] = (
+                        g_thick / zone_thick if zone_thick > 0 else 0.0
+                    )
 
-            if zone_summary['thickness'] > 0:
+            if zone_summary["thickness"] > 0:
                 summary[zone_name] = zone_summary
 
         return summary
@@ -504,30 +523,34 @@ class SumsAvgResult(dict):
                 if not isinstance(zone_data, dict):
                     continue
 
-                zone_thick = zone_data.get('thickness', 0)
+                zone_thick = zone_data.get("thickness", 0)
                 print(f"{indent}{zone_name:<13} iso: {zone_thick:>6.2f}m")
 
                 for group_name, group_data in zone_data.items():
-                    if group_name == 'thickness' or not isinstance(group_data, dict):
+                    if group_name == "thickness" or not isinstance(group_data, dict):
                         continue
 
-                    group_thick = group_data.get('thickness', 0)
-                    group_frac = group_data.get('fraction', 0)
-                    print(f"{indent*2}-- {group_name:<10} fraction: {group_frac:>7.4f} iso: {group_thick:>6.2f}m")
+                    group_thick = group_data.get("thickness", 0)
+                    group_frac = group_data.get("fraction", 0)
+                    print(
+                        f"{indent*2}-- {group_name:<10} fraction: {group_frac:>7.4f} iso: {group_thick:>6.2f}m"
+                    )
 
                     for facies_name, facies_data in group_data.items():
-                        if facies_name in ('thickness', 'fraction') or not isinstance(facies_data, dict):
+                        if facies_name in ("thickness", "fraction") or not isinstance(
+                            facies_data, dict
+                        ):
                             continue
 
-                        f_thick = facies_data.get('thickness', 0)
-                        f_frac = facies_data.get('fraction', 0)
+                        f_thick = facies_data.get("thickness", 0)
+                        f_frac = facies_data.get("fraction", 0)
 
                         # Build column values string
                         col_strs = []
                         for col_def in col_defs:
-                            label = col_def['label']
-                            fmt = col_def['format']
-                            unit = col_def['unit']
+                            label = col_def["label"]
+                            fmt = col_def["format"]
+                            unit = col_def["unit"]
                             value = facies_data.get(label)
 
                             if value is not None:
@@ -540,7 +563,9 @@ class SumsAvgResult(dict):
                                 col_strs.append(f"{label}: {'N/A':>8}")
 
                         col_str = " ".join(col_strs)
-                        print(f"{indent*2}| {facies_name:<15} frac: {f_frac:>7.4f} iso: {f_thick:>6.2f}m {col_str}")
+                        print(
+                            f"{indent*2}| {facies_name:<15} frac: {f_frac:>7.4f} iso: {f_thick:>6.2f}m {col_str}"
+                        )
 
                 print("")
 
@@ -603,14 +628,14 @@ def _flatten_to_dataframe(nested_dict: dict, property_name: str) -> pd.DataFrame
     # Last column is the value, others are grouping levels
     if max_depth == 2:
         # Simple case: just well and value
-        columns = ['Well', property_name]
+        columns = ["Well", property_name]
     elif max_depth == 3:
         # Well, one grouping level (e.g., Source or Zone), value
-        columns = ['Well', 'Group', property_name]
+        columns = ["Well", "Group", property_name]
     else:
         # Well, multiple grouping levels, value
         # Use generic names: Group1, Group2, etc.
-        columns = ['Well'] + [f'Group{i}' for i in range(1, max_depth - 1)] + [property_name]
+        columns = ["Well"] + [f"Group{i}" for i in range(1, max_depth - 1)] + [property_name]
 
     df = pd.DataFrame(padded_rows, columns=columns)
 

@@ -1,6 +1,7 @@
 """
 LAS file reader with lazy data loading.
 """
+
 import io
 from pathlib import Path
 from typing import Optional, Union
@@ -70,15 +71,15 @@ class LasFile:
     >>> print(labels)
     {0: 'NonReservoir', 1: 'Reservoir'}
     """
-    
+
     # Supported LAS versions
-    SUPPORTED_VERSIONS = {'2.0', '2', '3.0', '3'}
+    SUPPORTED_VERSIONS = {"2.0", "2", "3.0", "3"}
 
     def __init__(self, filepath: Union[str, Path], _from_dataframe: bool = False):
         self.filepath = Path(filepath)
 
         if not _from_dataframe:
-            if self.filepath.suffix.lower() != '.las':
+            if self.filepath.suffix.lower() != ".las":
                 raise LasFileError(
                     f"Expected .las file extension, got '{self.filepath.suffix}': {filepath}"
                 )
@@ -95,26 +96,26 @@ class LasFile:
         self._data: Optional[pd.DataFrame] = None
         self._ascii_start_line: Optional[int] = None
         self._curve_names: list[str] = []  # Preserve original order
-        self._las_version: str = '2.0'  # Set during _validate_version()
+        self._las_version: str = "2.0"  # Set during _validate_version()
 
         # Auto-parse headers on init (skip if from DataFrame)
         if not _from_dataframe:
             self._parse_headers()
             self._validate_version()
-    
+
     @classmethod
     def from_dataframe(
         cls,
         df: pd.DataFrame,
         well_name: str,
-        source_name: str = 'external_df',
+        source_name: str = "external_df",
         unit_mappings: Optional[dict[str, str]] = None,
         type_mappings: Optional[dict[str, str]] = None,
         label_mappings: Optional[dict[str, dict[int, str]]] = None,
         color_mappings: Optional[dict[str, dict[int, str]]] = None,
         style_mappings: Optional[dict[str, dict[int, str]]] = None,
-        thickness_mappings: Optional[dict[str, dict[int, float]]] = None
-    ) -> 'LasFile':
+        thickness_mappings: Optional[dict[str, dict[int, float]]] = None,
+    ) -> "LasFile":
         """
         Create a LasFile object from a DataFrame.
 
@@ -154,7 +155,7 @@ class LasFile:
         ...     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v'}
         ... )
         """
-        if 'DEPT' not in df.columns:
+        if "DEPT" not in df.columns:
             raise LasFileError(
                 "DataFrame must contain 'DEPT' column. "
                 f"Available columns: {', '.join(df.columns)}"
@@ -171,33 +172,33 @@ class LasFile:
         instance = cls(source_name, _from_dataframe=True)
 
         # Set version info
-        instance.version_info = {'VERS': '2.0', 'WRAP': 'NO'}
+        instance.version_info = {"VERS": "2.0", "WRAP": "NO"}
 
         # Set well info
-        dept = df['DEPT'].dropna()
+        dept = df["DEPT"].dropna()
         instance.well_info = {
-            'WELL': well_name,
-            'STRT': str(float(dept.min())) if len(dept) > 0 else '0.0',
-            'STOP': str(float(dept.max())) if len(dept) > 0 else '0.0',
-            'STEP': str(float(dept.diff().median())) if len(dept) > 1 else '0.1',
-            'NULL': '-999.25'
+            "WELL": well_name,
+            "STRT": str(float(dept.min())) if len(dept) > 0 else "0.0",
+            "STOP": str(float(dept.max())) if len(dept) > 0 else "0.0",
+            "STEP": str(float(dept.diff().median())) if len(dept) > 1 else "0.1",
+            "NULL": "-999.25",
         }
 
         # Set curve metadata
         for col in df.columns:
             instance._curve_names.append(col)
             instance.curves[col] = {
-                'unit': unit_mappings.get(col, ''),
-                'description': col,
-                'type': type_mappings.get(col, 'continuous'),
-                'alias': None,
-                'multiplier': None
+                "unit": unit_mappings.get(col, ""),
+                "description": col,
+                "type": type_mappings.get(col, "continuous"),
+                "alias": None,
+                "multiplier": None,
             }
 
         # Set parameter info (discrete labels and metadata)
         if label_mappings:
-            discrete_props = ','.join(sorted(label_mappings.keys()))
-            instance.parameter_info['DISCRETE_PROPS'] = discrete_props
+            discrete_props = ",".join(sorted(label_mappings.keys()))
+            instance.parameter_info["DISCRETE_PROPS"] = discrete_props
 
             for prop_name, labels in label_mappings.items():
                 for value, label in labels.items():
@@ -233,17 +234,17 @@ class LasFile:
     @property
     def well_name(self) -> Optional[str]:
         """Extract well name from well info."""
-        return self.well_info.get('WELL')
-    
+        return self.well_info.get("WELL")
+
     @property
     def depth_column(self) -> Optional[str]:
         """First curve (typically DEPT/DEPTH)."""
         return self._curve_names[0] if self._curve_names else None
-    
+
     @property
     def null_value(self) -> float:
         """NULL value from well section, default -999.25."""
-        null_str = self.well_info.get('NULL', '-999.25')
+        null_str = self.well_info.get("NULL", "-999.25")
         try:
             return float(null_str)
         except ValueError:
@@ -259,11 +260,11 @@ class LasFile:
         list[str]
             List of discrete property names from DISCRETE_PROPS parameter
         """
-        discrete_props_str = self.parameter_info.get('DISCRETE_PROPS', '')
+        discrete_props_str = self.parameter_info.get("DISCRETE_PROPS", "")
         if not discrete_props_str:
             return []
         # Split by comma and strip whitespace
-        return [name.strip() for name in discrete_props_str.split(',') if name.strip()]
+        return [name.strip() for name in discrete_props_str.split(",") if name.strip()]
 
     def get_discrete_labels(self, property_name: str) -> Optional[dict[int, str]]:
         """
@@ -297,12 +298,12 @@ class LasFile:
         for param_name, label_value in self.parameter_info.items():
             if param_name.startswith(prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(prefix):]
+                suffix = param_name[len(prefix) :]
                 try:
                     value = int(suffix)
                     # If the label contains a color (e.g., "Label|color"), extract just the label
-                    if '|' in label_value:
-                        label_only = label_value.split('|')[0].strip()
+                    if "|" in label_value:
+                        label_only = label_value.split("|")[0].strip()
                         labels[value] = label_only
                     else:
                         labels[value] = label_value.strip()
@@ -346,12 +347,12 @@ class LasFile:
         for param_name, label_value in self.parameter_info.items():
             if param_name.startswith(prefix) and not param_name.startswith(color_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(prefix):]
+                suffix = param_name[len(prefix) :]
                 try:
                     value = int(suffix)
                     # If the label contains a color (e.g., "Label|color"), extract the color
-                    if '|' in label_value:
-                        parts = label_value.split('|')
+                    if "|" in label_value:
+                        parts = label_value.split("|")
                         if len(parts) >= 2:
                             color = parts[1].strip()
                             if color:  # Only add if color is not empty
@@ -365,7 +366,7 @@ class LasFile:
         for param_name, color_value in self.parameter_info.items():
             if param_name.startswith(color_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(color_prefix):]
+                suffix = param_name[len(color_prefix) :]
                 try:
                     value = int(suffix)
                     if value not in colors:  # Inline format takes precedence
@@ -410,12 +411,12 @@ class LasFile:
         for param_name, label_value in self.parameter_info.items():
             if param_name.startswith(prefix) and not param_name.startswith(style_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(prefix):]
+                suffix = param_name[len(prefix) :]
                 try:
                     value = int(suffix)
                     # If the label contains a style (e.g., "Label|color|style"), extract the style
-                    if '|' in label_value:
-                        parts = label_value.split('|')
+                    if "|" in label_value:
+                        parts = label_value.split("|")
                         if len(parts) >= 3:
                             style = parts[2].strip()
                             if style:  # Only add if style is not empty
@@ -429,7 +430,7 @@ class LasFile:
         for param_name, style_value in self.parameter_info.items():
             if param_name.startswith(style_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(style_prefix):]
+                suffix = param_name[len(style_prefix) :]
                 try:
                     value = int(suffix)
                     if value not in styles:  # Inline format takes precedence
@@ -474,12 +475,12 @@ class LasFile:
         for param_name, label_value in self.parameter_info.items():
             if param_name.startswith(prefix) and not param_name.startswith(thickness_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(prefix):]
+                suffix = param_name[len(prefix) :]
                 try:
                     value = int(suffix)
                     # If the label contains a thickness (e.g., "Label|color|style|thickness"), extract it
-                    if '|' in label_value:
-                        parts = label_value.split('|')
+                    if "|" in label_value:
+                        parts = label_value.split("|")
                         if len(parts) >= 4:
                             thickness_str = parts[3].strip()
                             if thickness_str:  # Only add if thickness is not empty
@@ -498,7 +499,7 @@ class LasFile:
         for param_name, thickness_value in self.parameter_info.items():
             if param_name.startswith(thickness_prefix):
                 # Extract the numeric suffix
-                suffix = param_name[len(thickness_prefix):]
+                suffix = param_name[len(thickness_prefix) :]
                 try:
                     value = int(suffix)
                     if value not in thicknesses:  # Inline format takes precedence
@@ -572,13 +573,13 @@ class LasFile:
 
             # Look up the source in the well
             if other not in well._sources:
-                available = ', '.join(well._sources.keys())
+                available = ", ".join(well._sources.keys())
                 raise KeyError(
                     f"Source '{other}' not found in well '{well.name}'. "
                     f"Available sources: {available or 'none'}"
                 )
 
-            other_las = well._sources[other]['las_file']
+            other_las = well._sources[other]["las_file"]
             if other_las is None:
                 raise ValueError(
                     f"Source '{other}' has no LAS file (synthetic source). "
@@ -599,21 +600,23 @@ class LasFile:
 
         if len(self_depth) == 0 or len(other_depth) == 0:
             return {
-                'compatible': False,
-                'reason': 'Empty depth array',
-                'existing': self._depth_info(other_depth),
-                'new': self._depth_info(self_depth),
-                'requires_resampling': True
+                "compatible": False,
+                "reason": "Empty depth array",
+                "existing": self._depth_info(other_depth),
+                "new": self._depth_info(self_depth),
+                "requires_resampling": True,
             }
 
         # Check if grids are identical (within tolerance)
-        if len(self_depth) == len(other_depth) and np.allclose(self_depth, other_depth, rtol=1e-9, atol=1e-9):
+        if len(self_depth) == len(other_depth) and np.allclose(
+            self_depth, other_depth, rtol=1e-9, atol=1e-9
+        ):
             return {
-                'compatible': True,
-                'reason': 'Identical depth grids',
-                'existing': self._depth_info(other_depth),
-                'new': self._depth_info(self_depth),
-                'requires_resampling': False
+                "compatible": True,
+                "reason": "Identical depth grids",
+                "existing": self._depth_info(other_depth),
+                "new": self._depth_info(self_depth),
+                "requires_resampling": False,
             }
 
         # Check if all depths in new file exist in existing file (subset check)
@@ -627,11 +630,11 @@ class LasFile:
 
         if all_depths_found:
             return {
-                'compatible': True,
-                'reason': 'New depths are subset of existing depths',
-                'existing': self._depth_info(other_depth),
-                'new': self._depth_info(self_depth),
-                'requires_resampling': False
+                "compatible": True,
+                "reason": "New depths are subset of existing depths",
+                "existing": self._depth_info(other_depth),
+                "new": self._depth_info(self_depth),
+                "requires_resampling": False,
             }
 
         # Check if grids have same spacing but different start/stop
@@ -642,40 +645,41 @@ class LasFile:
         if np.abs(self_spacing - other_spacing) < tolerance:
             # Same spacing - could potentially pad with NaN
             return {
-                'compatible': True,
-                'reason': 'Same spacing, different range (can pad with NaN)',
-                'existing': self._depth_info(other_depth),
-                'new': self._depth_info(self_depth),
-                'requires_resampling': False  # Can use NaN padding
+                "compatible": True,
+                "reason": "Same spacing, different range (can pad with NaN)",
+                "existing": self._depth_info(other_depth),
+                "new": self._depth_info(self_depth),
+                "requires_resampling": False,  # Can use NaN padding
             }
 
         # Incompatible - different grids requiring resampling
         return {
-            'compatible': False,
-            'reason': 'Different depth grids requiring resampling',
-            'existing': self._depth_info(other_depth),
-            'new': self._depth_info(self_depth),
-            'requires_resampling': True
+            "compatible": False,
+            "reason": "Different depth grids requiring resampling",
+            "existing": self._depth_info(other_depth),
+            "new": self._depth_info(self_depth),
+            "requires_resampling": True,
         }
 
-    def _depth_info(self, depth: 'np.ndarray') -> dict:
+    def _depth_info(self, depth: "np.ndarray") -> dict:
         """Helper to extract depth grid information."""
         import numpy as np
+
         if len(depth) == 0:
-            return {'samples': 0, 'start': np.nan, 'stop': np.nan, 'spacing': np.nan}
+            return {"samples": 0, "start": np.nan, "stop": np.nan, "spacing": np.nan}
 
         spacing = np.median(np.diff(depth)) if len(depth) > 1 else 0.0
         return {
-            'samples': len(depth),
-            'start': float(depth[0]),
-            'stop': float(depth[-1]),
-            'spacing': float(spacing)
+            "samples": len(depth),
+            "start": float(depth[0]),
+            "stop": float(depth[-1]),
+            "spacing": float(spacing),
         }
 
     def data(
         self,
         include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None
+        exclude: Optional[Union[str, list[str]]] = None,
     ) -> pd.DataFrame:
         """
         Lazy-load and return data with optional column filtering.
@@ -730,7 +734,7 @@ class LasFile:
     def update_curve(self, name: str, **kwargs) -> None:
         """
         Update curve metadata.
-        
+
         Parameters
         ----------
         name : str
@@ -741,14 +745,14 @@ class LasFile:
             type : {'continuous', 'discrete'} - Log type
             alias : str | None - Output column name
             multiplier : float | None - Unit conversion factor
-        
+
         Raises
         ------
         KeyError
             If curve not found
         ValueError
             If invalid attribute or type value
-        
+
         Examples
         --------
         >>> las.update_curve('PHIE_2025', type='continuous', alias='PHIE')
@@ -756,40 +760,38 @@ class LasFile:
         >>> las.update_curve('PERM_Lam_2025', multiplier=0.001, alias='PERM_D')
         """
         if name not in self.curves:
-            available = ', '.join(self.curves.keys())
+            available = ", ".join(self.curves.keys())
             raise KeyError(
-                f"Curve '{name}' not found in LAS file. "
-                f"Available curves: {available}"
+                f"Curve '{name}' not found in LAS file. " f"Available curves: {available}"
             )
-        
-        valid_attrs = {'unit', 'description', 'type', 'alias', 'multiplier'}
+
+        valid_attrs = {"unit", "description", "type", "alias", "multiplier"}
         invalid = set(kwargs.keys()) - valid_attrs
         if invalid:
             raise ValueError(
                 f"Invalid curve attributes: {', '.join(invalid)}. "
                 f"Valid attributes: {', '.join(valid_attrs)}"
             )
-        
+
         # Validate type if provided
-        if 'type' in kwargs:
-            if kwargs['type'] not in {'continuous', 'discrete'}:
+        if "type" in kwargs:
+            if kwargs["type"] not in {"continuous", "discrete"}:
                 raise ValueError(
-                    f"type must be 'continuous' or 'discrete', "
-                    f"got '{kwargs['type']}'"
+                    f"type must be 'continuous' or 'discrete', " f"got '{kwargs['type']}'"
                 )
-        
+
         # Update the curve metadata
         self.curves[name].update(kwargs)
-    
+
     def bulk_update_curves(self, updates: dict[str, dict]) -> None:
         """
         Update multiple curves at once.
-        
+
         Parameters
         ----------
         updates : dict[str, dict]
             {curve_name: {attr: value, ...}, ...}
-        
+
         Examples
         --------
         >>> las.bulk_update_curves({
@@ -800,94 +802,90 @@ class LasFile:
         """
         for curve_name, attrs in updates.items():
             self.update_curve(curve_name, **attrs)
-    
+
     def _parse_headers(self) -> None:
         """Parse LAS file headers (version, well, curve, parameter sections)."""
         # OPTIMIZED: Stream file line by line instead of loading all lines
         current_section = None
         line_number = 0
 
-        with open(self.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
             for line_number, line in enumerate(f):
                 line = line.strip()
 
                 # Skip empty lines and comments
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
 
                 # Check for section headers
-                if line.startswith('~'):
-                    section_name = line[1:].split()[0].lower() if len(line) > 1 else ''
+                if line.startswith("~"):
+                    section_name = line[1:].split()[0].lower() if len(line) > 1 else ""
 
-                    if section_name == 'version':
-                        current_section = 'version'
-                    elif section_name == 'well':
-                        current_section = 'well'
-                    elif section_name.startswith('curv'):  # curve or curves
-                        current_section = 'curve'
-                    elif section_name.startswith('param'):  # parameter or parameters
-                        current_section = 'parameter'
+                    if section_name == "version":
+                        current_section = "version"
+                    elif section_name == "well":
+                        current_section = "well"
+                    elif section_name.startswith("curv"):  # curve or curves
+                        current_section = "curve"
+                    elif section_name.startswith("param"):  # parameter or parameters
+                        current_section = "parameter"
                     # LAS 3.0 section names
-                    elif section_name == 'log_definition':
-                        current_section = 'curve'
-                    elif section_name == 'log_data':
+                    elif section_name == "log_definition":
+                        current_section = "curve"
+                    elif section_name == "log_data":
                         self._ascii_start_line = line_number + 1
                         break  # Stop parsing, data section found
-                    elif section_name.startswith('ascii') or section_name == 'a':
+                    elif section_name.startswith("ascii") or section_name == "a":
                         self._ascii_start_line = line_number + 1
                         break  # Stop parsing, data section found
 
                     continue
 
                 # Parse section content
-                if current_section == 'version':
+                if current_section == "version":
                     mnemonic, value, _ = parse_las_line(line)
                     if mnemonic:
                         self.version_info[mnemonic] = value
 
-                elif current_section == 'well':
+                elif current_section == "well":
                     mnemonic, value, _ = parse_las_line(line)
                     if mnemonic:
                         self.well_info[mnemonic] = value
 
-                elif current_section == 'curve':
+                elif current_section == "curve":
                     mnemonic, unit, description = parse_las_line(line)
                     if mnemonic:
                         self._curve_names.append(mnemonic)
                         self.curves[mnemonic] = {
-                            'unit': unit,
-                            'description': description,
-                            'type': 'continuous',  # Default
-                            'alias': None,  # Default (use original name)
-                            'multiplier': None  # Default (no conversion)
+                            "unit": unit,
+                            "description": description,
+                            "type": "continuous",  # Default
+                            "alias": None,  # Default (use original name)
+                            "multiplier": None,  # Default (no conversion)
                         }
 
-                elif current_section == 'parameter':
+                elif current_section == "parameter":
                     mnemonic, value, description = parse_las_line(line)
                     if mnemonic:
                         self.parameter_info[mnemonic] = value
 
         if self._ascii_start_line is None:
             raise LasFileError(
-                f"~Ascii section not found in {self.filepath}. "
-                "Not a valid LAS file."
+                f"~Ascii section not found in {self.filepath}. " "Not a valid LAS file."
             )
 
         if not self._curve_names:
             raise LasFileError(
-                f"No curves found in {self.filepath}. "
-                "~Curve section may be missing or empty."
+                f"No curves found in {self.filepath}. " "~Curve section may be missing or empty."
             )
-    
+
     def _validate_version(self) -> None:
         """Ensure LAS version is supported."""
-        version = self.version_info.get('VERS', '').strip()
-        
+        version = self.version_info.get("VERS", "").strip()
+
         if not version:
-            raise UnsupportedVersionError(
-                f"No version information found in {self.filepath}"
-            )
-        
+            raise UnsupportedVersionError(f"No version information found in {self.filepath}")
+
         if version not in self.SUPPORTED_VERSIONS:
             raise UnsupportedVersionError(
                 f"Unsupported LAS version: {version}. "
@@ -896,13 +894,12 @@ class LasFile:
 
         self._las_version = version
 
-        wrap = self.version_info.get('WRAP', 'NO').strip().upper()
-        if wrap != 'NO':
+        wrap = self.version_info.get("WRAP", "NO").strip().upper()
+        if wrap != "NO":
             raise UnsupportedVersionError(
-                f"Wrapped LAS files are not supported (WRAP={wrap}). "
-                "Only WRAP=NO is supported."
+                f"Wrapped LAS files are not supported (WRAP={wrap}). " "Only WRAP=NO is supported."
             )
-    
+
     def _load_data(self) -> None:
         """Load ASCII data section into pandas DataFrame."""
         if self._ascii_start_line is None:
@@ -911,7 +908,7 @@ class LasFile:
         # OPTIMIZED: Read directly from file instead of joining lines
         # Skip header rows and let pandas parse the ASCII section directly
         # LAS 3.x may use tab-delimited data
-        separator = '\t' if self._las_version.startswith('3') else r'\s+'
+        separator = "\t" if self._las_version.startswith("3") else r"\s+"
         try:
             df = pd.read_csv(
                 self.filepath,
@@ -919,16 +916,14 @@ class LasFile:
                 names=self._curve_names,
                 na_values=[self.null_value],
                 skiprows=self._ascii_start_line,  # Skip header rows
-                engine='c',  # Fast C parser
-                dtype_backend='numpy_nullable',
-                encoding='utf-8',
-                encoding_errors='ignore',
-                on_bad_lines='skip'  # Skip malformed rows
+                engine="c",  # Fast C parser
+                dtype_backend="numpy_nullable",
+                encoding="utf-8",
+                encoding_errors="ignore",
+                on_bad_lines="skip",  # Skip malformed rows
             )
         except Exception as e:
-            raise LasFileError(
-                f"Failed to parse ASCII data in {self.filepath}: {e}"
-            )
+            raise LasFileError(f"Failed to parse ASCII data in {self.filepath}: {e}")
 
         # OPTIMIZED: Batch apply multipliers and aliases instead of looping
         # Build mapping of columns to multiply and rename
@@ -939,12 +934,12 @@ class LasFile:
             curve_meta = self.curves[curve_name]
 
             # Collect multipliers
-            if curve_meta['multiplier'] is not None:
-                multiply_cols[curve_name] = curve_meta['multiplier']
+            if curve_meta["multiplier"] is not None:
+                multiply_cols[curve_name] = curve_meta["multiplier"]
 
             # Collect aliases
-            if curve_meta['alias'] is not None:
-                rename_cols[curve_name] = curve_meta['alias']
+            if curve_meta["alias"] is not None:
+                rename_cols[curve_name] = curve_meta["alias"]
 
         # Apply all multipliers at once (vectorized)
         if multiply_cols:
@@ -957,7 +952,7 @@ class LasFile:
             df = df.rename(columns=rename_cols)
 
         self._data = df
-    
+
     @staticmethod
     def export_las(
         filepath: Union[str, Path],
@@ -969,7 +964,7 @@ class LasFile:
         discrete_colors: Optional[dict[str, dict[int, str]]] = None,
         discrete_styles: Optional[dict[str, dict[int, str]]] = None,
         discrete_thicknesses: Optional[dict[str, dict[int, float]]] = None,
-        template_las: Optional['LasFile'] = None
+        template_las: Optional["LasFile"] = None,
     ) -> None:
         """
         Export DataFrame to LAS 2.0 format file.
@@ -1036,7 +1031,7 @@ class LasFile:
         ...     template_las=original_las
         ... )
         """
-        if 'DEPT' not in df.columns:
+        if "DEPT" not in df.columns:
             raise ValueError(
                 "DataFrame must contain 'DEPT' column. "
                 f"Available columns: {', '.join(df.columns)}"
@@ -1046,7 +1041,7 @@ class LasFile:
         filepath = Path(filepath)
 
         # Get depth range
-        dept = df['DEPT'].dropna()
+        dept = df["DEPT"].dropna()
         if len(dept) == 0:
             raise ValueError("DEPT column contains no valid data")
 
@@ -1063,11 +1058,13 @@ class LasFile:
             # Preserve original version info
             version_info = template_las.version_info
             for key, value in version_info.items():
-                desc = f"CWLS log ASCII Standard -VERSION {value}" if key == 'VERS' else ""
+                desc = f"CWLS log ASCII Standard -VERSION {value}" if key == "VERS" else ""
                 lines.append(f" {key:<12}.              {value:>10} : {desc}")
         else:
             # Default version info
-            lines.append(" VERS.                          2.0 : CWLS log ASCII Standard -VERSION 2.0")
+            lines.append(
+                " VERS.                          2.0 : CWLS log ASCII Standard -VERSION 2.0"
+            )
             lines.append(" WRAP.                          NO  : One line per depth step")
         lines.append("")
 
@@ -1081,7 +1078,7 @@ class LasFile:
         if template_las:
             # Preserve all original well parameters except STRT/STOP/STEP/NULL
             well_info = template_las.well_info
-            skip_params = {'STRT', 'STOP', 'STEP', 'NULL'}
+            skip_params = {"STRT", "STOP", "STEP", "NULL"}
             for key, value in well_info.items():
                 if key not in skip_params:
                     # Format parameter line
@@ -1094,11 +1091,11 @@ class LasFile:
         # ~Curve section (preserve template descriptions if available)
         lines.append("~Curve Information")
         for col in df.columns:
-            unit = unit_mappings.get(col, '')
+            unit = unit_mappings.get(col, "")
             # Try to get description from template
             description = col
             if template_las and col in template_las.curves:
-                description = template_las.curves[col].get('description', col)
+                description = template_las.curves[col].get("description", col)
             # Format: MNEM.UNIT VALUE : DESCRIPTION
             lines.append(f" {col:<12}.{unit:<8}              : {description}")
         lines.append("")
@@ -1110,7 +1107,7 @@ class LasFile:
         # First, add non-discrete-label parameters from template if available
         if template_las:
             # Get discrete label parameter names to skip
-            skip_params = {'DISCRETE_PROPS'}
+            skip_params = {"DISCRETE_PROPS"}
             if template_las.discrete_properties:
                 for prop_name in template_las.discrete_properties:
                     # Skip any parameter starting with discrete property name
@@ -1126,8 +1123,8 @@ class LasFile:
         # Add new discrete labels, colors, styles, and thicknesses if provided
         if discrete_labels:
             # Add list of discrete properties
-            discrete_prop_names = ','.join(sorted(discrete_labels.keys()))
-            params_to_write['DISCRETE_PROPS'] = (discrete_prop_names, "Discrete properties")
+            discrete_prop_names = ",".join(sorted(discrete_labels.keys()))
+            params_to_write["DISCRETE_PROPS"] = (discrete_prop_names, "Discrete properties")
 
             # Add label mappings for each discrete property
             # If colors, styles, or thicknesses are also provided, combine them inline
@@ -1140,13 +1137,21 @@ class LasFile:
                     desc_parts = ["label"]
 
                     # Check if there's a corresponding color
-                    if discrete_colors and prop_name in discrete_colors and value in discrete_colors[prop_name]:
+                    if (
+                        discrete_colors
+                        and prop_name in discrete_colors
+                        and value in discrete_colors[prop_name]
+                    ):
                         color = discrete_colors[prop_name][value]
                         parts.append(color)
                         desc_parts.append("color")
 
                     # Check if there's a corresponding style
-                    if discrete_styles and prop_name in discrete_styles and value in discrete_styles[prop_name]:
+                    if (
+                        discrete_styles
+                        and prop_name in discrete_styles
+                        and value in discrete_styles[prop_name]
+                    ):
                         style = discrete_styles[prop_name][value]
                         # If we have style but no color, add empty color field
                         if len(parts) == 1:
@@ -1155,7 +1160,11 @@ class LasFile:
                         desc_parts.append("style")
 
                     # Check if there's a corresponding thickness
-                    if discrete_thicknesses and prop_name in discrete_thicknesses and value in discrete_thicknesses[prop_name]:
+                    if (
+                        discrete_thicknesses
+                        and prop_name in discrete_thicknesses
+                        and value in discrete_thicknesses[prop_name]
+                    ):
                         thickness = discrete_thicknesses[prop_name][value]
                         # If we have thickness but no color/style, add empty fields
                         while len(parts) < 3:
@@ -1177,7 +1186,10 @@ class LasFile:
                     for value in sorted(color_mapping.keys()):
                         color = color_mapping[value]
                         param_name = f"{prop_name}_COLOR_{value}"
-                        params_to_write[param_name] = (color, f"{prop_name} color for value {value}")
+                        params_to_write[param_name] = (
+                            color,
+                            f"{prop_name} color for value {value}",
+                        )
 
         if discrete_styles:
             for prop_name, style_mapping in sorted(discrete_styles.items()):
@@ -1186,7 +1198,10 @@ class LasFile:
                     for value in sorted(style_mapping.keys()):
                         style = style_mapping[value]
                         param_name = f"{prop_name}_STYLE_{value}"
-                        params_to_write[param_name] = (style, f"{prop_name} style for value {value}")
+                        params_to_write[param_name] = (
+                            style,
+                            f"{prop_name} style for value {value}",
+                        )
 
         if discrete_thicknesses:
             for prop_name, thickness_mapping in sorted(discrete_thicknesses.items()):
@@ -1195,7 +1210,10 @@ class LasFile:
                     for value in sorted(thickness_mapping.keys()):
                         thickness = thickness_mapping[value]
                         param_name = f"{prop_name}_THICKNESS_{value}"
-                        params_to_write[param_name] = (str(thickness), f"{prop_name} thickness for value {value}")
+                        params_to_write[param_name] = (
+                            str(thickness),
+                            f"{prop_name} thickness for value {value}",
+                        )
 
         # Write parameter section if we have any parameters
         if params_to_write:
@@ -1222,7 +1240,7 @@ class LasFile:
 
         # Format all values at once using numpy vectorization
         # This is 10-100x faster than iterrows()
-        formatted = np.empty(values.shape, dtype='U12')  # Pre-allocate string array
+        formatted = np.empty(values.shape, dtype="U12")  # Pre-allocate string array
         for col_idx in range(values.shape[1]):
             col_name = df_export.columns[col_idx]
             col_data = values[:, col_idx]
@@ -1231,29 +1249,25 @@ class LasFile:
             if np.issubdtype(col_data.dtype, np.number):
                 # Discrete properties: format as integers (no decimals)
                 if col_name in discrete_cols:
-                    formatted[:, col_idx] = np.char.mod('%12.0f', col_data)
+                    formatted[:, col_idx] = np.char.mod("%12.0f", col_data)
                 # Continuous/sampled properties: format with decimals
                 else:
-                    formatted[:, col_idx] = np.char.mod('%12.4f', col_data)
+                    formatted[:, col_idx] = np.char.mod("%12.4f", col_data)
             else:
-                formatted[:, col_idx] = np.char.mod('%12s', col_data.astype(str))
+                formatted[:, col_idx] = np.char.mod("%12s", col_data.astype(str))
 
         # Join rows efficiently
-        data_lines = [''.join(row) for row in formatted]
+        data_lines = ["".join(row) for row in formatted]
         lines.extend(data_lines)
 
         # Write to file using buffered write
         try:
-            with open(filepath, 'w', encoding='utf-8', buffering=65536) as f:
-                f.write('\n'.join(lines))
+            with open(filepath, "w", encoding="utf-8", buffering=65536) as f:
+                f.write("\n".join(lines))
         except Exception as e:
             raise LasFileError(f"Failed to write LAS file to {filepath}: {e}")
 
-    def export(
-        self,
-        filepath: Union[str, Path],
-        null_value: float = -999.25
-    ) -> None:
+    def export(self, filepath: Union[str, Path], null_value: float = -999.25) -> None:
         """
         Export this LasFile instance to a LAS 2.0 format file.
 
@@ -1284,7 +1298,7 @@ class LasFile:
         # Collect curve units and discrete labels
         unit_mappings = {}
         for curve_name, curve_meta in self.curves.items():
-            unit_mappings[curve_name] = curve_meta.get('unit', '')
+            unit_mappings[curve_name] = curve_meta.get("unit", "")
 
         # Collect discrete metadata from parameter section
         discrete_labels = None
@@ -1308,7 +1322,9 @@ class LasFile:
                 for key, value in self.parameter_info.items():
                     if key.startswith(f"{prop_name}_") and key.endswith("_COLOR"):
                         # Extract discrete value from key like "Well_Tops_0_COLOR"
-                        value_str = key[len(prop_name)+1:-6]  # Remove prefix and "_COLOR" suffix
+                        value_str = key[
+                            len(prop_name) + 1 : -6
+                        ]  # Remove prefix and "_COLOR" suffix
                         if value_str.isdigit():
                             colors[int(value_str)] = value
                 if colors:
@@ -1319,7 +1335,9 @@ class LasFile:
                 for key, value in self.parameter_info.items():
                     if key.startswith(f"{prop_name}_") and key.endswith("_STYLE"):
                         # Extract discrete value from key like "Well_Tops_0_STYLE"
-                        value_str = key[len(prop_name)+1:-6]  # Remove prefix and "_STYLE" suffix
+                        value_str = key[
+                            len(prop_name) + 1 : -6
+                        ]  # Remove prefix and "_STYLE" suffix
                         if value_str.isdigit():
                             styles[int(value_str)] = value
                 if styles:
@@ -1330,7 +1348,9 @@ class LasFile:
                 for key, value in self.parameter_info.items():
                     if key.startswith(f"{prop_name}_") and key.endswith("_THICKNESS"):
                         # Extract discrete value from key like "Well_Tops_0_THICKNESS"
-                        value_str = key[len(prop_name)+1:-10]  # Remove prefix and "_THICKNESS" suffix
+                        value_str = key[
+                            len(prop_name) + 1 : -10
+                        ]  # Remove prefix and "_THICKNESS" suffix
                         if value_str.isdigit():
                             thicknesses[int(value_str)] = float(value)
                 if thicknesses:
@@ -1339,7 +1359,7 @@ class LasFile:
         # Use static method to do the actual export, passing self as template
         LasFile.export_las(
             filepath=filepath,
-            well_name=self.well_name or 'UNKNOWN',
+            well_name=self.well_name or "UNKNOWN",
             df=self._data,
             unit_mappings=unit_mappings,
             null_value=null_value,
@@ -1347,7 +1367,7 @@ class LasFile:
             discrete_colors=discrete_colors if discrete_colors else None,
             discrete_styles=discrete_styles if discrete_styles else None,
             discrete_thicknesses=discrete_thicknesses if discrete_thicknesses else None,
-            template_las=self
+            template_las=self,
         )
 
     def __repr__(self) -> str:

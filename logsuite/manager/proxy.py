@@ -4,6 +4,7 @@ Proxy objects for manager-level property operations.
 Provides _ManagerPropertyProxy and _ManagerMultiPropertyProxy which enable
 broadcasting property operations across all wells in a WellDataManager.
 """
+
 from typing import Optional, Union, TYPE_CHECKING
 import warnings
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from .data_manager import WellDataManager
     from ..core.well import Well
 
+
 class _ManagerPropertyProxy:
     """
     Proxy object for manager-level property operations.
@@ -30,12 +32,21 @@ class _ManagerPropertyProxy:
     When assigned to a manager attribute, the operation is broadcast to all wells.
     """
 
-    def __init__(self, manager: 'WellDataManager', property_name: str, operation=None, filters=None, custom_intervals=None):
+    def __init__(
+        self,
+        manager: "WellDataManager",
+        property_name: str,
+        operation=None,
+        filters=None,
+        custom_intervals=None,
+    ):
         self._manager = manager
         self._property_name = property_name
         self._operation = operation  # Function to apply to each property
         self._filters = filters or []  # List of (filter_name, insert_boundaries) tuples
-        self._custom_intervals = custom_intervals  # For filter_intervals: str (saved name) or dict (well-specific)
+        self._custom_intervals = (
+            custom_intervals  # For filter_intervals: str (saved name) or dict (well-specific)
+        )
 
     def _apply_operation(self, prop: Property):
         """Apply stored operation to a property."""
@@ -56,10 +67,10 @@ class _ManagerPropertyProxy:
             return prop
 
         intervals_config = self._custom_intervals
-        intervals = intervals_config['intervals']
-        name = intervals_config['name']
-        insert_boundaries = intervals_config['insert_boundaries']
-        save = intervals_config['save']
+        intervals = intervals_config["intervals"]
+        name = intervals_config["name"]
+        insert_boundaries = intervals_config["insert_boundaries"]
+        save = intervals_config["save"]
 
         # Resolve intervals for this well
         if isinstance(intervals, str):
@@ -85,17 +96,18 @@ class _ManagerPropertyProxy:
 
         # Apply filter_intervals
         return prop.filter_intervals(
-            well_intervals,
-            name=name,
-            insert_boundaries=insert_boundaries,
-            save=save
+            well_intervals, name=name, insert_boundaries=insert_boundaries, save=save
         )
 
     def _create_proxy_with_operation(self, operation):
         """Create a new proxy with an operation."""
-        return _ManagerPropertyProxy(self._manager, self._property_name, operation, self._filters, self._custom_intervals)
+        return _ManagerPropertyProxy(
+            self._manager, self._property_name, operation, self._filters, self._custom_intervals
+        )
 
-    def _extract_statistic_from_grouped(self, grouped_result: dict, stat_name: str, **kwargs) -> dict:
+    def _extract_statistic_from_grouped(
+        self, grouped_result: dict, stat_name: str, **kwargs
+    ) -> dict:
         """
         Extract a specific statistic from grouped sums_avg results.
 
@@ -121,38 +133,41 @@ class _ManagerPropertyProxy:
             return grouped_result
 
         # Check if this is a leaf node (contains statistics)
-        if 'mean' in grouped_result or 'samples' in grouped_result:
+        if "mean" in grouped_result or "samples" in grouped_result:
             # This is a stats dict - extract the requested statistic
-            if stat_name == 'percentile':
+            if stat_name == "percentile":
                 # Percentile is nested under 'percentile' dict
-                percentile_key = kwargs.get('percentile_key', 'p50')
-                if 'percentile' in grouped_result and percentile_key in grouped_result['percentile']:
-                    value = grouped_result['percentile'][percentile_key]
+                percentile_key = kwargs.get("percentile_key", "p50")
+                if (
+                    "percentile" in grouped_result
+                    and percentile_key in grouped_result["percentile"]
+                ):
+                    value = grouped_result["percentile"][percentile_key]
                     # If value is a dict with 'weighted'/'arithmetic', prefer 'weighted'
                     if isinstance(value, dict):
-                        return value.get('weighted', value.get('arithmetic', None))
+                        return value.get("weighted", value.get("arithmetic", None))
                     return value
                 return None
-            elif stat_name == 'range_min':
-                if 'range' in grouped_result:
-                    value = grouped_result['range']['min']
+            elif stat_name == "range_min":
+                if "range" in grouped_result:
+                    value = grouped_result["range"]["min"]
                     if isinstance(value, dict):
-                        return value.get('weighted', value.get('arithmetic', None))
+                        return value.get("weighted", value.get("arithmetic", None))
                     return value
                 return None
-            elif stat_name == 'range_max':
-                if 'range' in grouped_result:
-                    value = grouped_result['range']['max']
+            elif stat_name == "range_max":
+                if "range" in grouped_result:
+                    value = grouped_result["range"]["max"]
                     if isinstance(value, dict):
-                        return value.get('weighted', value.get('arithmetic', None))
+                        return value.get("weighted", value.get("arithmetic", None))
                     return value
                 return None
             else:
                 # Direct statistic (mean, median, mode, std_dev, etc.)
                 value = grouped_result.get(stat_name, None)
                 # If value is a dict with 'weighted'/'arithmetic', prefer 'weighted'
-                if isinstance(value, dict) and ('weighted' in value or 'arithmetic' in value):
-                    return value.get('weighted', value.get('arithmetic', None))
+                if isinstance(value, dict) and ("weighted" in value or "arithmetic" in value):
+                    return value.get("weighted", value.get("arithmetic", None))
                 return value
         else:
             # This is a grouping level - recurse
@@ -169,7 +184,7 @@ class _ManagerPropertyProxy:
         included = set(result.keys())
         skipped = all_wells - included
         if skipped:
-            names = ', '.join(sorted(skipped))
+            names = ", ".join(sorted(skipped))
             warnings.warn(
                 f"Skipped {len(skipped)} well(s) without property "
                 f"'{self._property_name}': {names}",
@@ -284,7 +299,7 @@ class _ManagerPropertyProxy:
 
     def __pow__(self, other):
         """manager.PHIE ** value"""
-        return self._create_proxy_with_operation(lambda p: p ** other)
+        return self._create_proxy_with_operation(lambda p: p**other)
 
     # Comparison operations
     def __gt__(self, other):
@@ -351,8 +366,8 @@ class _ManagerPropertyProxy:
             try:
                 prop = well.get_property(self._property_name)
                 # Auto-set type to discrete if labels are being set
-                if prop.type != 'discrete':
-                    prop.type = 'discrete'
+                if prop.type != "discrete":
+                    prop.type = "discrete"
                 prop.labels = value
                 count += 1
             except (AttributeError, PropertyNotFoundError):
@@ -478,7 +493,7 @@ class _ManagerPropertyProxy:
                     well, weighted=True, arithmetic=None, precision=6, nested=nested
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'range_min')
+                    extracted = self._extract_statistic_from_grouped(well_result, "range_min")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -544,7 +559,7 @@ class _ManagerPropertyProxy:
                     well, weighted=True, arithmetic=None, precision=6, nested=nested
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'range_max')
+                    extracted = self._extract_statistic_from_grouped(well_result, "range_max")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -615,12 +630,14 @@ class _ManagerPropertyProxy:
             result = {}
             for well_name, well in self._manager._wells.items():
                 well_result = self._compute_sums_avg_for_well(
-                    well, weighted=weighted if weighted else None,
+                    well,
+                    weighted=weighted if weighted else None,
                     arithmetic=not weighted if not weighted else None,
-                    precision=6, nested=nested
+                    precision=6,
+                    nested=nested,
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'mean')
+                    extracted = self._extract_statistic_from_grouped(well_result, "mean")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -633,7 +650,9 @@ class _ManagerPropertyProxy:
         # No filters - compute single mean per well
         result = {}
         for well_name, well in self._manager._wells.items():
-            value = self._compute_for_well(well, lambda prop: prop.mean(weighted=weighted), nested=nested)
+            value = self._compute_for_well(
+                well, lambda prop: prop.mean(weighted=weighted), nested=nested
+            )
             if value is not None:
                 result[well_name] = value
 
@@ -687,12 +706,14 @@ class _ManagerPropertyProxy:
             result = {}
             for well_name, well in self._manager._wells.items():
                 well_result = self._compute_sums_avg_for_well(
-                    well, weighted=weighted if weighted else None,
+                    well,
+                    weighted=weighted if weighted else None,
                     arithmetic=not weighted if not weighted else None,
-                    precision=6, nested=nested
+                    precision=6,
+                    nested=nested,
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'std_dev')
+                    extracted = self._extract_statistic_from_grouped(well_result, "std_dev")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -705,7 +726,9 @@ class _ManagerPropertyProxy:
         # No filters - compute single std per well
         result = {}
         for well_name, well in self._manager._wells.items():
-            value = self._compute_for_well(well, lambda prop: prop.std(weighted=weighted), nested=nested)
+            value = self._compute_for_well(
+                well, lambda prop: prop.std(weighted=weighted), nested=nested
+            )
             if value is not None:
                 result[well_name] = value
 
@@ -715,7 +738,9 @@ class _ManagerPropertyProxy:
             return _flatten_to_dataframe(result, self._property_name)
         return result
 
-    def percentile(self, p: float, weighted: bool = True, nested: bool = False, return_df: bool = False):
+    def percentile(
+        self, p: float, weighted: bool = True, nested: bool = False, return_df: bool = False
+    ):
         """
         Compute percentile for this property across all wells.
 
@@ -765,18 +790,20 @@ class _ManagerPropertyProxy:
         # If filters are applied, use grouped statistics (like sums_avg)
         if self._filters:
             result = {}
-            percentile_key = f'p{int(p)}'  # e.g., 'p50', 'p90'
+            percentile_key = f"p{int(p)}"  # e.g., 'p50', 'p90'
 
             for well_name, well in self._manager._wells.items():
                 well_result = self._compute_sums_avg_for_well(
-                    well, weighted=weighted if weighted else None,
+                    well,
+                    weighted=weighted if weighted else None,
                     arithmetic=not weighted if not weighted else None,
-                    precision=6, nested=nested
+                    precision=6,
+                    nested=nested,
                 )
                 if well_result is not None:
                     # Extract just the requested percentile from the grouped results
                     extracted = self._extract_statistic_from_grouped(
-                        well_result, 'percentile', percentile_key=percentile_key
+                        well_result, "percentile", percentile_key=percentile_key
                     )
                     if extracted is not None:
                         result[well_name] = extracted
@@ -790,7 +817,9 @@ class _ManagerPropertyProxy:
         # No filters - compute single percentile per well
         result = {}
         for well_name, well in self._manager._wells.items():
-            value = self._compute_for_well(well, lambda prop: prop.percentile(p, weighted=weighted), nested=nested)
+            value = self._compute_for_well(
+                well, lambda prop: prop.percentile(p, weighted=weighted), nested=nested
+            )
             if value is not None:
                 result[well_name] = value
 
@@ -843,12 +872,14 @@ class _ManagerPropertyProxy:
             result = {}
             for well_name, well in self._manager._wells.items():
                 well_result = self._compute_sums_avg_for_well(
-                    well, weighted=weighted if weighted else None,
+                    well,
+                    weighted=weighted if weighted else None,
                     arithmetic=not weighted if not weighted else None,
-                    precision=6, nested=nested
+                    precision=6,
+                    nested=nested,
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'median')
+                    extracted = self._extract_statistic_from_grouped(well_result, "median")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -861,7 +892,9 @@ class _ManagerPropertyProxy:
         # No filters - compute single median per well
         result = {}
         for well_name, well in self._manager._wells.items():
-            value = self._compute_for_well(well, lambda prop: prop.median(weighted=weighted), nested=nested)
+            value = self._compute_for_well(
+                well, lambda prop: prop.median(weighted=weighted), nested=nested
+            )
             if value is not None:
                 result[well_name] = value
 
@@ -871,7 +904,9 @@ class _ManagerPropertyProxy:
             return _flatten_to_dataframe(result, self._property_name)
         return result
 
-    def mode(self, weighted: bool = True, bins: int = 50, nested: bool = False, return_df: bool = False):
+    def mode(
+        self, weighted: bool = True, bins: int = 50, nested: bool = False, return_df: bool = False
+    ):
         """
         Compute mode (most frequent value) for this property across all wells.
 
@@ -918,12 +953,14 @@ class _ManagerPropertyProxy:
             result = {}
             for well_name, well in self._manager._wells.items():
                 well_result = self._compute_sums_avg_for_well(
-                    well, weighted=weighted if weighted else None,
+                    well,
+                    weighted=weighted if weighted else None,
                     arithmetic=not weighted if not weighted else None,
-                    precision=6, nested=nested
+                    precision=6,
+                    nested=nested,
                 )
                 if well_result is not None:
-                    extracted = self._extract_statistic_from_grouped(well_result, 'mode')
+                    extracted = self._extract_statistic_from_grouped(well_result, "mode")
                     if extracted is not None:
                         result[well_name] = extracted
 
@@ -936,7 +973,9 @@ class _ManagerPropertyProxy:
         # No filters - compute single mode per well
         result = {}
         for well_name, well in self._manager._wells.items():
-            value = self._compute_for_well(well, lambda prop: prop.mode(weighted=weighted, bins=bins), nested=nested)
+            value = self._compute_for_well(
+                well, lambda prop: prop.mode(weighted=weighted, bins=bins), nested=nested
+            )
             if value is not None:
                 result[well_name] = value
 
@@ -994,7 +1033,16 @@ class _ManagerPropertyProxy:
         1  well_A  Zone_2    0.220     0.038     0.08     0.42     0.218     0.12     0.218     0.28
         """
         # Define default statistics
-        default_methods = ['mean', 'median', 'std', 'min', 'max', 'percentile_10', 'percentile_50', 'percentile_90']
+        default_methods = [
+            "mean",
+            "median",
+            "std",
+            "min",
+            "max",
+            "percentile_10",
+            "percentile_50",
+            "percentile_90",
+        ]
 
         # Parse methods argument
         if methods is None:
@@ -1010,22 +1058,22 @@ class _ManagerPropertyProxy:
         results = {}
         for method in stat_methods:
             # Handle percentile_XX format
-            if method.startswith('percentile_'):
-                percentile = int(method.split('_')[1])
+            if method.startswith("percentile_"):
+                percentile = int(method.split("_")[1])
                 stat_result = self.percentile(percentile, weighted=weighted, return_df=False)
-                results[f'p{percentile}'] = stat_result
-            elif method == 'mean':
-                results['mean'] = self.mean(weighted=weighted, return_df=False)
-            elif method == 'median':
-                results['median'] = self.median(weighted=weighted, return_df=False)
-            elif method == 'std':
-                results['std'] = self.std(weighted=weighted, return_df=False)
-            elif method == 'min':
-                results['min'] = self.min(return_df=False)
-            elif method == 'max':
-                results['max'] = self.max(return_df=False)
-            elif method == 'mode':
-                results['mode'] = self.mode(weighted=weighted, return_df=False)
+                results[f"p{percentile}"] = stat_result
+            elif method == "mean":
+                results["mean"] = self.mean(weighted=weighted, return_df=False)
+            elif method == "median":
+                results["median"] = self.median(weighted=weighted, return_df=False)
+            elif method == "std":
+                results["std"] = self.std(weighted=weighted, return_df=False)
+            elif method == "min":
+                results["min"] = self.min(return_df=False)
+            elif method == "max":
+                results["max"] = self.max(return_df=False)
+            elif method == "mode":
+                results["mode"] = self.mode(weighted=weighted, return_df=False)
             else:
                 raise ValueError(f"Unknown statistic: {method}")
 
@@ -1053,11 +1101,13 @@ class _ManagerPropertyProxy:
 
         # Merge remaining DataFrames
         for df in dfs[1:]:
-            merged = pd.merge(merged, df, on=grouping_cols, how='outer')
+            merged = pd.merge(merged, df, on=grouping_cols, how="outer")
 
         return merged
 
-    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None) -> '_ManagerPropertyProxy':
+    def filter(
+        self, property_name: str, insert_boundaries: Optional[bool] = None
+    ) -> "_ManagerPropertyProxy":
         """
         Add a discrete property filter for grouped statistics across all wells.
 
@@ -1091,15 +1141,17 @@ class _ManagerPropertyProxy:
         new_filters = self._filters + [(property_name, insert_boundaries)]
 
         # Return new proxy with filter added
-        return _ManagerPropertyProxy(self._manager, self._property_name, self._operation, new_filters, self._custom_intervals)
+        return _ManagerPropertyProxy(
+            self._manager, self._property_name, self._operation, new_filters, self._custom_intervals
+        )
 
     def filter_intervals(
         self,
         intervals: Union[str, dict],
         name: str = "Custom_Intervals",
         insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None
-    ) -> '_ManagerPropertyProxy':
+        save: Optional[str] = None,
+    ) -> "_ManagerPropertyProxy":
         """
         Filter by custom depth intervals across all wells.
 
@@ -1133,22 +1185,17 @@ class _ManagerPropertyProxy:
         """
         # Store intervals config for use when computing stats
         intervals_config = {
-            'intervals': intervals,
-            'name': name,
-            'insert_boundaries': insert_boundaries,
-            'save': save
+            "intervals": intervals,
+            "name": name,
+            "insert_boundaries": insert_boundaries,
+            "save": save,
         }
 
         return _ManagerPropertyProxy(
-            self._manager, self._property_name, self._operation,
-            self._filters, intervals_config
+            self._manager, self._property_name, self._operation, self._filters, intervals_config
         )
 
-    def discrete_summary(
-        self,
-        precision: int = 6,
-        skip: Optional[list] = None
-    ) -> dict:
+    def discrete_summary(self, precision: int = 6, skip: Optional[list] = None) -> dict:
         """
         Compute discrete summary statistics across all wells.
 
@@ -1197,12 +1244,7 @@ class _ManagerPropertyProxy:
 
         return _sanitize_for_json(result)
 
-    def _compute_discrete_summary_for_well(
-        self,
-        well,
-        precision: int,
-        skip: Optional[list]
-    ):
+    def _compute_discrete_summary_for_well(self, well, precision: int, skip: Optional[list]):
         """
         Helper to compute discrete_summary for a property in a well.
         """
@@ -1232,7 +1274,7 @@ class _ManagerPropertyProxy:
         weighted: Optional[bool] = None,
         arithmetic: Optional[bool] = None,
         precision: int = 6,
-        nested: bool = False
+        nested: bool = False,
     ) -> SumsAvgResult:
         """
         Compute hierarchical statistics grouped by filters across all wells.
@@ -1348,7 +1390,7 @@ class _ManagerPropertyProxy:
         weighted: Optional[bool],
         arithmetic: Optional[bool],
         precision: int,
-        nested: bool
+        nested: bool,
     ):
         """
         Helper to compute sums_avg for a property in a well.
@@ -1374,29 +1416,35 @@ class _ManagerPropertyProxy:
                     # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
                     for filter_name, insert_boundaries in self._filters:
                         if insert_boundaries is not None:
-                            prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
+                            prop = prop.filter(
+                                filter_name, insert_boundaries=insert_boundaries, source=source_name
+                            )
                         else:
                             prop = prop.filter(filter_name, source=source_name)
 
                     # Compute sums_avg
                     result = prop.sums_avg(
-                        weighted=weighted,
-                        arithmetic=arithmetic,
-                        precision=precision
+                        weighted=weighted, arithmetic=arithmetic, precision=precision
                     )
 
                     # Add well-level thickness for this source if using filter_intervals
                     if self._custom_intervals and result:
                         well_thickness = 0.0
                         for key, value in result.items():
-                            if isinstance(value, dict) and 'thickness' in value:
-                                well_thickness += value['thickness']
+                            if isinstance(value, dict) and "thickness" in value:
+                                well_thickness += value["thickness"]
                         if well_thickness > 0:
-                            result['thickness'] = round(well_thickness, precision)
+                            result["thickness"] = round(well_thickness, precision)
 
                     source_results[source_name] = result
 
-                except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+                except (
+                    PropertyNotFoundError,
+                    PropertyTypeError,
+                    AttributeError,
+                    KeyError,
+                    ValueError,
+                ):
                     # Property or filter doesn't exist in this source, or filter isn't discrete - skip it
                     pass
 
@@ -1421,20 +1469,16 @@ class _ManagerPropertyProxy:
                     prop = prop.filter(filter_name)
 
             # Compute sums_avg
-            result = prop.sums_avg(
-                weighted=weighted,
-                arithmetic=arithmetic,
-                precision=precision
-            )
+            result = prop.sums_avg(weighted=weighted, arithmetic=arithmetic, precision=precision)
 
             # Add well-level thickness (sum of all zone thicknesses) if using filter_intervals
             if self._custom_intervals and result:
                 well_thickness = 0.0
                 for key, value in result.items():
-                    if isinstance(value, dict) and 'thickness' in value:
-                        well_thickness += value['thickness']
+                    if isinstance(value, dict) and "thickness" in value:
+                        well_thickness += value["thickness"]
                 if well_thickness > 0:
-                    result['thickness'] = round(well_thickness, precision)
+                    result["thickness"] = round(well_thickness, precision)
 
             return result
 
@@ -1458,29 +1502,37 @@ class _ManagerPropertyProxy:
                         # If a filter doesn't exist, PropertyNotFoundError will be raised and caught below
                         for filter_name, insert_boundaries in self._filters:
                             if insert_boundaries is not None:
-                                prop = prop.filter(filter_name, insert_boundaries=insert_boundaries, source=source_name)
+                                prop = prop.filter(
+                                    filter_name,
+                                    insert_boundaries=insert_boundaries,
+                                    source=source_name,
+                                )
                             else:
                                 prop = prop.filter(filter_name, source=source_name)
 
                         # Compute sums_avg
                         result = prop.sums_avg(
-                            weighted=weighted,
-                            arithmetic=arithmetic,
-                            precision=precision
+                            weighted=weighted, arithmetic=arithmetic, precision=precision
                         )
 
                         # Add well-level thickness for this source if using filter_intervals
                         if self._custom_intervals and result:
                             well_thickness = 0.0
                             for key, value in result.items():
-                                if isinstance(value, dict) and 'thickness' in value:
-                                    well_thickness += value['thickness']
+                                if isinstance(value, dict) and "thickness" in value:
+                                    well_thickness += value["thickness"]
                             if well_thickness > 0:
-                                result['thickness'] = round(well_thickness, precision)
+                                result["thickness"] = round(well_thickness, precision)
 
                         source_results[source_name] = result
 
-                    except (PropertyNotFoundError, PropertyTypeError, AttributeError, KeyError, ValueError):
+                    except (
+                        PropertyNotFoundError,
+                        PropertyTypeError,
+                        AttributeError,
+                        KeyError,
+                        ValueError,
+                    ):
                         # Property or filter doesn't exist in this source, or filter isn't discrete - skip it
                         pass
 
@@ -1543,7 +1595,7 @@ class _ManagerPropertyProxy:
 
         return "\n".join(lines)
 
-    def _broadcast_to_manager(self, manager: 'WellDataManager', target_name: str):
+    def _broadcast_to_manager(self, manager: "WellDataManager", target_name: str):
         """
         Broadcast the operation to all wells with the source property.
 
@@ -1580,7 +1632,7 @@ class _ManagerPropertyProxy:
             warnings.warn(
                 f"Skipped {len(skipped_wells)} well(s) without property '{self._property_name}': "
                 f"{', '.join(skipped_wells[:3])}{'...' if len(skipped_wells) > 3 else ''}",
-                UserWarning
+                UserWarning,
             )
 
 
@@ -1595,24 +1647,24 @@ class _ManagerMultiPropertyProxy:
     """
 
     # Stats that are specific to each property (nested under property name)
-    PROPERTY_STATS = {'mean', 'median', 'mode', 'sum', 'std_dev', 'percentile', 'range'}
+    PROPERTY_STATS = {"mean", "median", "mode", "sum", "std_dev", "percentile", "range"}
 
     # Stats that are common across properties (stay at group level)
-    COMMON_STATS = {'depth_range', 'samples', 'thickness', 'thickness_fraction', 'calculation'}
+    COMMON_STATS = {"depth_range", "samples", "thickness", "thickness_fraction", "calculation"}
 
     def __init__(
         self,
-        manager: 'WellDataManager',
+        manager: "WellDataManager",
         property_names: list[str],
         filters: Optional[list[tuple]] = None,
-        custom_intervals: Optional[dict] = None
+        custom_intervals: Optional[dict] = None,
     ):
         self._manager = manager
         self._property_names = property_names
         self._filters = filters or []
         self._custom_intervals = custom_intervals
 
-    def __getattr__(self, name: str) -> '_ManagerMultiPropertyProxy':
+    def __getattr__(self, name: str) -> "_ManagerMultiPropertyProxy":
         """
         Attribute access as shorthand for filter().
 
@@ -1620,16 +1672,14 @@ class _ManagerMultiPropertyProxy:
         Same as: manager.properties(['A', 'B']).filter('Facies').sums_avg()
         """
         # Avoid recursion for private attributes
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         # Treat as filter
         return self.filter(name)
 
     def filter(
-        self,
-        property_name: str,
-        insert_boundaries: Optional[bool] = None
-    ) -> '_ManagerMultiPropertyProxy':
+        self, property_name: str, insert_boundaries: Optional[bool] = None
+    ) -> "_ManagerMultiPropertyProxy":
         """
         Add a filter (discrete property) to group statistics by.
 
@@ -1655,8 +1705,8 @@ class _ManagerMultiPropertyProxy:
         intervals: Union[str, list, dict],
         name: str = "Custom_Intervals",
         insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None
-    ) -> '_ManagerMultiPropertyProxy':
+        save: Optional[str] = None,
+    ) -> "_ManagerMultiPropertyProxy":
         """
         Filter by custom depth intervals.
 
@@ -1679,20 +1729,17 @@ class _ManagerMultiPropertyProxy:
             New proxy with custom intervals set
         """
         intervals_config = {
-            'intervals': intervals,
-            'name': name,
-            'insert_boundaries': insert_boundaries,
-            'save': save
+            "intervals": intervals,
+            "name": name,
+            "insert_boundaries": insert_boundaries,
+            "save": save,
         }
         return _ManagerMultiPropertyProxy(
             self._manager, self._property_names, self._filters, intervals_config
         )
 
     def sums_avg(
-        self,
-        weighted: Optional[bool] = None,
-        arithmetic: Optional[bool] = None,
-        precision: int = 6
+        self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6
     ) -> SumsAvgResult:
         """
         Compute statistics for multiple properties across all wells.
@@ -1745,27 +1792,21 @@ class _ManagerMultiPropertyProxy:
         result = {}
 
         for well_name, well in self._manager._wells.items():
-            well_result = self._compute_sums_avg_for_well(
-                well, weighted, arithmetic, precision
-            )
+            well_result = self._compute_sums_avg_for_well(well, weighted, arithmetic, precision)
             if well_result is not None:
                 result[well_name] = well_result
 
         return SumsAvgResult(_sanitize_for_json(result))
 
     def _compute_sums_avg_for_well(
-        self,
-        well,
-        weighted: Optional[bool],
-        arithmetic: Optional[bool],
-        precision: int
+        self, well, weighted: Optional[bool], arithmetic: Optional[bool], precision: int
     ):
         """
         Compute multi-property sums_avg for a single well.
         """
         # Check if this well has the required saved intervals (if using saved name)
         if self._custom_intervals:
-            intervals = self._custom_intervals.get('intervals')
+            intervals = self._custom_intervals.get("intervals")
             if isinstance(intervals, str):
                 # Saved filter name - check if this well has it
                 if intervals not in well._saved_filter_intervals:
@@ -1774,7 +1815,11 @@ class _ManagerMultiPropertyProxy:
                 # Well-specific intervals - check if this well is in the dict
                 # Check original name, sanitized name, and well_-prefixed sanitized name
                 prefixed_name = f"well_{well.sanitized_name}"
-                if well.name not in intervals and well.sanitized_name not in intervals and prefixed_name not in intervals:
+                if (
+                    well.name not in intervals
+                    and well.sanitized_name not in intervals
+                    and prefixed_name not in intervals
+                ):
                     return None  # Skip wells not in the dict
 
         # Collect results for each property
@@ -1799,9 +1844,7 @@ class _ManagerMultiPropertyProxy:
 
                 # Compute sums_avg
                 result = prop.sums_avg(
-                    weighted=weighted,
-                    arithmetic=arithmetic,
-                    precision=precision
+                    weighted=weighted, arithmetic=arithmetic, precision=precision
                 )
                 property_results[prop_name] = result
 
@@ -1823,9 +1866,9 @@ class _ManagerMultiPropertyProxy:
         if self._custom_intervals and merged:
             well_thickness = 0.0
             for key, value in merged.items():
-                if isinstance(value, dict) and 'thickness' in value:
-                    well_thickness += value['thickness']
-            merged['thickness'] = round(well_thickness, 6)
+                if isinstance(value, dict) and "thickness" in value:
+                    well_thickness += value["thickness"]
+            merged["thickness"] = round(well_thickness, 6)
 
         return merged
 
@@ -1839,10 +1882,10 @@ class _ManagerMultiPropertyProxy:
             return prop
 
         intervals_config = self._custom_intervals
-        intervals = intervals_config['intervals']
-        name = intervals_config['name']
-        insert_boundaries = intervals_config['insert_boundaries']
-        save = intervals_config['save']
+        intervals = intervals_config["intervals"]
+        name = intervals_config["name"]
+        insert_boundaries = intervals_config["insert_boundaries"]
+        save = intervals_config["save"]
 
         # Resolve intervals for this well
         if isinstance(intervals, str):
@@ -1871,10 +1914,7 @@ class _ManagerMultiPropertyProxy:
 
         # Apply filter_intervals
         return prop.filter_intervals(
-            well_intervals,
-            name=name,
-            insert_boundaries=insert_boundaries,
-            save=save
+            well_intervals, name=name, insert_boundaries=insert_boundaries, save=save
         )
 
     def _merge_flat_results(self, property_results: dict) -> dict:
@@ -1909,10 +1949,7 @@ class _ManagerMultiPropertyProxy:
         for prop_name, prop_result in property_results.items():
             if isinstance(prop_result, dict):
                 # Extract property-specific stats
-                prop_stats = {
-                    k: v for k, v in prop_result.items()
-                    if k in self.PROPERTY_STATS
-                }
+                prop_stats = {k: v for k, v in prop_result.items() if k in self.PROPERTY_STATS}
                 if prop_stats:
                     result[prop_name] = prop_stats
 
@@ -1980,8 +2017,7 @@ class _ManagerMultiPropertyProxy:
                         if prop_value and isinstance(prop_value, dict):
                             # Extract property-specific stats
                             prop_stats = {
-                                k: v for k, v in prop_value.items()
-                                if k in self.PROPERTY_STATS
+                                k: v for k, v in prop_value.items() if k in self.PROPERTY_STATS
                             }
                             if prop_stats:
                                 merged[prop_name] = prop_stats
@@ -2012,4 +2048,3 @@ class _ManagerMultiPropertyProxy:
     def _get_nested_value(self, d: dict, key: str):
         """Get value from dict, returning None if key doesn't exist."""
         return d.get(key) if isinstance(d, dict) else None
-

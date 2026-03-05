@@ -1,12 +1,15 @@
 """
 Utility functions for well log toolkit.
 """
+
 import difflib
 import re
 from typing import Optional, List, Iterable
 
 
-def suggest_similar_names(name: str, available: Iterable[str], n: int = 3, cutoff: float = 0.5) -> list[str]:
+def suggest_similar_names(
+    name: str, available: Iterable[str], n: int = 3, cutoff: float = 0.5
+) -> list[str]:
     """
     Suggest similar names using fuzzy matching.
 
@@ -65,16 +68,16 @@ def sanitize_well_name(name: str, keep_hyphens: bool = False) -> str:
 
     if keep_hyphens:
         # Replace invalid characters except hyphens with underscore
-        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
     else:
         # Replace all invalid characters with underscore
-        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
 
     # Remove consecutive underscores
-    sanitized = re.sub(r'_+', '_', sanitized)
+    sanitized = re.sub(r"_+", "_", sanitized)
 
     # Remove trailing underscores
-    sanitized = sanitized.strip('_')
+    sanitized = sanitized.strip("_")
 
     return sanitized
 
@@ -108,17 +111,17 @@ def sanitize_property_name(name: str) -> str:
         raise ValueError(f"Property name must be a non-empty string, got: {name}")
 
     # Replace invalid characters with underscore
-    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
 
     # Remove consecutive underscores
-    sanitized = re.sub(r'_+', '_', sanitized)
+    sanitized = re.sub(r"_+", "_", sanitized)
 
     # Ensure it doesn't start with a number (add 'prop_' prefix if needed)
     if sanitized and sanitized[0].isdigit():
-        sanitized = 'prop_' + sanitized
+        sanitized = "prop_" + sanitized
 
     # Remove trailing underscores
-    sanitized = sanitized.strip('_')
+    sanitized = sanitized.strip("_")
 
     return sanitized
 
@@ -149,37 +152,37 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
     ('PhiTLam_2025', 'm3/m3', 'Porosity')
     """
     # Split by colon to separate description
-    parts = line.split(':', 1)
+    parts = line.split(":", 1)
     left = parts[0].strip()
-    description = parts[1].strip() if len(parts) > 1 else ''
+    description = parts[1].strip() if len(parts) > 1 else ""
 
     # Split left side by whitespace
     tokens = left.split()
     if not tokens:
-        return '', '', description
+        return "", "", description
 
     first_token = tokens[0]
 
     # Check if first token contains a dot (mnemonic.unit format)
     # Handle cases like "DEPT.m", "PhiTLam_2025.m3/m3", "WELL."
-    if '.' in first_token:
+    if "." in first_token:
         # Split on first dot to separate mnemonic from unit
-        dot_pos = first_token.index('.')
+        dot_pos = first_token.index(".")
         mnemonic = first_token[:dot_pos]
-        unit_part = first_token[dot_pos + 1:]
+        unit_part = first_token[dot_pos + 1 :]
 
         # Rest of tokens (if any) are additional unit/value parts
         if len(tokens) > 1:
-            rest = unit_part + ' ' + ' '.join(tokens[1:]) if unit_part else ' '.join(tokens[1:])
+            rest = unit_part + " " + " ".join(tokens[1:]) if unit_part else " ".join(tokens[1:])
         else:
             rest = unit_part
         rest = rest.strip()
     else:
         # No dot in first token, old behavior
         mnemonic = first_token
-        rest = left[len(first_token):].strip()
+        rest = left[len(first_token) :].strip()
 
-        if rest.startswith('.'):
+        if rest.startswith("."):
             rest = rest[1:].strip()  # Remove leading dot
 
     return mnemonic, rest, description
@@ -188,7 +191,7 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
 def filter_names(
     all_names: Iterable[str],
     include: Optional[List[str]] = None,
-    exclude: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None,
 ) -> Optional[List[str]]:
     """
     Filter a list of names based on include/exclude parameters.

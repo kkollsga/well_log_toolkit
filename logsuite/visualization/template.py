@@ -1,4 +1,5 @@
 """Template class for well log display configuration."""
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union
@@ -80,8 +81,8 @@ class Template:
         tops: Optional[dict] = None,
         width: float = 1.0,
         title: Optional[str] = None,
-        log_scale: bool = False
-    ) -> 'Template':
+        log_scale: bool = False,
+    ) -> "Template":
         """
         Add a track to the template.
 
@@ -313,12 +314,12 @@ class Template:
             "tops": tops,
             "width": width,
             "title": title,
-            "log_scale": log_scale
+            "log_scale": log_scale,
         }
         self.tracks.append(track)
         return self
 
-    def remove_track(self, index: int) -> 'Template':
+    def remove_track(self, index: int) -> "Template":
         """
         Remove track at specified index.
 
@@ -348,8 +349,8 @@ class Template:
         tops_dict: Optional[dict[float, str]] = None,
         colors: Optional[dict[float, str]] = None,
         styles: Optional[dict[float, str]] = None,
-        thicknesses: Optional[dict[float, float]] = None
-    ) -> 'Template':
+        thicknesses: Optional[dict[float, float]] = None,
+    ) -> "Template":
         """
         Add well tops configuration to the template.
 
@@ -421,16 +422,16 @@ class Template:
 
         # Store tops configuration
         tops_config = {
-            'property_name': property_name,
-            'tops_dict': tops_dict,
-            'colors': colors,
-            'styles': styles,
-            'thicknesses': thicknesses
+            "property_name": property_name,
+            "tops_dict": tops_dict,
+            "colors": colors,
+            "styles": styles,
+            "thicknesses": thicknesses,
         }
         self.tops.append(tops_config)
         return self
 
-    def edit_track(self, index: int, **kwargs) -> 'Template':
+    def edit_track(self, index: int, **kwargs) -> "Template":
         """
         Edit track at specified index.
 
@@ -512,13 +513,15 @@ class Template:
         rows = []
         for i, track in enumerate(self.tracks):
             log_names = [log.get("name", "?") for log in track.get("logs", [])]
-            rows.append({
-                "Index": i,
-                "Type": track.get("type", "?"),
-                "Logs": log_names if log_names else [],
-                "Title": track.get("title", ""),
-                "Width": track.get("width", 1.0)
-            })
+            rows.append(
+                {
+                    "Index": i,
+                    "Type": track.get("type", "?"),
+                    "Logs": log_names if log_names else [],
+                    "Title": track.get("title", ""),
+                    "Width": track.get("width", 1.0),
+                }
+            )
         return pd.DataFrame(rows)
 
     def save(self, filepath: Union[str, Path]) -> None:
@@ -535,16 +538,12 @@ class Template:
         >>> template.save("reservoir_template.json")
         """
         filepath = Path(filepath)
-        data = {
-            "name": self.name,
-            "tracks": self.tracks,
-            "tops": self.tops
-        }
-        with open(filepath, 'w') as f:
+        data = {"name": self.name, "tracks": self.tracks, "tops": self.tops}
+        with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
 
     @classmethod
-    def load(cls, filepath: Union[str, Path]) -> 'Template':
+    def load(cls, filepath: Union[str, Path]) -> "Template":
         """
         Load template from JSON file.
 
@@ -563,7 +562,7 @@ class Template:
         >>> template = Template.load("reservoir_template.json")
         """
         filepath = Path(filepath)
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
         template = cls(name=data.get("name", "loaded"), tracks=data.get("tracks", []))
         template.tops = data.get("tops", [])
@@ -584,14 +583,10 @@ class Template:
         >>> print(config.keys())
         dict_keys(['name', 'tracks', 'tops'])
         """
-        return {
-            "name": self.name,
-            "tracks": self.tracks,
-            "tops": self.tops
-        }
+        return {"name": self.name, "tracks": self.tracks, "tops": self.tops}
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Template':
+    def from_dict(cls, data: dict) -> "Template":
         """
         Create template from dictionary.
 

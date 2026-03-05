@@ -1,4 +1,5 @@
 """WellView class for interactive well log display."""
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union, TYPE_CHECKING
@@ -113,13 +114,13 @@ class WellView:
 
     def __init__(
         self,
-        well: 'Well',
+        well: "Well",
         depth_range: Optional[tuple[float, float]] = None,
         tops: Optional[list[str]] = None,
         template: Optional[Union[Template, dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
         dpi: int = 100,
-        header_config: Optional[dict] = None
+        header_config: Optional[dict] = None,
     ):
         """
         Initialize WellView.
@@ -181,11 +182,15 @@ class WellView:
         if header_config is None:
             header_config = {}
 
-        self.header_box_top = header_config.get('header_box_top', self.HEADER_BOX_TOP)
-        self.header_title_spacing = header_config.get('header_title_spacing', self.HEADER_TITLE_SPACING)
-        self.header_log_spacing = header_config.get('header_log_spacing', self.HEADER_LOG_SPACING)
-        self.header_top_padding = header_config.get('header_top_padding', self.HEADER_TOP_PADDING)
-        self.header_bottom_padding = header_config.get('header_bottom_padding', self.HEADER_BOTTOM_PADDING)
+        self.header_box_top = header_config.get("header_box_top", self.HEADER_BOX_TOP)
+        self.header_title_spacing = header_config.get(
+            "header_title_spacing", self.HEADER_TITLE_SPACING
+        )
+        self.header_log_spacing = header_config.get("header_log_spacing", self.HEADER_LOG_SPACING)
+        self.header_top_padding = header_config.get("header_top_padding", self.HEADER_TOP_PADDING)
+        self.header_bottom_padding = header_config.get(
+            "header_bottom_padding", self.HEADER_BOTTOM_PADDING
+        )
 
         # Handle template parameter
         if isinstance(template, str):
@@ -195,7 +200,7 @@ class WellView:
                     f"Cannot use template name '{template}': well has no parent manager. "
                     "Pass a Template object or dict instead."
                 )
-            if not hasattr(well.parent_manager, '_templates'):
+            if not hasattr(well.parent_manager, "_templates"):
                 raise ValueError(
                     f"Template '{template}' not found in manager. "
                     f"Use manager.set_template('{template}', template_obj) first."
@@ -234,7 +239,7 @@ class WellView:
             # Use full depth range from first property
             if not well.properties:
                 raise ValueError("Well has no properties to display")
-            first_prop = well.get_property(well.properties[0].split('.')[0])
+            first_prop = well.get_property(well.properties[0].split(".")[0])
             self.depth_range = (float(first_prop.depth.min()), float(first_prop.depth.max()))
         else:
             self.depth_range = depth_range
@@ -258,12 +263,12 @@ class WellView:
         for prop_name in self.well.properties:
             try:
                 # Handle source.property format
-                if '.' in prop_name:
-                    prop = self.well.get_property(prop_name.split('.')[1])
+                if "." in prop_name:
+                    prop = self.well.get_property(prop_name.split(".")[1])
                 else:
                     prop = self.well.get_property(prop_name)
 
-                if prop.type == 'continuous':
+                if prop.type == "continuous":
                     continuous_props.append(prop.name)
                     if len(continuous_props) >= 3:
                         break
@@ -275,7 +280,7 @@ class WellView:
             template.add_track(
                 track_type="continuous",
                 logs=[{"name": prop_name, "color": "blue"}],
-                title=prop_name
+                title=prop_name,
             )
 
         # Add depth track
@@ -315,9 +320,9 @@ class WellView:
         # Collect all tops data from all tops groups
         all_tops_list = []
         for tops_group in self.tops:
-            entries = tops_group.get('entries', [])
+            entries = tops_group.get("entries", [])
             for entry in entries:
-                all_tops_list.append((entry['depth'], entry['name']))
+                all_tops_list.append((entry["depth"], entry["name"]))
 
         # Find depths for specified tops
         tops_depths = []
@@ -366,8 +371,8 @@ class WellView:
         fill: Optional[Union[dict, list[dict]]] = None,
         width: float = 1.0,
         title: Optional[str] = None,
-        log_scale: bool = False
-    ) -> 'WellView':
+        log_scale: bool = False,
+    ) -> "WellView":
         """
         Add a temporary track to this view (not saved to template).
 
@@ -425,7 +430,7 @@ class WellView:
             "tops": None,
             "width": width,
             "title": title,
-            "log_scale": log_scale
+            "log_scale": log_scale,
         }
         self.temp_tracks.append(track)
         return self
@@ -437,8 +442,8 @@ class WellView:
         colors: Optional[dict[float, str]] = None,
         styles: Optional[dict[float, str]] = None,
         thicknesses: Optional[dict[float, float]] = None,
-        source: Optional[str] = None
-    ) -> 'WellView':
+        source: Optional[str] = None,
+    ) -> "WellView":
         """
         Add temporary well tops to this view (not saved to template).
 
@@ -503,12 +508,12 @@ class WellView:
         Temporary tops are not saved to the template.
         """
         tops_config = {
-            'property_name': property_name,
-            'tops_dict': tops_dict,
-            'colors': colors,
-            'styles': styles,
-            'thicknesses': thicknesses,
-            'source': source
+            "property_name": property_name,
+            "tops_dict": tops_dict,
+            "colors": colors,
+            "styles": styles,
+            "thicknesses": thicknesses,
+            "source": source,
         }
         self._add_tops_from_config(tops_config)
         return self
@@ -519,12 +524,12 @@ class WellView:
 
         This is used both for loading tops from templates and for adding temporary tops.
         """
-        property_name = tops_config.get('property_name')
-        tops_dict = tops_config.get('tops_dict')
-        colors = tops_config.get('colors')
-        styles = tops_config.get('styles')
-        thicknesses = tops_config.get('thicknesses')
-        source = tops_config.get('source')
+        property_name = tops_config.get("property_name")
+        tops_dict = tops_config.get("tops_dict")
+        colors = tops_config.get("colors")
+        styles = tops_config.get("styles")
+        thicknesses = tops_config.get("thicknesses")
+        source = tops_config.get("source")
 
         if property_name is None and tops_dict is None:
             raise ValueError("Must provide either 'property_name' or 'tops_dict'")
@@ -540,13 +545,13 @@ class WellView:
             try:
                 prop = self.well.get_property(property_name, source=source)
             except KeyError:
-                available = ', '.join(self.well.properties)
+                available = ", ".join(self.well.properties)
                 raise ValueError(
                     f"Property '{property_name}' not found in well. "
                     f"Available properties: {available}"
                 )
 
-            if prop.type != 'discrete':
+            if prop.type != "discrete":
                 raise ValueError(
                     f"Property '{property_name}' must be discrete type, got '{prop.type}'"
                 )
@@ -563,7 +568,7 @@ class WellView:
             # Get boundaries where value changes
             boundaries = [0]  # Start with first point
             for i in range(1, len(valid_values)):
-                if valid_values[i] != valid_values[i-1]:
+                if valid_values[i] != valid_values[i - 1]:
                     boundaries.append(i)
 
             # Build tops entries list
@@ -577,44 +582,42 @@ class WellView:
                 else:
                     formation_name = f"Zone {value}"
 
-                entry = {'depth': depth, 'name': formation_name}
+                entry = {"depth": depth, "name": formation_name}
 
                 # Get color if available (colors parameter overrides property colors)
                 if colors is not None and value in colors:
-                    entry['color'] = colors[value]
+                    entry["color"] = colors[value]
                 elif prop.colors and value in prop.colors:
-                    entry['color'] = prop.colors[value]
+                    entry["color"] = prop.colors[value]
 
                 # Get style if available (styles parameter overrides property styles)
                 if styles is not None and value in styles:
-                    entry['style'] = styles[value]
+                    entry["style"] = styles[value]
                 elif prop.styles and value in prop.styles:
-                    entry['style'] = prop.styles[value]
+                    entry["style"] = prop.styles[value]
 
                 # Get thickness if available (thicknesses parameter overrides property thicknesses)
                 if thicknesses is not None and value in thicknesses:
-                    entry['thickness'] = thicknesses[value]
+                    entry["thickness"] = thicknesses[value]
                 elif prop.thicknesses and value in prop.thicknesses:
-                    entry['thickness'] = prop.thicknesses[value]
+                    entry["thickness"] = prop.thicknesses[value]
 
                 tops_entries.append(entry)
 
         else:
             # Use provided dictionary - convert to list format
             for depth, name in tops_dict.items():
-                entry = {'depth': depth, 'name': name}
+                entry = {"depth": depth, "name": name}
                 if colors is not None and depth in colors:
-                    entry['color'] = colors[depth]
+                    entry["color"] = colors[depth]
                 if styles is not None and depth in styles:
-                    entry['style'] = styles[depth]
+                    entry["style"] = styles[depth]
                 if thicknesses is not None and depth in thicknesses:
-                    entry['thickness'] = thicknesses[depth]
+                    entry["thickness"] = thicknesses[depth]
                 tops_entries.append(entry)
 
         # Store tops for rendering
-        self.tops.append({
-            'entries': tops_entries
-        })
+        self.tops.append({"entries": tops_entries})
 
     def _get_depth_mask(self, depth: np.ndarray) -> np.ndarray:
         """Get boolean mask for depth range."""
@@ -643,46 +646,48 @@ class WellView:
 
         # For each tops group
         for tops_group in self.tops:
-            entries = tops_group.get('entries', [])
+            entries = tops_group.get("entries", [])
 
             # Draw each top
             for entry in entries:
-                depth = entry['depth']
-                formation_name = entry['name']
+                depth = entry["depth"]
+                formation_name = entry["name"]
 
                 # Skip tops outside depth range
                 if depth < self.depth_range[0] or depth > self.depth_range[1]:
                     continue
 
                 # Get color, style, thickness from entry (with defaults)
-                color = entry.get('color', 'black')
-                linestyle = entry.get('style', 'solid')
-                linewidth = entry.get('thickness', 1.5)
+                color = entry.get("color", "black")
+                linestyle = entry.get("style", "solid")
+                linewidth = entry.get("thickness", 1.5)
 
                 # Draw line across all non-depth tracks
                 for ax in non_depth_axes:
-                    ax.axhline(y=depth, color=color, linestyle=linestyle, linewidth=linewidth, zorder=10)
+                    ax.axhline(
+                        y=depth, color=color, linestyle=linestyle, linewidth=linewidth, zorder=10
+                    )
 
                 # Add label at the right end (on the rightmost non-depth track)
                 rightmost_ax = non_depth_axes[-1]
                 rightmost_ax.text(
-                    1.0, depth,  # x=1.0 is at the right edge of the axes
+                    1.0,
+                    depth,  # x=1.0 is at the right edge of the axes
                     formation_name,
                     transform=rightmost_ax.get_yaxis_transform(),  # x in axes coords, y in data coords
-                    ha='right', va='bottom',
+                    ha="right",
+                    va="bottom",
                     fontsize=8,
-                    color='#272E39',  # Dark grey text color
-                    bbox=dict(facecolor='white', edgecolor=color, boxstyle='round,pad=0.3', alpha=0.9),
+                    color="#272E39",  # Dark grey text color
+                    bbox=dict(
+                        facecolor="white", edgecolor=color, boxstyle="round,pad=0.3", alpha=0.9
+                    ),
                     zorder=11,
-                    clip_on=False  # Allow label to extend beyond axes
+                    clip_on=False,  # Allow label to extend beyond axes
                 )
 
     def _plot_continuous_track(
-        self,
-        ax: plt.Axes,
-        track: dict,
-        depth: np.ndarray,
-        mask: np.ndarray
+        self, ax: plt.Axes, track: dict, depth: np.ndarray, mask: np.ndarray
     ) -> None:
         """
         Plot continuous log track with standard well log format.
@@ -749,42 +754,44 @@ class WellView:
                     # Log scale normalization
                     # Clip values to avoid log(0) or log(negative)
                     values_clipped = np.clip(values, max(x_min, 1e-10), x_max)
-                    normalized_values = (np.log10(values_clipped) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
+                    normalized_values = (np.log10(values_clipped) - np.log10(x_min)) / (
+                        np.log10(x_max) - np.log10(x_min)
+                    )
                 else:
                     # Linear scale normalization (default)
                     # This works for both normal [20, 150] and reversed [3.95, 1.95] scales
                     normalized_values = (values - x_range[0]) / (x_range[1] - x_range[0])
 
-                scale_info.append({
-                    'name': prop_name,
-                    'min': x_min,
-                    'max': x_max,
-                    'color': log_config.get("color", "blue"),
-                    'log_scale': log_scale
-                })
+                scale_info.append(
+                    {
+                        "name": prop_name,
+                        "min": x_min,
+                        "max": x_max,
+                        "color": log_config.get("color", "blue"),
+                        "log_scale": log_scale,
+                    }
+                )
             else:
                 # No x_range specified, use values as-is
                 normalized_values = values
-                scale_info.append({
-                    'name': prop_name,
-                    'min': float(np.nanmin(values)),
-                    'max': float(np.nanmax(values)),
-                    'color': log_config.get("color", "blue"),
-                    'log_scale': False
-                })
+                scale_info.append(
+                    {
+                        "name": prop_name,
+                        "min": float(np.nanmin(values)),
+                        "max": float(np.nanmax(values)),
+                        "color": log_config.get("color", "blue"),
+                        "log_scale": False,
+                    }
+                )
 
             # Plot styling
             color = log_config.get("color", "blue")
             style_raw = log_config.get("style", "-")
             # Support both matplotlib codes and friendly names
-            style_map = {
-                "solid": "-",
-                "dashed": "--",
-                "dashdot": "-.",
-                "dotted": ":",
-                "none": ""
-            }
-            style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
+            style_map = {"solid": "-", "dashed": "--", "dashdot": "-.", "dotted": ":", "none": ""}
+            style = style_map.get(
+                style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw
+            )
             thickness = log_config.get("thickness", 1.0)
             alpha = log_config.get("alpha", 1.0)
 
@@ -812,15 +819,25 @@ class WellView:
                 "point": ".",
                 "pixel": ",",
                 "vline": "|",
-                "hline": "_"
+                "hline": "_",
             }
             if marker:
-                marker = marker_map.get(marker.lower() if isinstance(marker, str) else marker, marker)
+                marker = marker_map.get(
+                    marker.lower() if isinstance(marker, str) else marker, marker
+                )
 
             # Plot normalized line (skip if style is "none" or empty)
             if style and style != "":
-                ax.plot(normalized_values, curve_depth, color=color, linestyle=style,
-                       linewidth=thickness, alpha=alpha, label=prop_name, rasterized=True)
+                ax.plot(
+                    normalized_values,
+                    curve_depth,
+                    color=color,
+                    linestyle=style,
+                    linewidth=thickness,
+                    alpha=alpha,
+                    label=prop_name,
+                    rasterized=True,
+                )
 
             # Plot markers if specified
             if marker:
@@ -832,14 +849,18 @@ class WellView:
                 if marker_fill is not None:
                     markerfacecolor = marker_fill
                 else:
-                    markerfacecolor = 'none'  # Unfilled markers
+                    markerfacecolor = "none"  # Unfilled markers
 
-                ax.plot(normalized_values[marker_mask], curve_depth[marker_mask],
-                       marker=marker, markersize=marker_size,
-                       markeredgecolor=marker_outline_color,
-                       markerfacecolor=markerfacecolor,
-                       linestyle='',  # No connecting line for markers
-                       alpha=alpha)
+                ax.plot(
+                    normalized_values[marker_mask],
+                    curve_depth[marker_mask],
+                    marker=marker,
+                    markersize=marker_size,
+                    markeredgecolor=marker_outline_color,
+                    markerfacecolor=markerfacecolor,
+                    linestyle="",  # No connecting line for markers
+                    alpha=alpha,
+                )
 
             # Store both original and normalized values
             plotted_curves[prop_name] = (values, curve_depth)
@@ -848,20 +869,22 @@ class WellView:
         ax.set_xlim([0, 1])
 
         # Remove x-axis tick labels (normalized values are not meaningful to display)
-        ax.tick_params(axis='x', labelbottom=False)
+        ax.tick_params(axis="x", labelbottom=False)
 
         # Handle fills (uses original values for boundary detection)
         # fill is now always a list (or None)
         if fill and plotted_curves:
             # Apply each fill in order
             for fill_config in fill:
-                self._add_fill_normalized(ax, fill_config, plotted_curves, depth_masked, logs, track_log_scale)
+                self._add_fill_normalized(
+                    ax, fill_config, plotted_curves, depth_masked, logs, track_log_scale
+                )
 
         # Grid setup
         if track_log_scale and scale_info:
             # For log scale: disable standard x-grid, add custom log grid lines, keep y-grid
-            ax.grid(True, alpha=0.3, axis='y')
-            self._add_log_scale_grid(ax, scale_info[0]['min'], scale_info[0]['max'])
+            ax.grid(True, alpha=0.3, axis="y")
+            self._add_log_scale_grid(ax, scale_info[0]["min"], scale_info[0]["max"])
         else:
             # For linear scale: show standard grid (both x and y)
             ax.grid(True, alpha=0.3)
@@ -885,7 +908,7 @@ class WellView:
 
         # For each decade, add 1,2,3,4,5,6,7,8,9 * 10^n
         for decade_exp in range(int(log_min), int(log_max) + 1):
-            decade = 10 ** decade_exp
+            decade = 10**decade_exp
             for multiplier in range(1, 10):
                 value = multiplier * decade
                 if x_min <= value <= x_max:
@@ -899,9 +922,11 @@ class WellView:
         # Normalize grid values to 0-1 using log scale
         for value in grid_values:
             normalized_x = (np.log10(value) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
-            ax.axvline(x=normalized_x, color='gray', linestyle='-', linewidth=0.5, alpha=0.4)
+            ax.axvline(x=normalized_x, color="gray", linestyle="-", linewidth=0.5, alpha=0.4)
 
-    def _add_curve_indicators(self, ax: plt.Axes, scale_info: list[dict], logs: list[dict], title: str) -> None:
+    def _add_curve_indicators(
+        self, ax: plt.Axes, scale_info: list[dict], logs: list[dict], title: str
+    ) -> None:
         """
         Add visual line indicators with scale values in an outlined box.
 
@@ -930,29 +955,38 @@ class WellView:
 
         # Draw outline box around all indicators (full width to match plot area)
         box = Rectangle(
-            (0, box_bottom), 1.0, box_height,
+            (0, box_bottom),
+            1.0,
+            box_height,
             transform=ax.get_xaxis_transform(),
             fill=False,
-            edgecolor='black',
+            edgecolor="black",
             linewidth=1.0,
             clip_on=False,
-            zorder=9
+            zorder=9,
         )
         ax.add_patch(box)
 
         # Add track title above the box
         if title:
             title_y = box_top + 0.005  # Small gap above box
-            ax.text(0.5, title_y, title,
-                   transform=ax.get_xaxis_transform(),
-                   ha='center', va='bottom',
-                   fontsize=10, fontweight='bold',
-                   clip_on=False, zorder=11)
+            ax.text(
+                0.5,
+                title_y,
+                title,
+                transform=ax.get_xaxis_transform(),
+                ha="center",
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+                clip_on=False,
+                zorder=11,
+            )
 
         # Draw each curve indicator (stacked from bottom up)
         for idx, info in enumerate(scale_info):
             # Find matching log config to get style
-            log_config = next((log for log in logs if log.get("name") == info['name']), None)
+            log_config = next((log for log in logs if log.get("name") == info["name"]), None)
 
             if log_config:
                 color = log_config.get("color", "blue")
@@ -963,9 +997,11 @@ class WellView:
                     "dashed": "--",
                     "dashdot": "-.",
                     "dotted": ":",
-                    "none": ""
+                    "none": "",
                 }
-                style = style_map.get(style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw)
+                style = style_map.get(
+                    style_raw.lower() if isinstance(style_raw, str) else style_raw, style_raw
+                )
                 thickness = log_config.get("thickness", 1.0)
 
                 # Marker configuration (for legend display)
@@ -991,10 +1027,12 @@ class WellView:
                     "point": ".",
                     "pixel": ",",
                     "vline": "|",
-                    "hline": "_"
+                    "hline": "_",
                 }
                 if marker:
-                    marker = marker_map.get(marker.lower() if isinstance(marker, str) else marker, marker)
+                    marker = marker_map.get(
+                        marker.lower() if isinstance(marker, str) else marker, marker
+                    )
 
                 # Calculate y positions for this curve (stack from bottom up)
                 # First curve (idx=0) starts from bottom of box + padding
@@ -1007,25 +1045,32 @@ class WellView:
                 name_y = base_y + title_spacing
 
                 # Add log name text centered
-                ax.text(0.5, name_y, info['name'],
-                       transform=ax.get_xaxis_transform(),
-                       ha='center',
-                       va='bottom',
-                       fontsize=8,
-                       fontweight='bold',
-                       clip_on=False,
-                       zorder=11)
+                ax.text(
+                    0.5,
+                    name_y,
+                    info["name"],
+                    transform=ax.get_xaxis_transform(),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    fontweight="bold",
+                    clip_on=False,
+                    zorder=11,
+                )
 
                 # Draw horizontal line between 0.15 and 0.85 (leaving room for scale values)
                 # Only draw line if style is not "none" or empty
                 if style and style != "":
-                    ax.plot([0.15, 0.85], [scale_y, scale_y],
-                           color=color,
-                           linestyle=style,
-                           linewidth=thickness,
-                           transform=ax.get_xaxis_transform(),
-                           clip_on=False,
-                           zorder=10)
+                    ax.plot(
+                        [0.15, 0.85],
+                        [scale_y, scale_y],
+                        color=color,
+                        linestyle=style,
+                        linewidth=thickness,
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False,
+                        zorder=10,
+                    )
 
                 # Draw markers in legend if specified
                 # Place two markers: one halfway between edge and center, one halfway between center and other edge
@@ -1034,48 +1079,63 @@ class WellView:
                     if marker_fill is not None:
                         markerfacecolor = marker_fill
                     else:
-                        markerfacecolor = 'none'  # Unfilled markers
+                        markerfacecolor = "none"  # Unfilled markers
 
                     # First marker position: halfway between left edge (0.15) and center (0.5)
                     marker_x1 = 0.15 + (0.5 - 0.15) / 2  # = 0.325
                     # Second marker position: halfway between center (0.5) and right edge (0.85)
-                    marker_x2 = 0.5 + (0.85 - 0.5) / 2   # = 0.675
+                    marker_x2 = 0.5 + (0.85 - 0.5) / 2  # = 0.675
 
-                    ax.plot([marker_x1, marker_x2], [scale_y, scale_y],
-                           marker=marker,
-                           markersize=marker_size,
-                           markeredgecolor=marker_outline_color,
-                           markerfacecolor=markerfacecolor,
-                           linestyle='',  # No connecting line
-                           transform=ax.get_xaxis_transform(),
-                           clip_on=False,
-                           zorder=11)
+                    ax.plot(
+                        [marker_x1, marker_x2],
+                        [scale_y, scale_y],
+                        marker=marker,
+                        markersize=marker_size,
+                        markeredgecolor=marker_outline_color,
+                        markerfacecolor=markerfacecolor,
+                        linestyle="",  # No connecting line
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False,
+                        zorder=11,
+                    )
 
                 # Get scale values
-                min_val = info['min']
-                max_val = info['max']
+                min_val = info["min"]
+                max_val = info["max"]
 
                 # Add min value text on left side of line (with white background)
-                ax.text(0.05, scale_y, f"{min_val:.2f}",
-                       transform=ax.get_xaxis_transform(),
-                       ha='left',
-                       va='center',
-                       fontsize=7,
-                       color=color,
-                       clip_on=False,
-                       zorder=11,
-                       bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.3', alpha=1.0))
+                ax.text(
+                    0.05,
+                    scale_y,
+                    f"{min_val:.2f}",
+                    transform=ax.get_xaxis_transform(),
+                    ha="left",
+                    va="center",
+                    fontsize=7,
+                    color=color,
+                    clip_on=False,
+                    zorder=11,
+                    bbox=dict(
+                        facecolor="white", edgecolor="none", boxstyle="round,pad=0.3", alpha=1.0
+                    ),
+                )
 
                 # Add max value text on right side of line (with white background)
-                ax.text(0.95, scale_y, f"{max_val:.2f}",
-                       transform=ax.get_xaxis_transform(),
-                       ha='right',
-                       va='center',
-                       fontsize=7,
-                       color=color,
-                       clip_on=False,
-                       zorder=11,
-                       bbox=dict(facecolor='white', edgecolor='none', boxstyle='round,pad=0.3', alpha=1.0))
+                ax.text(
+                    0.95,
+                    scale_y,
+                    f"{max_val:.2f}",
+                    transform=ax.get_xaxis_transform(),
+                    ha="right",
+                    va="center",
+                    fontsize=7,
+                    color=color,
+                    clip_on=False,
+                    zorder=11,
+                    bbox=dict(
+                        facecolor="white", edgecolor="none", boxstyle="round,pad=0.3", alpha=1.0
+                    ),
+                )
 
     def _add_discrete_legend(self, ax: plt.Axes, legend_info: list[dict], title: str) -> None:
         """
@@ -1107,24 +1167,33 @@ class WellView:
 
         # Draw outline box (full width to match plot area)
         box = Rectangle(
-            (0, box_bottom), 1.0, box_height,
+            (0, box_bottom),
+            1.0,
+            box_height,
             transform=ax.get_xaxis_transform(),
             fill=False,
-            edgecolor='black',
+            edgecolor="black",
             linewidth=1.0,
             clip_on=False,
-            zorder=9
+            zorder=9,
         )
         ax.add_patch(box)
 
         # Add track title above the box
         if title:
             title_y = box_top + 0.005  # Small gap above box
-            ax.text(0.5, title_y, title,
-                   transform=ax.get_xaxis_transform(),
-                   ha='center', va='bottom',
-                   fontsize=10, fontweight='bold',
-                   clip_on=False, zorder=11)
+            ax.text(
+                0.5,
+                title_y,
+                title,
+                transform=ax.get_xaxis_transform(),
+                ha="center",
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+                clip_on=False,
+                zorder=11,
+            )
 
         # Draw each legend item (stacked from bottom up)
         for idx, item in enumerate(legend_info):
@@ -1134,26 +1203,32 @@ class WellView:
 
             # Draw colored rectangle as background (full width)
             color_rect = Rectangle(
-                (0.05, item_y - item_height/2), 0.9, item_height * 0.85,
+                (0.05, item_y - item_height / 2),
+                0.9,
+                item_height * 0.85,
                 transform=ax.get_xaxis_transform(),
-                facecolor=item['color'],
-                edgecolor='none',
+                facecolor=item["color"],
+                edgecolor="none",
                 alpha=0.7,
                 clip_on=False,
-                zorder=10
+                zorder=10,
             )
             ax.add_patch(color_rect)
 
             # Add label text (centered on colored background, black font)
-            ax.text(0.5, item_y, item['label'],
-                   transform=ax.get_xaxis_transform(),
-                   ha='center',
-                   va='center',
-                   fontsize=8,
-                   fontweight='bold',
-                   color='black',
-                   clip_on=False,
-                   zorder=11)
+            ax.text(
+                0.5,
+                item_y,
+                item["label"],
+                transform=ax.get_xaxis_transform(),
+                ha="center",
+                va="center",
+                fontsize=8,
+                fontweight="bold",
+                color="black",
+                clip_on=False,
+                zorder=11,
+            )
 
     def _add_fill_normalized(
         self,
@@ -1162,7 +1237,7 @@ class WellView:
         plotted_curves: dict,
         depth: np.ndarray,
         logs: list[dict],
-        track_log_scale: bool
+        track_log_scale: bool,
     ) -> None:
         """
         Add fill between curves with normalized coordinates.
@@ -1186,6 +1261,7 @@ class WellView:
         first_curve_data = next(iter(plotted_curves.values()))
         _, depth_for_fill = first_curve_data
         n_points = len(depth_for_fill)
+
         # Helper to normalize boundary spec to dict format
         def normalize_boundary_spec(spec, side):
             """Convert simple string/number spec to dict format."""
@@ -1216,7 +1292,9 @@ class WellView:
             if log_scale:
                 # Log scale normalization
                 value_clipped = np.clip(value, max(x_min, 1e-10), x_max)
-                return (np.log10(value_clipped) - np.log10(x_min)) / (np.log10(x_max) - np.log10(x_min))
+                return (np.log10(value_clipped) - np.log10(x_min)) / (
+                    np.log10(x_max) - np.log10(x_min)
+                )
             else:
                 # Linear scale normalization
                 if x_min < x_max:
@@ -1249,7 +1327,9 @@ class WellView:
                     # Normalize using appropriate scale
                     if log_scale:
                         values_clipped = np.clip(values, max(x_range[0], 1e-10), x_range[1])
-                        left_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (np.log10(x_range[1]) - np.log10(x_range[0]))
+                        left_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (
+                            np.log10(x_range[1]) - np.log10(x_range[0])
+                        )
                     else:
                         # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
                         left_values = (values - x_range[0]) / (x_range[1] - x_range[0])
@@ -1271,7 +1351,9 @@ class WellView:
                     log_scale = False
                 else:
                     log_scale = track_log_scale
-                left_values = np.full(n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
+                left_values = np.full(
+                    n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale)
+                )
             else:
                 left_values = np.full(n_points, fixed_val)
         elif "track_edge" in left_spec:
@@ -1293,7 +1375,9 @@ class WellView:
                     # Normalize using appropriate scale
                     if log_scale:
                         values_clipped = np.clip(values, max(x_range[0], 1e-10), x_range[1])
-                        right_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (np.log10(x_range[1]) - np.log10(x_range[0]))
+                        right_values = (np.log10(values_clipped) - np.log10(x_range[0])) / (
+                            np.log10(x_range[1]) - np.log10(x_range[0])
+                        )
                     else:
                         # x_range[0] maps to 0, x_range[1] maps to 1 (handles reversed scales)
                         right_values = (values - x_range[0]) / (x_range[1] - x_range[0])
@@ -1313,7 +1397,9 @@ class WellView:
                     log_scale = False
                 else:
                     log_scale = track_log_scale
-                right_values = np.full(n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale))
+                right_values = np.full(
+                    n_points, normalize_value(fixed_val, logs[0]["x_range"], log_scale)
+                )
             else:
                 right_values = np.full(n_points, fixed_val)
         elif "track_edge" in right_spec:
@@ -1358,7 +1444,9 @@ class WellView:
                 if colormap_curve_name in plotted_curves:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
-                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using boundary curves")
+                    warnings.warn(
+                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves"
+                    )
                     # Try left boundary curve first, then right boundary curve
                     if "curve" in left_spec and left_spec["curve"] in plotted_curves:
                         colormap_values, _ = plotted_curves[left_spec["curve"]]
@@ -1375,7 +1463,9 @@ class WellView:
                 elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
                     colormap_values, _ = plotted_curves[right_spec["curve"]]
                 else:
-                    warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
+                    warnings.warn(
+                        "Cannot determine colormap values (no curve specified for left or right)"
+                    )
                     return
 
             # Apply same boundary mask to colormap values
@@ -1386,10 +1476,14 @@ class WellView:
             # Check if we have valid values
             valid_mask = ~np.isnan(colormap_values)
             if not np.any(valid_mask):
-                warnings.warn(f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.")
+                warnings.warn(
+                    f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill."
+                )
                 return
 
-            color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
+            color_range = fill.get(
+                "color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)]
+            )
             # Default color_log to track's log_scale setting
             color_log = fill.get("color_log", track_log_scale)
 
@@ -1420,7 +1514,7 @@ class WellView:
 
             if n_intervals > 0 and n_intervals > target_polygons:
                 # Calculate color differences between adjacent intervals
-                color_diffs = np.sqrt(np.sum((colors[1:, :3] - colors[:-1, :3])**2, axis=1))
+                color_diffs = np.sqrt(np.sum((colors[1:, :3] - colors[:-1, :3]) ** 2, axis=1))
 
                 # Find adaptive threshold: use percentile to achieve target count
                 # Higher percentile = more aggressive binning
@@ -1437,7 +1531,7 @@ class WellView:
 
                 for i in range(1, n_intervals):
                     # Check if this color differs significantly from bin average
-                    color_diff = color_diffs[i-1]
+                    color_diff = color_diffs[i - 1]
 
                     if color_diff > color_threshold:
                         # Significant color change - close current bin and start new one
@@ -1468,12 +1562,14 @@ class WellView:
             else:
                 # Too few intervals already - don't bin
                 for i in range(n_intervals):
-                    binned_verts.append([
-                        (left_values[i], depth_for_fill[i]),
-                        (right_values[i], depth_for_fill[i]),
-                        (right_values[i+1], depth_for_fill[i+1]),
-                        (left_values[i+1], depth_for_fill[i+1])
-                    ])
+                    binned_verts.append(
+                        [
+                            (left_values[i], depth_for_fill[i]),
+                            (right_values[i], depth_for_fill[i]),
+                            (right_values[i + 1], depth_for_fill[i + 1]),
+                            (left_values[i + 1], depth_for_fill[i + 1]),
+                        ]
+                    )
                     binned_colors.append(colors[i])
 
             # Create PolyCollection with binned polygons
@@ -1481,14 +1577,20 @@ class WellView:
                 binned_verts,
                 facecolors=binned_colors,
                 alpha=fill_alpha,
-                edgecolors='none',
-                linewidths=0
+                edgecolors="none",
+                linewidths=0,
             )
             ax.add_collection(poly_collection)
         else:
             # Simple solid color fill
-            ax.fill_betweenx(depth_for_fill, left_values, right_values,
-                            color=fill_color, alpha=fill_alpha, rasterized=True)
+            ax.fill_betweenx(
+                depth_for_fill,
+                left_values,
+                right_values,
+                color=fill_color,
+                alpha=fill_alpha,
+                rasterized=True,
+            )
 
     def _add_fill(
         self,
@@ -1496,7 +1598,7 @@ class WellView:
         fill: dict,
         plotted_curves: dict,
         depth: np.ndarray,
-        track_log_scale: bool = False
+        track_log_scale: bool = False,
     ) -> None:
         """
         Add fill between curves or values.
@@ -1512,6 +1614,7 @@ class WellView:
         - {"value": <num>}: Use fixed value (dict format)
         - {"track_edge": "left"|"right"}: Use track edge (dict format)
         """
+
         # Helper to normalize boundary spec to dict format
         def normalize_boundary_spec(spec, side):
             """Convert simple string/number spec to dict format."""
@@ -1600,7 +1703,9 @@ class WellView:
                 if colormap_curve_name in plotted_curves:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
-                    warnings.warn(f"Colormap curve '{colormap_curve_name}' not found, using boundary curves")
+                    warnings.warn(
+                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves"
+                    )
                     # Try left boundary curve first, then right boundary curve
                     if "curve" in left_spec and left_spec["curve"] in plotted_curves:
                         colormap_values, _ = plotted_curves[left_spec["curve"]]
@@ -1616,7 +1721,9 @@ class WellView:
                 elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
                     colormap_values, _ = plotted_curves[right_spec["curve"]]
                 else:
-                    warnings.warn("Cannot determine colormap values (no curve specified for left or right)")
+                    warnings.warn(
+                        "Cannot determine colormap values (no curve specified for left or right)"
+                    )
                     return
 
             # Apply same boundary mask to colormap values
@@ -1627,10 +1734,14 @@ class WellView:
             # Check if we have valid values
             valid_mask = ~np.isnan(colormap_values)
             if not np.any(valid_mask):
-                warnings.warn(f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.")
+                warnings.warn(
+                    f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill."
+                )
                 return
 
-            color_range = fill.get("color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)])
+            color_range = fill.get(
+                "color_range", [np.nanmin(colormap_values), np.nanmax(colormap_values)]
+            )
             # Default color_log to track's log_scale setting
             color_log = fill.get("color_log", track_log_scale)
 
@@ -1656,33 +1767,33 @@ class WellView:
             # Each polygon is a quad: [(left, depth_i), (right, depth_i), (right, depth_i+1), (left, depth_i+1)]
             verts = []
             for i in range(n_intervals):
-                verts.append([
-                    (left_values[i], depth_for_fill[i]),
-                    (right_values[i], depth_for_fill[i]),
-                    (right_values[i+1], depth_for_fill[i+1]),
-                    (left_values[i+1], depth_for_fill[i+1])
-                ])
+                verts.append(
+                    [
+                        (left_values[i], depth_for_fill[i]),
+                        (right_values[i], depth_for_fill[i]),
+                        (right_values[i + 1], depth_for_fill[i + 1]),
+                        (left_values[i + 1], depth_for_fill[i + 1]),
+                    ]
+                )
 
             # Create PolyCollection with all polygons at once
             poly_collection = PolyCollection(
-                verts,
-                facecolors=colors,
-                alpha=fill_alpha,
-                edgecolors='none',
-                linewidths=0
+                verts, facecolors=colors, alpha=fill_alpha, edgecolors="none", linewidths=0
             )
             ax.add_collection(poly_collection)
         else:
             # Simple solid color fill
-            ax.fill_betweenx(depth_for_fill, left_values, right_values,
-                            color=fill_color, alpha=fill_alpha, rasterized=True)
+            ax.fill_betweenx(
+                depth_for_fill,
+                left_values,
+                right_values,
+                color=fill_color,
+                alpha=fill_alpha,
+                rasterized=True,
+            )
 
     def _plot_discrete_track(
-        self,
-        ax: plt.Axes,
-        track: dict,
-        depth: np.ndarray,
-        mask: np.ndarray
+        self, ax: plt.Axes, track: dict, depth: np.ndarray, mask: np.ndarray
     ) -> None:
         """Plot discrete/categorical track."""
         logs = track.get("logs", [])
@@ -1740,7 +1851,7 @@ class WellView:
                     color_map[val] = DEFAULT_COLORS[default_idx]
         else:
             # No custom colors defined, use defaults
-            colors = DEFAULT_COLORS[:len(unique_vals)]
+            colors = DEFAULT_COLORS[: len(unique_vals)]
             color_map = dict(zip(unique_vals, colors))
 
         # For discrete data, the value at depth[i] represents the zone from depth[i] to depth[i+1]
@@ -1786,10 +1897,11 @@ class WellView:
 
                 ax.fill_betweenx(
                     [clipped_start, clipped_end],
-                    0, 1,
+                    0,
+                    1,
                     color=color_map.get(val, DEFAULT_COLORS[0]),
                     alpha=0.7,
-                    rasterized=True
+                    rasterized=True,
                 )
 
         # Configure axes
@@ -1802,41 +1914,29 @@ class WellView:
         legend_info = []
         for val in unique_vals:
             label = prop.labels.get(int(val), str(int(val))) if prop.labels else str(int(val))
-            legend_info.append({
-                'label': label,
-                'color': color_map[val]
-            })
+            legend_info.append({"label": label, "color": color_map[val]})
         self._add_discrete_legend(ax, legend_info, title_text)
 
     def _plot_depth_track(
-        self,
-        ax: plt.Axes,
-        track: dict,
-        depth: np.ndarray,
-        mask: np.ndarray
+        self, ax: plt.Axes, track: dict, depth: np.ndarray, mask: np.ndarray
     ) -> None:
         """Plot depth axis track."""
         depth_masked = depth[mask]
 
         # Plot depth as vertical line
-        ax.plot([0.5, 0.5], [depth_masked.min(), depth_masked.max()],
-                'k-', linewidth=0.5)
+        ax.plot([0.5, 0.5], [depth_masked.min(), depth_masked.max()], "k-", linewidth=0.5)
 
         # Configure
         ax.set_xlim([0, 1])
         ax.set_xticks([])
-        ax.set_ylabel('Depth (m)', fontsize=10, fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_ylabel("Depth (m)", fontsize=10, fontweight="bold")
+        ax.grid(True, alpha=0.3, axis="y")
 
         if track.get("title"):
-            ax.set_title(track["title"], fontsize=10, fontweight='bold')
+            ax.set_title(track["title"], fontsize=10, fontweight="bold")
 
     def _add_tops(
-        self,
-        ax: plt.Axes,
-        tops_config: dict,
-        depth: np.ndarray,
-        mask: np.ndarray
+        self, ax: plt.Axes, tops_config: dict, depth: np.ndarray, mask: np.ndarray
     ) -> None:
         """Add formation tops markers to track."""
         prop_name = tops_config.get("name")
@@ -1874,8 +1974,9 @@ class WellView:
             depth_val = tops_depth[idx]
 
             # Draw horizontal line
-            ax.axhline(y=depth_val, color='black', linestyle=line_style,
-                      linewidth=line_width, alpha=0.7)
+            ax.axhline(
+                y=depth_val, color="black", linestyle=line_style, linewidth=line_width, alpha=0.7
+            )
 
             # Add label if tops have labels
             if tops_prop.labels:
@@ -1886,17 +1987,23 @@ class WellView:
                     # Determine text position
                     if title_orientation == "left":
                         x_pos = xlim[0] + 0.05 * x_range + line_offset
-                        ha = 'left'
+                        ha = "left"
                     elif title_orientation == "center":
                         x_pos = (xlim[0] + xlim[1]) / 2 + line_offset
-                        ha = 'center'
+                        ha = "center"
                     else:  # right
                         x_pos = xlim[1] - 0.05 * x_range + line_offset
-                        ha = 'right'
+                        ha = "right"
 
-                    ax.text(x_pos, depth_val, label,
-                           fontsize=title_size, fontweight=title_weight,
-                           ha=ha, va='bottom')
+                    ax.text(
+                        x_pos,
+                        depth_val,
+                        label,
+                        fontsize=title_size,
+                        fontweight=title_weight,
+                        ha=ha,
+                        va="bottom",
+                    )
 
     def plot(self) -> None:
         """
@@ -1912,7 +2019,7 @@ class WellView:
         >>> view.show()
         """
         # Get reference depth grid
-        first_prop_name = self.well.properties[0].split('.')[0]
+        first_prop_name = self.well.properties[0].split(".")[0]
         first_prop = self.well.get_property(first_prop_name)
         depth = first_prop.depth
         mask = self._get_depth_mask(depth)
@@ -1925,11 +2032,12 @@ class WellView:
         widths = [track.get("width", 1.0) for track in all_tracks]
 
         self.fig, self.axes = plt.subplots(
-            1, n_tracks,
+            1,
+            n_tracks,
             figsize=self.figsize,
             dpi=self.dpi,
-            gridspec_kw={'width_ratios': widths, 'wspace': 0},
-            sharey=True
+            gridspec_kw={"width_ratios": widths, "wspace": 0},
+            sharey=True,
         )
 
         # Handle single track case
@@ -1954,7 +2062,7 @@ class WellView:
 
             # Remove y-labels for all but first track
             if ax != self.axes[0]:
-                ax.set_ylabel('')
+                ax.set_ylabel("")
 
         # Draw cross-track tops (span all tracks except depth track)
         if self.tops:
@@ -1970,14 +2078,14 @@ class WellView:
         self.axes[0].margins(y=0)
 
         # Set main title
-        self.fig.suptitle(f"Well: {self.well.name}", fontsize=12, fontweight='bold', y=0.995)
+        self.fig.suptitle(f"Well: {self.well.name}", fontsize=12, fontweight="bold", y=0.995)
 
         # Apply tight layout (suppress warnings from PolyCollection incompatibility)
         try:
             with warnings.catch_warnings():
-                warnings.filterwarnings('ignore',
-                                      message='.*not compatible with tight_layout.*',
-                                      category=UserWarning)
+                warnings.filterwarnings(
+                    "ignore", message=".*not compatible with tight_layout.*", category=UserWarning
+                )
                 plt.tight_layout()
         except Exception:
             # If tight_layout fails, continue without it
@@ -1999,10 +2107,7 @@ class WellView:
         plt.show()
 
     def save(
-        self,
-        filepath: Union[str, Path],
-        dpi: Optional[int] = None,
-        bbox_inches: str = 'tight'
+        self, filepath: Union[str, Path], dpi: Optional[int] = None, bbox_inches: str = "tight"
     ) -> None:
         """
         Save the well log plot to file.

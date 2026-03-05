@@ -7,6 +7,7 @@ statistics : Depth-weighted statistical functions
 regression : Regression models for crossplot analysis
 sums_avg : SumsAvgResult container for multi-well aggregation
 """
+
 from .statistics import (
     compute_intervals,
     mean,

@@ -1,6 +1,7 @@
 """
 Well class for managing log properties from a single well.
 """
+
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING, Union
 
@@ -37,10 +38,8 @@ class SourceView:
 
     def __getattr__(self, name: str) -> Property:
         """Enable property access: source.PHIE"""
-        if name.startswith('_'):
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Try as-is (sanitized name)
         if name in self._properties:
@@ -68,7 +67,7 @@ class SourceView:
         include: Optional[Union[str, list[str]]] = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None
+        clip_to_property: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Export properties from this source to DataFrame.
@@ -109,11 +108,11 @@ class SourceView:
 
         # Get first property for depth reference
         first_prop = next(iter(props.values()))
-        result = {'DEPT': first_prop.depth.copy()}
+        result = {"DEPT": first_prop.depth.copy()}
 
         # Add each property
         for name, prop in props.items():
-            if discrete_labels and prop.type == 'discrete' and prop.labels:
+            if discrete_labels and prop.type == "discrete" and prop.labels:
                 # Apply labels
                 labeled_values = prop._apply_labels(prop.values)
                 result[name] = labeled_values
@@ -131,7 +130,7 @@ class SourceView:
                 df = df.loc[first_valid:last_valid].reset_index(drop=True)
         elif clip_edges and len(df) > 0:
             # Clip edges to remove leading/trailing NaN rows
-            data_cols = [col for col in df.columns if col != 'DEPT']
+            data_cols = [col for col in df.columns if col != "DEPT"]
             if data_cols:
                 not_all_nan = df[data_cols].notna().any(axis=1)
                 if not_all_nan.any():
@@ -166,7 +165,7 @@ class SourceView:
 class Well:
     """
     Single well containing multiple log properties.
-    
+
     Parameters
     ----------
     name : str
@@ -175,7 +174,7 @@ class Well:
         Pythonic attribute name for parent manager access
     parent_manager : WellDataManager, optional
         Parent manager reference
-    
+
     Attributes
     ----------
     name : str
@@ -190,7 +189,7 @@ class Well:
         List of source names (sanitized from LAS file names)
     original_las : LasFile | None
         First LAS file loaded (for template-based export)
-    
+
     Examples
     --------
     >>> well = manager.well_12_3_2_B
@@ -206,18 +205,17 @@ class Well:
     >>>
     >>> stats = well.phie.filter('Zone').sums_avg()
     """
-    
+
     def __init__(
-        self,
-        name: str,
-        sanitized_name: str,
-        parent_manager: Optional['WellDataManager'] = None
+        self, name: str, sanitized_name: str, parent_manager: Optional["WellDataManager"] = None
     ):
         self.name = name
         self.sanitized_name = sanitized_name
         self.parent_manager = parent_manager
         # New source-aware storage structure
-        self._sources: dict[str, dict] = {}  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
+        self._sources: dict[str, dict] = (
+            {}
+        )  # {source_name: {'path': Path, 'las_file': LasFile, 'properties': {name: Property}}}
         # Track sources marked for deletion (to delete files on save)
         self._deleted_sources: list[str] = []  # List of source names to delete
         # Track sources marked for rename (to rename files on save)
@@ -240,7 +238,7 @@ class Well:
         >>> well.Reservoir = well.PHIE > 0.15 # Creates NEW discrete property
         """
         # Check if this is a Property being assigned
-        if isinstance(value, Property) and not name.startswith('_'):
+        if isinstance(value, Property) and not name.startswith("_"):
             # Check if property already exists
             try:
                 existing_prop = self.get_property(name)
@@ -269,26 +267,27 @@ class Well:
         """
         # Sanitize the name
         from ..utils import sanitize_property_name
+
         sanitized_name = sanitize_property_name(name)
 
         # Update property metadata
         prop.name = sanitized_name
         prop.original_name = name
         prop.parent_well = self
-        prop.source_name = 'computed'
+        prop.source_name = "computed"
 
         # Create or update 'computed' source
-        if 'computed' not in self._sources:
-            self._sources['computed'] = {
-                'path': None,
-                'las_file': None,
-                'properties': {},
-                'modified': True
+        if "computed" not in self._sources:
+            self._sources["computed"] = {
+                "path": None,
+                "las_file": None,
+                "properties": {},
+                "modified": True,
             }
 
         # Add property to computed source
-        self._sources['computed']['properties'][sanitized_name] = prop
-        self._sources['computed']['modified'] = True
+        self._sources["computed"]["properties"][sanitized_name] = prop
+        self._sources["computed"]["modified"] = True
 
     def _overwrite_property(self, name: str, new_prop: Property):
         """
@@ -305,12 +304,13 @@ class Well:
             Property object with new data
         """
         from ..utils import sanitize_property_name
+
         sanitized_name = sanitize_property_name(name)
 
         # Find which source contains this property
         source_name = None
         for src_name, src_data in self._sources.items():
-            if sanitized_name in src_data['properties']:
+            if sanitized_name in src_data["properties"]:
                 source_name = src_name
                 break
 
@@ -320,7 +320,7 @@ class Well:
             return
 
         # Get the existing property
-        existing_prop = self._sources[source_name]['properties'][sanitized_name]
+        existing_prop = self._sources[source_name]["properties"][sanitized_name]
 
         # Update the existing property's data
         existing_prop._depth_cache = new_prop.depth.copy()
@@ -337,7 +337,7 @@ class Well:
             existing_prop._type = new_prop.type
 
         # Mark source as modified
-        self._sources[source_name]['modified'] = True
+        self._sources[source_name]["modified"] = True
 
     def load_las(
         self,
@@ -347,8 +347,8 @@ class Well:
         resample_method: Optional[str] = None,
         merge: bool = False,
         combine: Optional[str] = None,
-        source_name: Optional[str] = None
-    ) -> 'Well':
+        source_name: Optional[str] = None,
+    ) -> "Well":
         """
         Load LAS file(s) into this well, organized by source.
 
@@ -469,7 +469,14 @@ class Well:
                 sources_before = set(self.sources)
 
                 # Recursively call load_las for each file (without merge or combine, path already prepended)
-                self.load_las(las_file, path=None, sampled=sampled, resample_method=resample_method, merge=False, combine=None)
+                self.load_las(
+                    las_file,
+                    path=None,
+                    sampled=sampled,
+                    resample_method=resample_method,
+                    merge=False,
+                    combine=None,
+                )
 
                 # Find which source was added or modified
                 sources_after = set(self.sources)
@@ -486,18 +493,16 @@ class Well:
                         loaded_sources.append(self.sources[-1])
 
             # Combine if requested
-            if combine in {'match', 'resample', 'concat'}:
+            if combine in {"match", "resample", "concat"}:
                 # Determine combined source name
-                combined_source_name = source_name or f'combined_{combine}'
+                combined_source_name = source_name or f"combined_{combine}"
 
                 # Merge all loaded sources (only ones that exist)
                 sources_to_merge = [s for s in loaded_sources if s in self._sources]
 
                 if sources_to_merge:
                     self.merge(
-                        method=combine,
-                        sources=sources_to_merge,
-                        source_name=combined_source_name
+                        method=combine, sources=sources_to_merge, source_name=combined_source_name
                     )
 
                     # Remove original sources (only ones that exist)
@@ -526,7 +531,7 @@ class Well:
 
             filepath = las_path
             las = LasFile(las_path)
-        elif hasattr(las, 'filepath') and las.filepath:
+        elif hasattr(las, "filepath") and las.filepath:
             filepath = Path(las.filepath)
 
         # Validate well name
@@ -545,7 +550,7 @@ class Well:
             # Try multiple formats of well name (with hyphens and without)
             well_name_variants = [
                 sanitize_well_name(self.name, keep_hyphens=True),  # "36_7-5_ST2"
-                self.sanitized_name  # "36_7_5_ST2"
+                self.sanitized_name,  # "36_7_5_ST2"
             ]
 
             # Check each variant
@@ -554,8 +559,8 @@ class Well:
                 # Check if filename starts with this variant (case-insensitive for robustness)
                 if base_source_name.lower().startswith(well_variant.lower()):
                     # Remove the well name prefix and any connecting underscores or hyphens
-                    suffix = base_source_name[len(well_variant):]
-                    suffix = suffix.lstrip('_-')
+                    suffix = base_source_name[len(well_variant) :]
+                    suffix = suffix.lstrip("_-")
                     if suffix:
                         base_source_name = suffix
                         suffix_found = True
@@ -565,7 +570,7 @@ class Well:
             base_source_name = sanitize_property_name(base_source_name)
         else:
             # Fallback for LasFile objects without filepath
-            base_source_name = 'unknown_source'
+            base_source_name = "unknown_source"
 
         # Handle source name and merge logic
         source_name = base_source_name
@@ -575,13 +580,13 @@ class Well:
             if merge:
                 # MERGE MODE: Add new properties to existing source
                 existing_source = self._sources[source_name]
-                existing_las = existing_source['las_file']
+                existing_las = existing_source["las_file"]
 
                 # Check depth compatibility
                 if existing_las:
                     compatibility = existing_las.check_depth_compatibility(las)
 
-                    if not compatibility['compatible'] and compatibility['requires_resampling']:
+                    if not compatibility["compatible"] and compatibility["requires_resampling"]:
                         # Incompatible depths - need resampling
                         if resample_method is None:
                             raise WellError(
@@ -592,8 +597,13 @@ class Well:
                                 f"To merge, specify a resample_method: 'linear', 'nearest', 'previous', or 'next'"
                             )
                         else:
-                            print(f"Merging into source '{source_name}' with resampling (method={resample_method})")
-                    elif compatibility['compatible'] and compatibility['reason'] != 'Identical depth grids':
+                            print(
+                                f"Merging into source '{source_name}' with resampling (method={resample_method})"
+                            )
+                    elif (
+                        compatibility["compatible"]
+                        and compatibility["reason"] != "Identical depth grids"
+                    ):
                         # Compatible but not identical (different coverage or NaN tails)
                         print(f"⚠ Merging into source '{source_name}': {compatibility['reason']}")
                     else:
@@ -625,7 +635,7 @@ class Well:
                 continue  # Skip depth itself
 
             curve_meta = las.curves[curve_name]
-            prop_name = curve_meta.get('alias') or curve_name
+            prop_name = curve_meta.get("alias") or curve_name
 
             # Check if this property is marked as discrete
             is_discrete = prop_name in discrete_props
@@ -633,11 +643,11 @@ class Well:
             # Determine property type
             if sampled:
                 # Override to sampled for all properties if loading sampled data
-                prop_type = 'sampled'
+                prop_type = "sampled"
             elif is_discrete:
-                prop_type = 'discrete'
+                prop_type = "discrete"
             else:
-                prop_type = curve_meta['type']
+                prop_type = curve_meta["type"]
 
             # Get labels, colors, styles, and thicknesses if property is discrete
             labels = None
@@ -658,9 +668,9 @@ class Well:
             prop = Property(
                 name=sanitized_prop_name,
                 parent_well=self,
-                unit=curve_meta['unit'],
+                unit=curve_meta["unit"],
                 prop_type=prop_type,
-                description=curve_meta['description'],
+                description=curve_meta["description"],
                 null_value=las.null_value,
                 labels=labels,
                 colors=colors,
@@ -669,7 +679,7 @@ class Well:
                 source_las=las,
                 source_name=source_name,
                 original_name=prop_name,
-                lazy=True  # Enable lazy loading
+                lazy=True,  # Enable lazy loading
             )
 
             source_properties[sanitized_prop_name] = prop
@@ -681,31 +691,31 @@ class Well:
 
             # Add new properties or overwrite existing ones with same name
             for prop_name, prop in source_properties.items():
-                if prop_name in existing_source['properties']:
+                if prop_name in existing_source["properties"]:
                     # Property exists - overwrite (smart merge)
                     print(f"  Overwriting property '{prop_name}' in source '{source_name}'")
                 else:
                     # New property - add it
                     print(f"  Adding property '{prop_name}' to source '{source_name}'")
 
-                existing_source['properties'][prop_name] = prop
+                existing_source["properties"][prop_name] = prop
 
             # Keep the original LAS file as reference (don't replace with new one)
             # Update resample_method if specified
             if resample_method is not None:
-                existing_source['resample_method'] = resample_method
+                existing_source["resample_method"] = resample_method
 
             # Mark as modified since we added/updated properties
-            existing_source['modified'] = True
+            existing_source["modified"] = True
         else:
             # OVERWRITE MODE: Create new source
             # Mark as unmodified if loaded from file, modified if synthetic (no filepath)
             self._sources[source_name] = {
-                'path': filepath,
-                'las_file': las,
-                'properties': source_properties,
-                'modified': filepath is None,  # True if synthetic (no file), False if from disk
-                'resample_method': resample_method  # Store for lazy loading
+                "path": filepath,
+                "las_file": las,
+                "properties": source_properties,
+                "modified": filepath is None,  # True if synthetic (no file), False if from disk
+                "resample_method": resample_method,  # Store for lazy loading
             }
 
         return self  # Enable chaining
@@ -715,8 +725,8 @@ class Well:
         df: pd.DataFrame,
         unit_mappings: Optional[dict[str, str]] = None,
         type_mappings: Optional[dict[str, str]] = None,
-        label_mappings: Optional[dict[str, dict[int, str]]] = None
-    ) -> 'Well':
+        label_mappings: Optional[dict[str, dict[int, str]]] = None,
+    ) -> "Well":
         """
         Add properties from a DataFrame to this well as a new source.
 
@@ -765,7 +775,7 @@ class Well:
         >>> well.external_df.Zone
         """
         # Generate base source name
-        base_source_name = 'external_df'
+        base_source_name = "external_df"
 
         # Check if source already exists and notify user of overwrite
         source_name = base_source_name
@@ -779,13 +789,13 @@ class Well:
             source_name=source_name,
             unit_mappings=unit_mappings,
             type_mappings=type_mappings,
-            label_mappings=label_mappings
+            label_mappings=label_mappings,
         )
 
         # Load it like any other LAS file
         return self.load_las(las)
 
-    def rename_source(self, old_name: str, new_name: str) -> 'Well':
+    def rename_source(self, old_name: str, new_name: str) -> "Well":
         """
         Rename a source to resolve conflicts or improve clarity.
 
@@ -822,10 +832,9 @@ class Well:
         """
         # Validate old source exists
         if old_name not in self._sources:
-            available = ', '.join(self._sources.keys())
+            available = ", ".join(self._sources.keys())
             raise KeyError(
-                f"Source '{old_name}' not found. "
-                f"Available sources: {available or 'none'}"
+                f"Source '{old_name}' not found. " f"Available sources: {available or 'none'}"
             )
 
         # Sanitize new name
@@ -849,11 +858,11 @@ class Well:
         source_data = self._sources[old_name]
 
         # Update all properties in this source to have new source_name
-        for prop in source_data['properties'].values():
+        for prop in source_data["properties"].values():
             prop.source_name = sanitized_new_name
 
         # Mark source as modified so it gets exported with new name
-        source_data['modified'] = True
+        source_data["modified"] = True
 
         # Move source to new key
         self._sources[sanitized_new_name] = source_data
@@ -861,7 +870,7 @@ class Well:
 
         return self
 
-    def mark_source_modified(self, name: str) -> 'Well':
+    def mark_source_modified(self, name: str) -> "Well":
         """
         Mark a source as modified so it will be re-exported on save.
 
@@ -891,16 +900,15 @@ class Well:
         >>> manager.save()  # Will re-export the modified source
         """
         if name not in self._sources:
-            available = ', '.join(self._sources.keys())
+            available = ", ".join(self._sources.keys())
             raise KeyError(
-                f"Source '{name}' not found. "
-                f"Available sources: {available or 'none'}"
+                f"Source '{name}' not found. " f"Available sources: {available or 'none'}"
             )
 
-        self._sources[name]['modified'] = True
+        self._sources[name]["modified"] = True
         return self
 
-    def remove_source(self, name: Union[str, list[str]]) -> 'Well':
+    def remove_source(self, name: Union[str, list[str]]) -> "Well":
         """
         Remove one or more sources and all their properties from the well.
 
@@ -942,7 +950,7 @@ class Well:
         # Validate all sources exist first
         for source_name in names:
             if source_name not in self._sources:
-                available = ', '.join(self._sources.keys())
+                available = ", ".join(self._sources.keys())
                 raise KeyError(
                     f"Source '{source_name}' not found. "
                     f"Available sources: {available or 'none'}"
@@ -978,19 +986,32 @@ class Well:
         >>> well.PHIE  # Error if PHIE exists in multiple sources
         """
         # Don't intercept private attributes, methods, or class attributes
-        if name.startswith('_') or name in [
-            'name', 'sanitized_name', 'parent_manager', 'properties', 'sources',
-            'load_las', 'get_property', 'merge', 'data', 'original_las',
-            'add_dataframe', 'to_las', 'export_to_las', 'rename_source', 'remove_source',
-            'export_sources', 'delete_renamed_sources', 'delete_marked_sources', 'mark_source_modified'
+        if name.startswith("_") or name in [
+            "name",
+            "sanitized_name",
+            "parent_manager",
+            "properties",
+            "sources",
+            "load_las",
+            "get_property",
+            "merge",
+            "data",
+            "original_las",
+            "add_dataframe",
+            "to_las",
+            "export_to_las",
+            "rename_source",
+            "remove_source",
+            "export_sources",
+            "delete_renamed_sources",
+            "delete_marked_sources",
+            "mark_source_modified",
         ]:
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Priority 1: Check if name is a source name
         if name in self._sources:
-            return SourceView(name, self._sources[name]['properties'])
+            return SourceView(name, self._sources[name]["properties"])
 
         # Priority 2: Check if property exists across sources
         # Collect all properties with this name (try both as-is and sanitized)
@@ -998,7 +1019,7 @@ class Well:
         matching_property = None
 
         for source_name, source_data in self._sources.items():
-            properties = source_data['properties']
+            properties = source_data["properties"]
 
             # Try as-is (sanitized name)
             if name in properties:
@@ -1018,7 +1039,7 @@ class Well:
 
         # If property found in multiple sources, raise error
         if len(matching_sources) > 1:
-            sources_str = ', '.join(matching_sources)
+            sources_str = ", ".join(matching_sources)
             raise AttributeError(
                 f"Property '{name}' is ambiguous - exists in multiple sources: {sources_str}. "
                 f"Use explicit source access: well.{matching_sources[0]}.{name}"
@@ -1028,7 +1049,7 @@ class Well:
         available_sources = list(self._sources.keys())
         all_properties = set()
         for source_data in self._sources.values():
-            all_properties.update(source_data['properties'].keys())
+            all_properties.update(source_data["properties"].keys())
         all_names = available_sources + sorted(all_properties)
         suggestions = suggest_similar_names(name, all_names)
 
@@ -1040,7 +1061,7 @@ class Well:
             f" Available properties: {', '.join(sorted(all_properties)) or 'none'}"
         )
         raise AttributeError(msg)
-    
+
     @property
     def properties(self) -> list[str]:
         """
@@ -1066,7 +1087,7 @@ class Well:
         # Count occurrences of each property across sources
         property_sources = {}  # {prop_name: [source_name1, source_name2, ...]}
         for source_name, source_data in self._sources.items():
-            for prop_name in source_data['properties'].keys():
+            for prop_name in source_data["properties"].keys():
                 if prop_name not in property_sources:
                     property_sources[prop_name] = []
                 property_sources[prop_name].append(source_name)
@@ -1136,8 +1157,8 @@ class Well:
             return None
         # Return the first source's LAS file
         first_source = next(iter(self._sources.values()))
-        return first_source['las_file']
-    
+        return first_source["las_file"]
+
     def get_property(self, name: str, source: Optional[str] = None) -> Property:
         """
         Explicit property getter.
@@ -1176,12 +1197,12 @@ class Well:
         # If source specified, get from that source only
         if source is not None:
             if source not in self._sources:
-                available_sources = ', '.join(self._sources.keys())
+                available_sources = ", ".join(self._sources.keys())
                 raise PropertyNotFoundError(
                     f"Source '{source}' not found. Available sources: {available_sources or 'none'}"
                 )
 
-            properties = self._sources[source]['properties']
+            properties = self._sources[source]["properties"]
 
             # Try as-is
             if name in properties:
@@ -1193,7 +1214,7 @@ class Well:
                 return properties[sanitized_name]
 
             # Not found in this source
-            available = ', '.join(properties.keys())
+            available = ", ".join(properties.keys())
             raise PropertyNotFoundError(
                 f"Property '{name}' not found in source '{source}'. "
                 f"Available properties: {available or 'none'}"
@@ -1204,7 +1225,7 @@ class Well:
         matching_property = None
 
         for source_name, source_data in self._sources.items():
-            properties = source_data['properties']
+            properties = source_data["properties"]
 
             # Try as-is
             if name in properties:
@@ -1223,7 +1244,7 @@ class Well:
 
         # If found in multiple sources, raise error
         if len(matching_sources) > 1:
-            sources_str = ', '.join(matching_sources)
+            sources_str = ", ".join(matching_sources)
             raise PropertyNotFoundError(
                 f"Property '{name}' is ambiguous - exists in multiple sources: {sources_str}. "
                 f"Use source parameter: well.get_property('{name}', source='{matching_sources[0]}')"
@@ -1232,7 +1253,7 @@ class Well:
         # Not found — suggest similar names
         all_properties = set()
         for source_data in self._sources.values():
-            all_properties.update(source_data['properties'].keys())
+            all_properties.update(source_data["properties"].keys())
         suggestions = suggest_similar_names(name, all_properties)
         msg = f"Property '{name}' not found in well '{self.name}'."
         if suggestions:
@@ -1292,7 +1313,9 @@ class Well:
         return list(self._saved_filter_intervals.keys())
 
     @staticmethod
-    def _is_regular_grid(depth: np.ndarray, tolerance: float = 1e-6) -> tuple[bool, Optional[float]]:
+    def _is_regular_grid(
+        depth: np.ndarray, tolerance: float = 1e-6
+    ) -> tuple[bool, Optional[float]]:
         """
         Check if a depth grid has regular spacing.
 
@@ -1327,13 +1350,13 @@ class Well:
 
     def _merge_properties(
         self,
-        method: str = 'match',
+        method: str = "match",
         sources: Optional[list[str]] = None,
         properties: Optional[list[str]] = None,
         depth_step: Optional[float] = None,
         depth_range: Optional[tuple[float, float]] = None,
         depth_grid: Optional[np.ndarray] = None,
-        source_name: Optional[str] = None
+        source_name: Optional[str] = None,
     ) -> dict[str, Property]:
         """
         Internal method to merge properties without modifying originals.
@@ -1379,10 +1402,8 @@ class Well:
             incompatible depths, or if 'resample' with irregular grid detects
             extrapolation requirements
         """
-        if method not in {'resample', 'concat', 'match'}:
-            raise ValueError(
-                f"method must be 'resample', 'concat', or 'match', got '{method}'"
-            )
+        if method not in {"resample", "concat", "match"}:
+            raise ValueError(f"method must be 'resample', 'concat', or 'match', got '{method}'")
 
         # Filter properties by sources and/or names
         props_to_merge = {}
@@ -1394,7 +1415,7 @@ class Well:
                 continue
 
             # Add properties from this source
-            for prop_name, prop in source_data['properties'].items():
+            for prop_name, prop in source_data["properties"].items():
                 # Check property name filter
                 if properties is not None and prop_name not in properties:
                     continue
@@ -1405,11 +1426,11 @@ class Well:
                     props_to_merge[prop_name] = prop
 
         if not props_to_merge:
-            available_sources = ', '.join(self._sources.keys())
+            available_sources = ", ".join(self._sources.keys())
             all_properties = set()
             for source_data in self._sources.values():
-                all_properties.update(source_data['properties'].keys())
-            available_properties = ', '.join(sorted(all_properties))
+                all_properties.update(source_data["properties"].keys())
+            available_properties = ", ".join(sorted(all_properties))
 
             raise WellError(
                 "No properties match the specified filters. "
@@ -1419,11 +1440,11 @@ class Well:
 
         # Generate source name for merged properties
         if source_name is None:
-            source_name = f'merged_{method}'
+            source_name = f"merged_{method}"
 
         merged_properties = {}
 
-        if method == 'resample':
+        if method == "resample":
             # Determine the reference depth grid
             if depth_grid is None:
                 # Use first source's depth grid as reference
@@ -1435,14 +1456,14 @@ class Well:
 
                 first_source_name = sources[0]
                 if first_source_name not in self._sources:
-                    available_sources = ', '.join(self._sources.keys())
+                    available_sources = ", ".join(self._sources.keys())
                     raise WellError(
                         f"First source '{first_source_name}' not found. "
                         f"Available sources: {available_sources}"
                     )
 
                 # Get reference depth from first property in first source
-                first_source_props = self._sources[first_source_name]['properties']
+                first_source_props = self._sources[first_source_name]["properties"]
                 if not first_source_props:
                     raise WellError(f"First source '{first_source_name}' has no properties")
 
@@ -1458,7 +1479,7 @@ class Well:
                     if source not in self._sources:
                         continue
 
-                    source_props = self._sources[source]['properties']
+                    source_props = self._sources[source]["properties"]
                     for prop_name, prop in source_props.items():
                         # Check property name filter
                         if properties is not None and prop_name not in properties:
@@ -1487,7 +1508,7 @@ class Well:
                     prop.depth,
                     prop.values,
                     reference_depth,
-                    method='linear' if prop.type == 'continuous' else 'previous'
+                    method="linear" if prop.type == "continuous" else "previous",
                 )
 
                 # Create new property with merged source
@@ -1503,12 +1524,12 @@ class Well:
                     labels=prop.labels,
                     source_las=None,
                     source_name=source_name,
-                    original_name=prop.original_name
+                    original_name=prop.original_name,
                 )
 
                 merged_properties[name] = merged_prop
 
-        elif method == 'concat':
+        elif method == "concat":
             # Collect all unique depths from selected properties
             all_depths = []
             for prop in props_to_merge.values():
@@ -1523,9 +1544,7 @@ class Well:
                 depth_to_value = dict(zip(prop.depth, prop.values))
 
                 # Fill values for unique depths (NaN where depth doesn't exist)
-                concat_values = np.array([
-                    depth_to_value.get(d, np.nan) for d in unique_depths
-                ])
+                concat_values = np.array([depth_to_value.get(d, np.nan) for d in unique_depths])
 
                 # Create new property with merged source
                 merged_prop = Property(
@@ -1540,7 +1559,7 @@ class Well:
                     labels=prop.labels,
                     source_las=None,
                     source_name=source_name,
-                    original_name=prop.original_name
+                    original_name=prop.original_name,
                 )
 
                 merged_properties[name] = merged_prop
@@ -1555,14 +1574,14 @@ class Well:
 
             first_source_name = sources[0]
             if first_source_name not in self._sources:
-                available_sources = ', '.join(self._sources.keys())
+                available_sources = ", ".join(self._sources.keys())
                 raise WellError(
                     f"First source '{first_source_name}' not found. "
                     f"Available sources: {available_sources}"
                 )
 
             # Get reference depth from first property in first source
-            first_source_props = self._sources[first_source_name]['properties']
+            first_source_props = self._sources[first_source_name]["properties"]
             if not first_source_props:
                 raise WellError(f"First source '{first_source_name}' has no properties")
 
@@ -1576,14 +1595,14 @@ class Well:
                 if source not in self._sources:
                     continue
 
-                source_props = self._sources[source]['properties']
+                source_props = self._sources[source]["properties"]
                 for prop_name, prop in source_props.items():
                     # Check property name filter
                     if properties is not None and prop_name not in properties:
                         continue
 
                     # Only check continuous properties for exact depth match
-                    if prop.type == 'continuous':
+                    if prop.type == "continuous":
                         # Check if this source has depth values not in reference
                         prop_depth_set = set(prop.depth)
                         extra_depths = prop_depth_set - reference_depth_set
@@ -1598,22 +1617,19 @@ class Well:
 
             # Create matched properties using reference depth
             for name, prop in props_to_merge.items():
-                if prop.type == 'continuous':
+                if prop.type == "continuous":
                     # Continuous properties: require exact depth match
                     depth_to_value = dict(zip(prop.depth, prop.values))
 
                     # Match values to reference depth (NaN where depth doesn't exist in this property)
-                    matched_values = np.array([
-                        depth_to_value.get(d, np.nan) for d in reference_depth
-                    ])
+                    matched_values = np.array(
+                        [depth_to_value.get(d, np.nan) for d in reference_depth]
+                    )
                 else:
                     # Discrete properties: resample using 'previous' method (interval-based)
                     # This works because discrete properties define intervals
                     matched_values = Property._resample_to_grid(
-                        prop.depth,
-                        prop.values,
-                        reference_depth,
-                        method='previous'
+                        prop.depth, prop.values, reference_depth, method="previous"
                     )
 
                 # Create new property with merged source
@@ -1629,7 +1645,7 @@ class Well:
                     labels=prop.labels,
                     source_las=None,
                     source_name=source_name,
-                    original_name=prop.original_name
+                    original_name=prop.original_name,
                 )
 
                 merged_properties[name] = merged_prop
@@ -1638,14 +1654,14 @@ class Well:
 
     def merge(
         self,
-        method: str = 'match',
+        method: str = "match",
         sources: Optional[list[str]] = None,
         properties: Optional[list[str]] = None,
         depth_step: Optional[float] = None,
         depth_range: Optional[tuple[float, float]] = None,
         depth_grid: Optional[np.ndarray] = None,
-        source_name: Optional[str] = None
-    ) -> 'Well':
+        source_name: Optional[str] = None,
+    ) -> "Well":
         """
         Merge properties from multiple sources into a new "merged" source.
 
@@ -1732,30 +1748,30 @@ class Well:
             depth_step=depth_step,
             depth_range=depth_range,
             depth_grid=depth_grid,
-            source_name=source_name
+            source_name=source_name,
         )
 
         # Determine the merge source name
-        merge_source_name = source_name if source_name else f'merged_{method}'
+        merge_source_name = source_name if source_name else f"merged_{method}"
 
         # Create a new source with merged properties
         self._sources[merge_source_name] = {
-            'path': None,  # Merged sources don't have a file path
-            'las_file': None,  # No LAS file for merged source
-            'properties': merged_properties
+            "path": None,  # Merged sources don't have a file path
+            "las_file": None,  # No LAS file for merged source
+            "properties": merged_properties,
         }
 
         return self
-    
+
     def data(
         self,
         reference_property: Optional[str] = None,
         include: Optional[Union[str, list[str]]] = None,
         exclude: Optional[Union[str, list[str]]] = None,
-        merge_method: str = 'match',
+        merge_method: str = "match",
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None
+        clip_to_property: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional merging and filtering.
@@ -1858,7 +1874,7 @@ class Well:
         # Collect all properties across all sources for validation
         all_properties = {}  # {prop_name: (source_name, property)}
         for source_name, source_data in self._sources.items():
-            for prop_name, prop in source_data['properties'].items():
+            for prop_name, prop in source_data["properties"].items():
                 if prop_name not in all_properties:
                     all_properties[prop_name] = (source_name, prop)
 
@@ -1869,10 +1885,9 @@ class Well:
         if include is not None:
             missing = set(include) - set(all_properties.keys())
             if missing:
-                available = ', '.join(all_properties.keys())
+                available = ", ".join(all_properties.keys())
                 raise PropertyNotFoundError(
-                    f"Properties not found: {', '.join(missing)}. "
-                    f"Available: {available}"
+                    f"Properties not found: {', '.join(missing)}. " f"Available: {available}"
                 )
 
         # Filter properties using helper function
@@ -1886,7 +1901,7 @@ class Well:
         else:
             # Get specified reference property
             if reference_property not in all_properties:
-                available = ', '.join(all_properties.keys())
+                available = ", ".join(all_properties.keys())
                 raise PropertyNotFoundError(
                     f"Reference property '{reference_property}' not found. "
                     f"Available: {available}"
@@ -1905,11 +1920,11 @@ class Well:
             method=merge_method,
             properties=properties_filter,
             depth_grid=depth,
-            source_name='temp_dataframe'
+            source_name="temp_dataframe",
         )
 
         # Build DataFrame
-        data = {'DEPT': depth}
+        data = {"DEPT": depth}
         for name, prop in props_to_export.items():
             # Apply labels to discrete properties if requested
             if discrete_labels and prop.labels:
@@ -1929,7 +1944,7 @@ class Well:
         elif clip_edges and len(df) > 0:
             # Clip edges to remove leading/trailing NaN rows
             # Get data columns (exclude DEPT)
-            data_cols = [col for col in df.columns if col != 'DEPT']
+            data_cols = [col for col in df.columns if col != "DEPT"]
             if data_cols:
                 # Find first row where at least one data column is not NaN
                 not_all_nan = df[data_cols].notna().any(axis=1)
@@ -1944,7 +1959,7 @@ class Well:
         self,
         n: int = 5,
         include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None
+        exclude: Optional[Union[str, list[str]]] = None,
     ) -> pd.DataFrame:
         """
         Return first n rows of well data.
@@ -1979,7 +1994,7 @@ class Well:
         include: Optional[list[str]] = None,
         exclude: Optional[list[str]] = None,
         store_labels: bool = True,
-        use_template: Union[bool, LasFile, None] = None
+        use_template: Union[bool, LasFile, None] = None,
     ) -> LasFile:
         """
         Convert well properties to a LasFile object.
@@ -2044,7 +2059,7 @@ class Well:
         # Collect all properties across all sources
         all_properties = {}  # {prop_name: property}
         for source_name, source_data in self._sources.items():
-            for prop_name, prop in source_data['properties'].items():
+            for prop_name, prop in source_data["properties"].items():
                 if prop_name not in all_properties:
                     all_properties[prop_name] = prop
 
@@ -2076,10 +2091,9 @@ class Well:
             properties_to_export = include
             missing = set(include) - set(all_properties.keys())
             if missing:
-                available = ', '.join(all_properties.keys())
+                available = ", ".join(all_properties.keys())
                 raise PropertyNotFoundError(
-                    f"Properties not found: {', '.join(missing)}. "
-                    f"Available: {available}"
+                    f"Properties not found: {', '.join(missing)}. " f"Available: {available}"
                 )
         elif exclude is not None:
             properties_to_export = [name for name in all_properties.keys() if name not in exclude]
@@ -2093,21 +2107,20 @@ class Well:
         if len(props_dict) > 1:
             ref_depth = next(iter(props_dict.values())).depth
             needs_merge = any(
-                not np.array_equal(prop.depth, ref_depth)
-                for prop in props_dict.values()
+                not np.array_equal(prop.depth, ref_depth) for prop in props_dict.values()
             )
 
             if needs_merge:
                 props_dict = self._merge_properties(
-                    method='resample',
+                    method="resample",
                     properties=properties_to_export,
                     depth_grid=ref_depth,
-                    source_name='to_las_merged'
+                    source_name="to_las_merged",
                 )
 
         # Build DataFrame directly with original names
         ref_prop = next(iter(props_dict.values()))
-        data = {'DEPT': ref_prop.depth}
+        data = {"DEPT": ref_prop.depth}
 
         for name, prop in props_dict.items():
             data[prop.original_name] = prop.values
@@ -2115,7 +2128,7 @@ class Well:
         df = pd.DataFrame(data)
 
         # Build unit mappings and type mappings
-        unit_mappings = {'DEPT': 'm'}
+        unit_mappings = {"DEPT": "m"}
         type_mappings = {}
         for prop in props_dict.values():
             unit_mappings[prop.original_name] = prop.unit
@@ -2133,10 +2146,10 @@ class Well:
         las = LasFile.from_dataframe(
             df=df,
             well_name=self.name,
-            source_name='from_well',
+            source_name="from_well",
             unit_mappings=unit_mappings,
             type_mappings=type_mappings,
-            label_mappings=label_mappings
+            label_mappings=label_mappings,
         )
 
         # If template provided, copy over metadata
@@ -2144,7 +2157,7 @@ class Well:
             las.version_info = template_las.version_info.copy()
             # Copy well parameters except the ones we computed
             for key, value in template_las.well_info.items():
-                if key not in ['STRT', 'STOP', 'STEP', 'NULL']:
+                if key not in ["STRT", "STOP", "STEP", "NULL"]:
                     las.well_info[key] = value
 
         return las
@@ -2156,7 +2169,7 @@ class Well:
         exclude: Optional[list[str]] = None,
         store_labels: bool = True,
         null_value: float = -999.25,
-        use_template: Union[bool, LasFile, None] = None
+        use_template: Union[bool, LasFile, None] = None,
     ) -> None:
         """
         Export well data to LAS 2.0 format file.
@@ -2213,10 +2226,7 @@ class Well:
         """
         # Create LasFile object and export it
         las = self.to_las(
-            include=include,
-            exclude=exclude,
-            store_labels=store_labels,
-            use_template=use_template
+            include=include, exclude=exclude, store_labels=store_labels, use_template=use_template
         )
         las.export(filepath, null_value=null_value)
 
@@ -2252,7 +2262,9 @@ class Well:
             # Delete old file if it exists
             if old_filepath.exists():
                 old_filepath.unlink()
-                print(f"Renamed source: {old_filename} -> {well_name_for_file}_{new_name}.las (old file deleted)")
+                print(
+                    f"Renamed source: {old_filename} -> {well_name_for_file}_{new_name}.las (old file deleted)"
+                )
 
         # Clear the rename list after processing
         self._renamed_sources.clear()
@@ -2325,30 +2337,30 @@ class Well:
             filepath = folder / filename
 
             # Get properties from this source
-            properties = list(source_data['properties'].keys())
+            properties = list(source_data["properties"].keys())
             if not properties:
                 continue
 
             # OPTIMIZATION: Skip export if source hasn't been modified and file exists
-            is_modified = source_data.get('modified', True)  # Default to True for safety
+            is_modified = source_data.get("modified", True)  # Default to True for safety
             if not is_modified and filepath.exists():
                 # Source unchanged, skip export
                 continue
 
             # Check if we have the original LAS file
-            original_las = source_data.get('las_file')
+            original_las = source_data.get("las_file")
 
             if original_las:
                 # FAST PATH: Update existing LAS file and export directly
                 # This preserves all metadata and is much faster than rebuilding from scratch
 
                 # Update the data in the original LAS file
-                ref_prop = next(iter(source_data['properties'].values()))
+                ref_prop = next(iter(source_data["properties"].values()))
                 depth_data = ref_prop.depth
 
                 # Build data dictionary with original property names
                 las_data = {original_las.depth_column: depth_data}
-                for prop_name, prop in source_data['properties'].items():
+                for prop_name, prop in source_data["properties"].items():
                     las_data[prop.original_name] = prop.values
 
                 # Update the LAS data
@@ -2357,8 +2369,8 @@ class Well:
                 # Sync discrete metadata from Property objects to LAS parameter_info
                 # This ensures user-modified labels, colors, styles, and thicknesses are persisted
                 discrete_props = []
-                for prop_name, prop in source_data['properties'].items():
-                    if prop.type == 'discrete' and prop.labels:
+                for prop_name, prop in source_data["properties"].items():
+                    if prop.type == "discrete" and prop.labels:
                         discrete_props.append(prop.original_name)
                         # Add label mappings to parameter_info
                         for value, label in prop.labels.items():
@@ -2368,35 +2380,37 @@ class Well:
                         # Remove any old discrete label entries for non-discrete properties
                         # First check if this property was previously discrete
                         keys_to_remove = [
-                            key for key in list(original_las.parameter_info.keys())
-                            if key.startswith(f"{prop.original_name}_") and key[len(prop.original_name)+1:].isdigit()
+                            key
+                            for key in list(original_las.parameter_info.keys())
+                            if key.startswith(f"{prop.original_name}_")
+                            and key[len(prop.original_name) + 1 :].isdigit()
                         ]
                         for key in keys_to_remove:
                             del original_las.parameter_info[key]
 
                     # Sync colors mapping
-                    if prop.type == 'discrete' and prop.colors:
+                    if prop.type == "discrete" and prop.colors:
                         for value, color in prop.colors.items():
                             param_name = f"{prop.original_name}_{value}_COLOR"
                             original_las.parameter_info[param_name] = color
 
                     # Sync styles mapping
-                    if prop.type == 'discrete' and prop.styles:
+                    if prop.type == "discrete" and prop.styles:
                         for value, style in prop.styles.items():
                             param_name = f"{prop.original_name}_{value}_STYLE"
                             original_las.parameter_info[param_name] = style
 
                     # Sync thicknesses mapping
-                    if prop.type == 'discrete' and prop.thicknesses:
+                    if prop.type == "discrete" and prop.thicknesses:
                         for value, thickness in prop.thicknesses.items():
                             param_name = f"{prop.original_name}_{value}_THICKNESS"
                             original_las.parameter_info[param_name] = str(thickness)
 
                 # Update DISCRETE_PROPS list
                 if discrete_props:
-                    original_las.parameter_info['DISCRETE_PROPS'] = ','.join(sorted(discrete_props))
-                elif 'DISCRETE_PROPS' in original_las.parameter_info:
-                    del original_las.parameter_info['DISCRETE_PROPS']
+                    original_las.parameter_info["DISCRETE_PROPS"] = ",".join(sorted(discrete_props))
+                elif "DISCRETE_PROPS" in original_las.parameter_info:
+                    del original_las.parameter_info["DISCRETE_PROPS"]
 
                 # Export directly
                 original_las.export(filepath)
@@ -2404,18 +2418,18 @@ class Well:
             else:
                 # SLOW PATH: Create new LAS file from scratch
                 # Used for sources created with add_dataframe() or load_tops()
-                ref_prop = next(iter(source_data['properties'].values()))
+                ref_prop = next(iter(source_data["properties"].values()))
                 depth = ref_prop.depth
 
-                data = {'DEPT': depth}
-                unit_mappings = {'DEPT': 'm'}
+                data = {"DEPT": depth}
+                unit_mappings = {"DEPT": "m"}
                 type_mappings = {}
                 label_mappings = {}
                 color_mappings = {}
                 style_mappings = {}
                 thickness_mappings = {}
 
-                for prop_name, prop in source_data['properties'].items():
+                for prop_name, prop in source_data["properties"].items():
                     data[prop.original_name] = prop.values
                     unit_mappings[prop.original_name] = prop.unit
                     type_mappings[prop.original_name] = prop.type
@@ -2440,7 +2454,7 @@ class Well:
                     label_mappings=label_mappings if label_mappings else None,
                     color_mappings=color_mappings if color_mappings else None,
                     style_mappings=style_mappings if style_mappings else None,
-                    thickness_mappings=thickness_mappings if thickness_mappings else None
+                    thickness_mappings=thickness_mappings if thickness_mappings else None,
                 )
 
                 # Export to file
@@ -2450,11 +2464,11 @@ class Well:
         self,
         depth_range: Optional[tuple[float, float]] = None,
         tops: Optional[list[str]] = None,
-        template: Optional[Union['Template', dict, str]] = None,
+        template: Optional[Union["Template", dict, str]] = None,
         figsize: Optional[tuple[float, float]] = None,
         dpi: int = 100,
-        header_config: Optional[dict] = None
-    ) -> 'WellView':
+        header_config: Optional[dict] = None,
+    ) -> "WellView":
         """
         Create a well log display for this well.
 
@@ -2530,7 +2544,7 @@ class Well:
             template=template,
             figsize=figsize,
             dpi=dpi,
-            header_config=header_config
+            header_config=header_config,
         )
 
     def Crossplot(
@@ -2561,7 +2575,7 @@ class Well:
         depth_range: Optional[tuple[float, float]] = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
-    ) -> 'Crossplot':
+    ) -> "Crossplot":
         """
         Create a beautiful crossplot for this well.
 
@@ -2699,7 +2713,7 @@ class Well:
         # Count total unique properties across all sources
         all_properties = set()
         for source_data in self._sources.values():
-            all_properties.update(source_data['properties'].keys())
+            all_properties.update(source_data["properties"].keys())
 
         return (
             f"Well('{self.name}', "

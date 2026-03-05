@@ -3,6 +3,7 @@ Well log visualization for Jupyter Lab.
 
 Provides Template and WellView classes for creating customizable well log displays.
 """
+
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union, TYPE_CHECKING
@@ -22,15 +23,27 @@ if TYPE_CHECKING:
 
 # Import regression classes at module level for performance
 from ..analysis.regression import (
-    LinearRegression, LogarithmicRegression, ExponentialRegression,
-    PolynomialRegression, PowerRegression, PolynomialExponentialRegression
+    LinearRegression,
+    LogarithmicRegression,
+    ExponentialRegression,
+    PolynomialRegression,
+    PowerRegression,
+    PolynomialExponentialRegression,
 )
 from ..exceptions import PropertyNotFoundError
 
 # Default color palettes
 DEFAULT_COLORS = [
-    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-    '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
 ]
 
 
@@ -71,25 +84,26 @@ def _create_regression(regression_type: str, **kwargs):
     elif regression_type == "polynomial":
         # Use suffix degree, then kwargs, then default
         if degree is None:
-            degree = kwargs.get('degree', 2)
+            degree = kwargs.get("degree", 2)
         return PolynomialRegression(degree=degree)
 
     # Exponential-polynomial (renamed from polynomial-exponential)
     elif regression_type == "exponential-polynomial":
         if degree is None:
-            degree = kwargs.get('degree', 2)
+            degree = kwargs.get("degree", 2)
         return PolynomialExponentialRegression(degree=degree)
 
     # Backward compatibility: old name polynomial-exponential
     elif regression_type == "polynomial-exponential":
         import warnings
+
         warnings.warn(
             "'polynomial-exponential' is deprecated. Use 'exponential-polynomial' instead.",
             DeprecationWarning,
-            stacklevel=3
+            stacklevel=3,
         )
         if degree is None:
-            degree = kwargs.get('degree', 2)
+            degree = kwargs.get("degree", 2)
         return PolynomialExponentialRegression(degree=degree)
 
     else:
@@ -129,7 +143,9 @@ def _create_regression(regression_type: str, **kwargs):
         raise ValueError(error_msg)
 
 
-def _downsample_for_plotting(depth: np.ndarray, values: np.ndarray, max_points: int = 2000) -> tuple[np.ndarray, np.ndarray]:
+def _downsample_for_plotting(
+    depth: np.ndarray, values: np.ndarray, max_points: int = 2000
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample depth and values arrays for efficient plotting while preserving curve shape.
 

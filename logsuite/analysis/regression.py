@@ -30,7 +30,7 @@ class RegressionBase(ABC):
         self._locked_params: Dict[str, float] = locked_params if locked_params is not None else {}
 
     @abstractmethod
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'RegressionBase':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "RegressionBase":
         """Fit the regression model to data.
 
         Args:
@@ -70,7 +70,9 @@ class RegressionBase(ABC):
         """
         return self.predict(x)
 
-    def _calculate_metrics(self, x: np.ndarray, y: np.ndarray, y_pred: np.ndarray, use_log_space: bool = False) -> None:
+    def _calculate_metrics(
+        self, x: np.ndarray, y: np.ndarray, y_pred: np.ndarray, use_log_space: bool = False
+    ) -> None:
         """Calculate R² and RMSE metrics.
 
         Args:
@@ -126,7 +128,7 @@ class RegressionBase(ABC):
 
         return x_clean, y_clean
 
-    def lock_params(self, **params: float) -> 'RegressionBase':
+    def lock_params(self, **params: float) -> "RegressionBase":
         """Lock one or more parameters to fixed values.
 
         Locked parameters will not be optimized during fitting.
@@ -145,7 +147,7 @@ class RegressionBase(ABC):
         self._locked_params.update(params)
         return self
 
-    def unlock_params(self, *param_names: str) -> 'RegressionBase':
+    def unlock_params(self, *param_names: str) -> "RegressionBase":
         """Unlock one or more parameters.
 
         Args:
@@ -185,9 +187,7 @@ class RegressionBase(ABC):
         return param_name in self._locked_params
 
     def get_plot_data(
-        self,
-        x_range: Optional[Tuple[float, float]] = None,
-        num_points: int = 100
+        self, x_range: Optional[Tuple[float, float]] = None, num_points: int = 100
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Get x and y data for plotting the regression line.
 
@@ -251,7 +251,7 @@ class LinearRegression(RegressionBase):
         self.slope: Optional[float] = None
         self.intercept: Optional[float] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'LinearRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "LinearRegression":
         """Fit linear regression model.
 
         Args:
@@ -264,21 +264,21 @@ class LinearRegression(RegressionBase):
         x_clean, y_clean = self._prepare_data(x, y)
 
         # Check if parameters are locked
-        slope_locked = self.is_param_locked('slope')
-        intercept_locked = self.is_param_locked('intercept')
+        slope_locked = self.is_param_locked("slope")
+        intercept_locked = self.is_param_locked("intercept")
 
         if slope_locked and intercept_locked:
             # Both locked - just use the locked values
-            self.slope = self._locked_params['slope']
-            self.intercept = self._locked_params['intercept']
+            self.slope = self._locked_params["slope"]
+            self.intercept = self._locked_params["intercept"]
         elif slope_locked:
             # Fit intercept only: y - slope*x = intercept
-            self.slope = self._locked_params['slope']
+            self.slope = self._locked_params["slope"]
             self.intercept = np.mean(y_clean - self.slope * x_clean)
         elif intercept_locked:
             # Fit slope only: (y - intercept) / x = slope
-            self.intercept = self._locked_params['intercept']
-            self.slope = np.sum((y_clean - self.intercept) * x_clean) / np.sum(x_clean ** 2)
+            self.intercept = self._locked_params["intercept"]
+            self.slope = np.sum((y_clean - self.intercept) * x_clean) / np.sum(x_clean**2)
         else:
             # Calculate slope and intercept using least squares
             self.slope, self.intercept = np.polyfit(x_clean, y_clean, 1)
@@ -340,7 +340,7 @@ class LogarithmicRegression(RegressionBase):
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'LogarithmicRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "LogarithmicRegression":
         """Fit logarithmic regression model.
 
         Args:
@@ -360,21 +360,21 @@ class LogarithmicRegression(RegressionBase):
         ln_x = np.log(x_clean)
 
         # Check if parameters are locked
-        a_locked = self.is_param_locked('a')
-        b_locked = self.is_param_locked('b')
+        a_locked = self.is_param_locked("a")
+        b_locked = self.is_param_locked("b")
 
         if a_locked and b_locked:
             # Both locked - just use the locked values
-            self.a = self._locked_params['a']
-            self.b = self._locked_params['b']
+            self.a = self._locked_params["a"]
+            self.b = self._locked_params["b"]
         elif a_locked:
             # Fit b only: y - a*ln(x) = b
-            self.a = self._locked_params['a']
+            self.a = self._locked_params["a"]
             self.b = np.mean(y_clean - self.a * ln_x)
         elif b_locked:
             # Fit a only: (y - b) / ln(x) = a
-            self.b = self._locked_params['b']
-            self.a = np.sum((y_clean - self.b) * ln_x) / np.sum(ln_x ** 2)
+            self.b = self._locked_params["b"]
+            self.a = np.sum((y_clean - self.b) * ln_x) / np.sum(ln_x**2)
         else:
             self.a, self.b = np.polyfit(ln_x, y_clean, 1)
 
@@ -439,7 +439,7 @@ class ExponentialRegression(RegressionBase):
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'ExponentialRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "ExponentialRegression":
         """Fit exponential regression model.
 
         Args:
@@ -456,21 +456,21 @@ class ExponentialRegression(RegressionBase):
             raise ValueError("Exponential regression requires all y values to be positive")
 
         # Check if parameters are locked
-        a_locked = self.is_param_locked('a')
-        b_locked = self.is_param_locked('b')
+        a_locked = self.is_param_locked("a")
+        b_locked = self.is_param_locked("b")
 
         if a_locked and b_locked:
             # Both locked - just use the locked values
-            self.a = self._locked_params['a']
-            self.b = self._locked_params['b']
+            self.a = self._locked_params["a"]
+            self.b = self._locked_params["b"]
         elif a_locked:
             # Fit b only: ln(y/a) = b*x
-            self.a = self._locked_params['a']
+            self.a = self._locked_params["a"]
             ln_y_ratio = np.log(y_clean / self.a)
-            self.b = np.sum(ln_y_ratio * x_clean) / np.sum(x_clean ** 2)
+            self.b = np.sum(ln_y_ratio * x_clean) / np.sum(x_clean**2)
         elif b_locked:
             # Fit a only: ln(y) = ln(a) + b*x => a = exp(mean(ln(y) - b*x))
-            self.b = self._locked_params['b']
+            self.b = self._locked_params["b"]
             self.a = np.exp(np.mean(np.log(y_clean) - self.b * x_clean))
         else:
             # Transform to linear: ln(y) = ln(a) + b*x
@@ -539,7 +539,7 @@ class PolynomialRegression(RegressionBase):
         self.degree = degree
         self.coefficients: Optional[np.ndarray] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'PolynomialRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "PolynomialRegression":
         """Fit polynomial regression model.
 
         Args:
@@ -552,7 +552,9 @@ class PolynomialRegression(RegressionBase):
         x_clean, y_clean = self._prepare_data(x, y)
 
         # Check for locked coefficients
-        locked_indices = {int(k[1:]): v for k, v in self._locked_params.items() if k.startswith('c')}
+        locked_indices = {
+            int(k[1:]): v for k, v in self._locked_params.items() if k.startswith("c")
+        }
 
         if not locked_indices:
             # No locked coefficients - use standard polyfit
@@ -564,7 +566,9 @@ class PolynomialRegression(RegressionBase):
             # Set locked coefficients
             for idx, val in locked_indices.items():
                 if idx < 0 or idx > self.degree:
-                    raise ValueError(f"Coefficient index c{idx} out of range for degree {self.degree}")
+                    raise ValueError(
+                        f"Coefficient index c{idx} out of range for degree {self.degree}"
+                    )
                 self.coefficients[idx] = val
 
             # Create design matrix for unlocked coefficients
@@ -572,7 +576,7 @@ class PolynomialRegression(RegressionBase):
             y_adjusted = y_clean.copy()
             for idx, val in locked_indices.items():
                 power = self.degree - idx
-                y_adjusted -= val * (x_clean ** power)
+                y_adjusted -= val * (x_clean**power)
 
             # Fit only unlocked coefficients
             unlocked_indices = [i for i in range(self.degree + 1) if i not in locked_indices]
@@ -678,7 +682,7 @@ class PowerRegression(RegressionBase):
         self.a: Optional[float] = None
         self.b: Optional[float] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'PowerRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "PowerRegression":
         """Fit power regression model.
 
         Args:
@@ -697,22 +701,22 @@ class PowerRegression(RegressionBase):
             raise ValueError("Power regression requires all y values to be positive")
 
         # Check if parameters are locked
-        a_locked = self.is_param_locked('a')
-        b_locked = self.is_param_locked('b')
+        a_locked = self.is_param_locked("a")
+        b_locked = self.is_param_locked("b")
 
         if a_locked and b_locked:
             # Both locked - just use the locked values
-            self.a = self._locked_params['a']
-            self.b = self._locked_params['b']
+            self.a = self._locked_params["a"]
+            self.b = self._locked_params["b"]
         elif a_locked:
             # Fit b only: ln(y/a) = b*ln(x)
-            self.a = self._locked_params['a']
+            self.a = self._locked_params["a"]
             ln_x = np.log(x_clean)
             ln_y_ratio = np.log(y_clean / self.a)
-            self.b = np.sum(ln_y_ratio * ln_x) / np.sum(ln_x ** 2)
+            self.b = np.sum(ln_y_ratio * ln_x) / np.sum(ln_x**2)
         elif b_locked:
             # Fit a only: ln(y) = ln(a) + b*ln(x) => a = exp(mean(ln(y) - b*ln(x)))
-            self.b = self._locked_params['b']
+            self.b = self._locked_params["b"]
             ln_x = np.log(x_clean)
             ln_y = np.log(y_clean)
             self.a = np.exp(np.mean(ln_y - self.b * ln_x))
@@ -801,7 +805,7 @@ class PolynomialExponentialRegression(RegressionBase):
         self.degree = degree
         self.coefficients: Optional[np.ndarray] = None
 
-    def fit(self, x: ArrayLike, y: ArrayLike) -> 'PolynomialExponentialRegression':
+    def fit(self, x: ArrayLike, y: ArrayLike) -> "PolynomialExponentialRegression":
         """Fit polynomial-exponential regression model.
 
         Args:
@@ -815,13 +819,17 @@ class PolynomialExponentialRegression(RegressionBase):
 
         # Check for positive y values
         if np.any(y_clean <= 0):
-            raise ValueError("Polynomial-Exponential regression requires all y values to be positive")
+            raise ValueError(
+                "Polynomial-Exponential regression requires all y values to be positive"
+            )
 
         # Transform to polynomial: log₁₀(y) = a + b*x + c*x² + ...
         log_y = np.log10(y_clean)
 
         # Check for locked coefficients
-        locked_indices = {int(k[1:]): v for k, v in self._locked_params.items() if k.startswith('c')}
+        locked_indices = {
+            int(k[1:]): v for k, v in self._locked_params.items() if k.startswith("c")
+        }
 
         if not locked_indices:
             # No locked coefficients - use standard polyfit
@@ -835,20 +843,22 @@ class PolynomialExponentialRegression(RegressionBase):
             # Set locked coefficients
             for idx, val in locked_indices.items():
                 if idx < 0 or idx > self.degree:
-                    raise ValueError(f"Coefficient index c{idx} out of range for degree {self.degree}")
+                    raise ValueError(
+                        f"Coefficient index c{idx} out of range for degree {self.degree}"
+                    )
                 self.coefficients[idx] = val
 
             # Subtract contribution of locked coefficients from log(y)
             log_y_adjusted = log_y.copy()
             for idx, val in locked_indices.items():
-                log_y_adjusted -= val * (x_clean ** idx)
+                log_y_adjusted -= val * (x_clean**idx)
 
             # Fit only unlocked coefficients
             unlocked_indices = [i for i in range(self.degree + 1) if i not in locked_indices]
 
             if unlocked_indices:
                 # Build design matrix for unlocked terms
-                X = np.column_stack([x_clean ** i for i in unlocked_indices])
+                X = np.column_stack([x_clean**i for i in unlocked_indices])
 
                 # Solve least squares
                 coefs_unlocked = np.linalg.lstsq(X, log_y_adjusted, rcond=None)[0]
@@ -858,8 +868,10 @@ class PolynomialExponentialRegression(RegressionBase):
                     self.coefficients[idx] = coefs_unlocked[i]
 
         # Calculate metrics (in log space for better R² with data spanning orders of magnitude)
-        log_y_pred = np.sum([self.coefficients[i] * (x_clean ** i) for i in range(self.degree + 1)], axis=0)
-        y_pred = 10 ** log_y_pred
+        log_y_pred = np.sum(
+            [self.coefficients[i] * (x_clean**i) for i in range(self.degree + 1)], axis=0
+        )
+        y_pred = 10**log_y_pred
         self._calculate_metrics(x_clean, y_clean, y_pred, use_log_space=True)
 
         self.fitted = True
@@ -880,10 +892,10 @@ class PolynomialExponentialRegression(RegressionBase):
         x = np.asarray(x, dtype=float)
 
         # Calculate polynomial in exponent
-        log_y = np.sum([self.coefficients[i] * (x ** i) for i in range(self.degree + 1)], axis=0)
+        log_y = np.sum([self.coefficients[i] * (x**i) for i in range(self.degree + 1)], axis=0)
 
         # Return 10^(polynomial)
-        return 10 ** log_y
+        return 10**log_y
 
     def equation(self) -> str:
         """Return the polynomial-exponential equation as a string."""
@@ -928,11 +940,11 @@ class PolynomialExponentialRegression(RegressionBase):
 
 
 __all__ = [
-    'RegressionBase',
-    'LinearRegression',
-    'LogarithmicRegression',
-    'ExponentialRegression',
-    'PolynomialRegression',
-    'PowerRegression',
-    'PolynomialExponentialRegression'
+    "RegressionBase",
+    "LinearRegression",
+    "LogarithmicRegression",
+    "ExponentialRegression",
+    "PolynomialRegression",
+    "PowerRegression",
+    "PolynomialExponentialRegression",
 ]

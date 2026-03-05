@@ -6,6 +6,7 @@ Submodules
 data_manager : WellDataManager class for loading and managing wells
 proxy : Property proxy classes for broadcasting operations across wells
 """
+
 from .data_manager import WellDataManager
 from .proxy import _ManagerPropertyProxy, _ManagerMultiPropertyProxy
 

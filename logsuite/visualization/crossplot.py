@@ -1,4 +1,5 @@
 """Crossplot class for well log cross-plotting and analysis."""
+
 from __future__ import annotations
 from typing import Optional, Union, TYPE_CHECKING
 import warnings
@@ -208,7 +209,7 @@ class Crossplot:
 
     def __init__(
         self,
-        wells: Union['Well', list['Well']],
+        wells: Union["Well", list["Well"]],
         x: Optional[str] = None,
         y: Optional[str] = None,
         layers: Optional[dict[str, list[str]]] = None,
@@ -262,18 +263,10 @@ class Crossplot:
             for label, props in layers.items():
                 if len(props) != 2:
                     raise ValueError(f"Layer '{label}' must have exactly 2 properties [x, y]")
-                self._layers.append({
-                    'label': label,
-                    'x': props[0],
-                    'y': props[1]
-                })
+                self._layers.append({"label": label, "x": props[0], "y": props[1]})
         # If x and y provided, create a default layer
         elif x is not None and y is not None:
-            self._layers.append({
-                'label': None,
-                'x': x,
-                'y': y
-            })
+            self._layers.append({"label": None, "x": x, "y": y})
 
         # Store parameters
         self.x = x
@@ -366,7 +359,7 @@ class Crossplot:
         # Maps segment numbers (1-9) to legend type placed there
         self._occupied_segments = {}
 
-    def add_layer(self, x: str, y: str, label: str) -> 'Crossplot':
+    def add_layer(self, x: str, y: str, label: str) -> "Crossplot":
         """
         Add a new data layer to the crossplot.
 
@@ -401,11 +394,7 @@ class Crossplot:
         ...     .add_layer('SidewallPor_ob', 'SidewallPerm_ob', label='Sidewall') \\
         ...     .show()
         """
-        self._layers.append({
-            'label': label,
-            'x': x,
-            'y': y
-        })
+        self._layers.append({"label": label, "x": x, "y": y})
         # Clear data cache since we're adding new data
         self._data = None
         return self
@@ -447,7 +436,7 @@ class Crossplot:
             Returns:
                 Aligned values array
             """
-            if prop.type == 'discrete':
+            if prop.type == "discrete":
                 # Use Property's resample method which handles discrete properties correctly
                 # (forward-fill to preserve integer codes and geological zone logic)
                 resampled = prop.resample(target_depth)
@@ -458,9 +447,9 @@ class Crossplot:
 
         # Loop through each layer
         for layer in self._layers:
-            layer_x = layer['x']
-            layer_y = layer['y']
-            layer_label = layer['label']
+            layer_x = layer["x"]
+            layer_y = layer["y"]
+            layer_label = layer["label"]
 
             for well in self.wells:
                 try:
@@ -478,55 +467,57 @@ class Crossplot:
                         y_values = align_property(y_prop, depths)
 
                     # Create dataframe for this well and layer
-                    df = pd.DataFrame({
-                        'depth': depths,
-                        'x': x_values,
-                        'y': y_values,
-                        'well': well.name,
-                        'label': layer_label  # Add layer label
-                    })
+                    df = pd.DataFrame(
+                        {
+                            "depth": depths,
+                            "x": x_values,
+                            "y": y_values,
+                            "well": well.name,
+                            "label": layer_label,  # Add layer label
+                        }
+                    )
 
                     # Add color property if specified
                     if self.color == "label":
                         # Use layer label for color
-                        df['color_val'] = layer_label
+                        df["color_val"] = layer_label
                     elif self.color == "well":
                         # Use well name for color (categorical)
-                        df['color_val'] = well.name
+                        df["color_val"] = well.name
                     elif self.color and self.color != "depth":
                         try:
                             color_prop = well.get_property(self.color)
                             # Store labels if discrete property (only once)
-                            if 'color' not in self._discrete_labels:
-                                self._store_discrete_labels(color_prop, 'color')
+                            if "color" not in self._discrete_labels:
+                                self._store_discrete_labels(color_prop, "color")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(color_prop.depth, depths):
                                 color_values = align_property(color_prop, depths)
                             else:
                                 color_values = color_prop.values
-                            df['color_val'] = color_values
+                            df["color_val"] = color_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently use depth as fallback
-                            df['color_val'] = depths
+                            df["color_val"] = depths
                     elif self.color == "depth":
-                        df['color_val'] = depths
+                        df["color_val"] = depths
 
                     # Add size property if specified
                     if self.size == "label":
                         # Use layer label for size (will need special handling in plot)
-                        df['size_val'] = layer_label
+                        df["size_val"] = layer_label
                     elif self.size:
                         try:
                             size_prop = well.get_property(self.size)
                             # Store labels if discrete property (only once)
-                            if 'size' not in self._discrete_labels:
-                                self._store_discrete_labels(size_prop, 'size')
+                            if "size" not in self._discrete_labels:
+                                self._store_discrete_labels(size_prop, "size")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(size_prop.depth, depths):
                                 size_values = align_property(size_prop, depths)
                             else:
                                 size_values = size_prop.values
-                            df['size_val'] = size_values
+                            df["size_val"] = size_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently skip if size property not found
                             pass
@@ -534,19 +525,19 @@ class Crossplot:
                     # Add shape property if specified
                     if self.shape == "label":
                         # Use layer label for shape
-                        df['shape_val'] = layer_label
+                        df["shape_val"] = layer_label
                     elif self.shape and self.shape != "well":
                         try:
                             shape_prop = well.get_property(self.shape)
                             # Store labels if discrete property (only once)
-                            if 'shape' not in self._discrete_labels:
-                                self._store_discrete_labels(shape_prop, 'shape')
+                            if "shape" not in self._discrete_labels:
+                                self._store_discrete_labels(shape_prop, "shape")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(shape_prop.depth, depths):
                                 shape_values = align_property(shape_prop, depths)
                             else:
                                 shape_values = shape_prop.values
-                            df['shape_val'] = shape_values
+                            df["shape_val"] = shape_values
                         except (AttributeError, KeyError, PropertyNotFoundError):
                             # Silently skip if shape property not found
                             pass
@@ -567,12 +558,11 @@ class Crossplot:
         if self.depth_range:
             min_depth, max_depth = self.depth_range
             self._data = self._data[
-                (self._data['depth'] >= min_depth) &
-                (self._data['depth'] <= max_depth)
+                (self._data["depth"] >= min_depth) & (self._data["depth"] <= max_depth)
             ]
 
         # Remove rows with NaN in x or y
-        self._data = self._data.dropna(subset=['x', 'y'])
+        self._data = self._data.dropna(subset=["x", "y"])
 
         return self._data
 
@@ -586,9 +576,9 @@ class Crossplot:
             Dictionary with 'type' and optional styling parameters
         """
         if isinstance(config, str):
-            return {'type': config}
+            return {"type": config}
         elif isinstance(config, dict):
-            if 'type' not in config:
+            if "type" not in config:
                 raise ValueError("Regression config dict must contain 'type' key")
             return config.copy()
         else:
@@ -660,8 +650,8 @@ class Crossplot:
             Tuple of (primary_location, secondary_location) as matplotlib location strings
         """
         # Get x and y bounds
-        x_vals = data['x'].values
-        y_vals = data['y'].values
+        x_vals = data["x"].values
+        y_vals = data["y"].values
 
         # Handle log scales for binning
         if self.x_log:
@@ -680,8 +670,8 @@ class Crossplot:
         counts = {}
         for i in range(3):
             for j in range(3):
-                x_mask = (x_vals >= x_bins[i]) & (x_vals < x_bins[i+1])
-                y_mask = (y_vals >= y_bins[j]) & (y_vals < y_bins[j+1])
+                x_mask = (x_vals >= x_bins[i]) & (x_vals < x_bins[i + 1])
+                y_mask = (y_vals >= y_bins[j]) & (y_vals < y_bins[j + 1])
                 counts[(i, j)] = np.sum(x_mask & y_mask)
 
         # Map grid positions to matplotlib location strings
@@ -689,15 +679,15 @@ class Crossplot:
         #       (0,1) (1,1) (2,1)  ->  center left, center, center right
         #       (0,0) (1,0) (2,0)  ->  lower left, lower center, lower right
         position_map = {
-            (0, 2): 'upper left',
-            (1, 2): 'upper center',
-            (2, 2): 'upper right',
-            (0, 1): 'center left',
-            (1, 1): 'center',
-            (2, 1): 'center right',
-            (0, 0): 'lower left',
-            (1, 0): 'lower center',
-            (2, 0): 'lower right',
+            (0, 2): "upper left",
+            (1, 2): "upper center",
+            (2, 2): "upper right",
+            (0, 1): "center left",
+            (1, 1): "center",
+            (2, 1): "center right",
+            (0, 0): "lower left",
+            (1, 0): "lower center",
+            (2, 0): "lower right",
         }
 
         # Sort squares by count (ascending)
@@ -710,10 +700,7 @@ class Crossplot:
         return best_pos, second_best_pos
 
     def _find_optimal_legend_segment(
-        self,
-        data: pd.DataFrame,
-        legend_type: str,
-        is_large: bool = False
+        self, data: pd.DataFrame, legend_type: str, is_large: bool = False
     ) -> tuple[int, str]:
         """Find optimal segment for legend placement using priority-based algorithm.
 
@@ -737,8 +724,8 @@ class Crossplot:
             Tuple of (segment_number, matplotlib_location_string)
         """
         # Get x and y data values
-        x_vals = data['x'].values
-        y_vals = data['y'].values
+        x_vals = data["x"].values
+        y_vals = data["y"].values
 
         # Get axes limits to convert data coordinates to axes-normalized coordinates (0-1)
         # This ensures we're dividing the GRAPH AREA, not the data space
@@ -772,8 +759,12 @@ class Crossplot:
 
         # Normalize transformed coordinates to axes coordinates (0-1)
         # This divides the visible graph area properly, accounting for log scales
-        x_norm = (x_vals_transformed - x_lim_transformed[0]) / (x_lim_transformed[1] - x_lim_transformed[0])
-        y_norm = (y_vals_transformed - y_lim_transformed[0]) / (y_lim_transformed[1] - y_lim_transformed[0])
+        x_norm = (x_vals_transformed - x_lim_transformed[0]) / (
+            x_lim_transformed[1] - x_lim_transformed[0]
+        )
+        y_norm = (y_vals_transformed - y_lim_transformed[0]) / (
+            y_lim_transformed[1] - y_lim_transformed[0]
+        )
 
         # Create 3x3 grid in axes-normalized space (0-1)
         x_bins = np.linspace(0, 1, 4)
@@ -798,23 +789,23 @@ class Crossplot:
 
         # Map segments to matplotlib location strings
         segment_to_location = {
-            1: 'upper left',
-            2: 'upper center',
-            3: 'upper right',
-            4: 'center left',
-            5: 'center',
-            6: 'center right',
-            7: 'lower left',
-            8: 'lower center',
-            9: 'lower right',
+            1: "upper left",
+            2: "upper center",
+            3: "upper right",
+            4: "center left",
+            5: "center",
+            6: "center right",
+            7: "lower left",
+            8: "lower center",
+            9: "lower right",
         }
 
         # Count points in each segment using normalized coordinates
         total_points = len(x_norm)
         segment_counts = {}
         for segment, (i, j) in segment_to_grid.items():
-            x_mask = (x_norm >= x_bins[i]) & (x_norm < x_bins[i+1])
-            y_mask = (y_norm >= y_bins[j]) & (y_norm < y_bins[j+1])
+            x_mask = (x_norm >= x_bins[i]) & (x_norm < x_bins[i + 1])
+            y_mask = (y_norm >= y_bins[j]) & (y_norm < y_bins[j + 1])
             count = np.sum(x_mask & y_mask)
             segment_counts[segment] = count
 
@@ -834,10 +825,13 @@ class Crossplot:
                 existing_type = self._occupied_segments[segment]
 
                 # Allow shape and color to share if neither is very large
-                shareable = {'shape', 'color'}
-                if (legend_type in shareable and existing_type in shareable
+                shareable = {"shape", "color"}
+                if (
+                    legend_type in shareable
+                    and existing_type in shareable
                     and not is_large
-                    and not self._occupied_segments.get(f'{segment}_large', False)):
+                    and not self._occupied_segments.get(f"{segment}_large", False)
+                ):
                     # Can share this segment
                     pass
                 else:
@@ -858,7 +852,12 @@ class Crossplot:
             prop: Property object (must have type and labels attributes)
             role: Property role - 'shape', 'color', or 'size'
         """
-        if hasattr(prop, 'type') and prop.type == 'discrete' and hasattr(prop, 'labels') and prop.labels:
+        if (
+            hasattr(prop, "type")
+            and prop.type == "discrete"
+            and hasattr(prop, "labels")
+            and prop.labels
+        ):
             self._discrete_labels[role] = prop.labels.copy()
 
     def _get_display_label(self, value, role: str) -> str:
@@ -902,14 +901,19 @@ class Crossplot:
         Returns:
             True if on left or right edge (for vertical stacking)
         """
-        edge_locations = ['upper left', 'center left', 'lower left',
-                         'upper right', 'center right', 'lower right']
+        edge_locations = [
+            "upper left",
+            "center left",
+            "lower left",
+            "upper right",
+            "center right",
+            "lower right",
+        ]
         return location in edge_locations
 
-    def _create_grouped_legends(self,
-                                shape_handles, shape_title: str,
-                                color_handles, color_title: str,
-                                location: str) -> None:
+    def _create_grouped_legends(
+        self, shape_handles, shape_title: str, color_handles, color_title: str, location: str
+    ) -> None:
         """Create grouped legends in the same region, stacked or side-by-side.
 
         When both shape and color legends are needed, this groups them in the same
@@ -931,15 +935,15 @@ class Crossplot:
         # Segment 4=center left (0,0.5), 5=center (0.5,0.5), 6=center right (1,0.5)
         # Segment 7=lower left (0,0), 8=lower center (0.5,0), 9=lower right (1,0)
         anchor_map = {
-            'upper left': (0, 1),
-            'upper center': (0.5, 1),
-            'upper right': (1, 1),
-            'center left': (0, 0.5),
-            'center': (0.5, 0.5),
-            'center right': (1, 0.5),
-            'lower left': (0, 0),
-            'lower center': (0.5, 0),
-            'lower right': (1, 0),
+            "upper left": (0, 1),
+            "upper center": (0.5, 1),
+            "upper right": (1, 1),
+            "center left": (0, 0.5),
+            "center": (0.5, 0.5),
+            "center right": (1, 0.5),
+            "lower left": (0, 0),
+            "lower center": (0.5, 0),
+            "lower right": (1, 0),
         }
 
         base_x, base_y = anchor_map.get(location, (1, 1))
@@ -953,11 +957,11 @@ class Crossplot:
                 loc=location,
                 frameon=True,
                 framealpha=0.9,
-                edgecolor='black',
+                edgecolor="black",
                 bbox_to_anchor=(base_x, base_y),
-                bbox_transform=self.ax.transAxes
+                bbox_transform=self.ax.transAxes,
             )
-            shape_legend.get_title().set_fontweight('bold')
+            shape_legend.get_title().set_fontweight("bold")
             shape_legend.set_clip_on(False)  # Prevent clipping outside axes
             self.ax.add_artist(shape_legend)
 
@@ -966,9 +970,9 @@ class Crossplot:
             shape_height = len(shape_handles) * 0.05 + 0.08  # Adjusted for axes space
 
             # Adjust y position for color legend
-            if 'upper' in location:
+            if "upper" in location:
                 color_y = base_y - shape_height  # Stack below
-            elif 'lower' in location:
+            elif "lower" in location:
                 color_y = base_y + shape_height  # Stack above
             else:  # center
                 color_y = base_y - shape_height / 2  # Stack below
@@ -979,18 +983,18 @@ class Crossplot:
                 loc=location,
                 frameon=True,
                 framealpha=0.9,
-                edgecolor='black',
+                edgecolor="black",
                 bbox_to_anchor=(base_x, color_y),
-                bbox_transform=self.ax.transAxes
+                bbox_transform=self.ax.transAxes,
             )
-            color_legend.get_title().set_fontweight('bold')
+            color_legend.get_title().set_fontweight("bold")
             color_legend.set_clip_on(False)  # Prevent clipping outside axes
         else:
             # Place side by side for non-edge locations (top, bottom, center)
             # Estimate width of each legend in axes coordinates
             legend_width = 0.20
 
-            if 'center' in location and location != 'center left' and location != 'center right':
+            if "center" in location and location != "center left" and location != "center right":
                 # For center positions, place them side by side
                 shape_x = base_x - legend_width / 2
                 color_x = base_x + legend_width / 2
@@ -998,28 +1002,28 @@ class Crossplot:
                 shape_legend = self.ax.legend(
                     handles=shape_handles,
                     title=shape_title,
-                    loc='center',
+                    loc="center",
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='black',
+                    edgecolor="black",
                     bbox_to_anchor=(shape_x, base_y),
-                    bbox_transform=self.ax.transAxes
+                    bbox_transform=self.ax.transAxes,
                 )
-                shape_legend.get_title().set_fontweight('bold')
+                shape_legend.get_title().set_fontweight("bold")
                 shape_legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(shape_legend)
 
                 color_legend = self.ax.legend(
                     handles=color_handles,
                     title=color_title,
-                    loc='center',
+                    loc="center",
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='black',
+                    edgecolor="black",
                     bbox_to_anchor=(color_x, base_y),
-                    bbox_transform=self.ax.transAxes
+                    bbox_transform=self.ax.transAxes,
                 )
-                color_legend.get_title().set_fontweight('bold')
+                color_legend.get_title().set_fontweight("bold")
                 color_legend.set_clip_on(False)  # Prevent clipping outside axes
             else:
                 # For other positions, fall back to stacking
@@ -1029,17 +1033,17 @@ class Crossplot:
                     loc=location,
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='black',
+                    edgecolor="black",
                     bbox_to_anchor=(base_x, base_y),
-                    bbox_transform=self.ax.transAxes
+                    bbox_transform=self.ax.transAxes,
                 )
-                shape_legend.get_title().set_fontweight('bold')
+                shape_legend.get_title().set_fontweight("bold")
                 shape_legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(shape_legend)
 
                 # Estimate offset in axes coordinates
                 shape_height = len(shape_handles) * 0.05 + 0.08
-                if 'upper' in location:
+                if "upper" in location:
                     color_y = base_y - shape_height
                 else:
                     color_y = base_y + shape_height
@@ -1050,14 +1054,16 @@ class Crossplot:
                     loc=location,
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='black',
+                    edgecolor="black",
                     bbox_to_anchor=(base_x, color_y),
-                    bbox_transform=self.ax.transAxes
+                    bbox_transform=self.ax.transAxes,
                 )
-                color_legend.get_title().set_fontweight('bold')
+                color_legend.get_title().set_fontweight("bold")
                 color_legend.set_clip_on(False)  # Prevent clipping outside axes
 
-    def _format_regression_label(self, name: str, reg, include_equation: bool = None, include_r2: bool = None) -> str:
+    def _format_regression_label(
+        self, name: str, reg, include_equation: bool = None, include_r2: bool = None
+    ) -> str:
         """Format a modern, compact regression label.
 
         Args:
@@ -1079,7 +1085,7 @@ class Crossplot:
         first_line = name
         if include_equation:
             eq = reg.equation()
-            eq = eq.replace(' ', '')  # Remove spaces for compactness
+            eq = eq.replace(" ", "")  # Remove spaces for compactness
             # Add equation in parentheses (will be styled grey later)
             first_line = f"{name} ({eq})"
 
@@ -1118,37 +1124,35 @@ class Crossplot:
                 # Determine if regression legend is large
                 regression_is_large = len(regression_handles) > 5
                 segment, secondary_loc = self._find_optimal_legend_segment(
-                    self._data,
-                    legend_type='regression',
-                    is_large=regression_is_large
+                    self._data, legend_type="regression", is_large=regression_is_large
                 )
                 # Mark segment as occupied
-                self._occupied_segments[segment] = 'regression'
-                self._occupied_segments[f'{segment}_large'] = regression_is_large
+                self._occupied_segments[segment] = "regression"
+                self._occupied_segments[f"{segment}_large"] = regression_is_large
             else:
                 # Fallback if data not available
-                secondary_loc = 'lower right'
+                secondary_loc = "lower right"
 
             # Determine descriptive title based on regression type
             # Extract the regression type and add it to the title
             reg_type_str = None
             if self.regression_by_color_and_shape:
-                base_title = 'Regressions by color and shape'
+                base_title = "Regressions by color and shape"
                 config = self._parse_regression_config(self.regression_by_color_and_shape)
-                reg_type_str = config.get('type', None)
+                reg_type_str = config.get("type", None)
             elif self.regression_by_color:
-                base_title = 'Regressions by color'
+                base_title = "Regressions by color"
                 config = self._parse_regression_config(self.regression_by_color)
-                reg_type_str = config.get('type', None)
+                reg_type_str = config.get("type", None)
             elif self.regression_by_group:
-                base_title = 'Regressions by group'
+                base_title = "Regressions by group"
                 config = self._parse_regression_config(self.regression_by_group)
-                reg_type_str = config.get('type', None)
+                reg_type_str = config.get("type", None)
             else:
-                base_title = 'Regressions'
+                base_title = "Regressions"
                 if self.regression:
                     config = self._parse_regression_config(self.regression)
-                    reg_type_str = config.get('type', None)
+                    reg_type_str = config.get("type", None)
 
             # Add regression type to title (e.g., "Regressions by color - Power")
             if reg_type_str:
@@ -1168,53 +1172,71 @@ class Crossplot:
                 loc=secondary_loc,
                 frameon=True,
                 framealpha=0.95,
-                edgecolor='#cccccc',
+                edgecolor="#cccccc",
                 fancybox=False,
                 shadow=False,
                 fontsize=9,
                 title=regression_title,
-                title_fontsize=10
+                title_fontsize=10,
             )
 
             # Modern styling with grey text for equation and R-squared
             self.regression_legend.get_frame().set_linewidth(0.8)
-            self.regression_legend.get_title().set_fontweight('600')
+            self.regression_legend.get_title().set_fontweight("600")
 
             # Set text color to grey for all labels
             for text in self.regression_legend.get_texts():
-                text.set_color('#555555')
+                text.set_color("#555555")
 
             # Add as artist to avoid replacing the primary legend
             self.ax.add_artist(self.regression_legend)
 
     def _add_automatic_regressions(self, data: pd.DataFrame) -> None:
         """Add automatic regressions based on initialization parameters."""
-        if not any([self.regression, self.regression_by_color, self.regression_by_group, self.regression_by_color_and_shape]):
+        if not any(
+            [
+                self.regression,
+                self.regression_by_color,
+                self.regression_by_group,
+                self.regression_by_color_and_shape,
+            ]
+        ):
             return
 
         total_points = len(data)
         regression_count = 0
 
         # Define colors for different regression lines
-        regression_colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+        regression_colors = [
+            "red",
+            "blue",
+            "green",
+            "orange",
+            "purple",
+            "brown",
+            "pink",
+            "gray",
+            "olive",
+            "cyan",
+        ]
         color_idx = 0
 
         # Add overall regression
         if self.regression:
             config = self._parse_regression_config(self.regression)
-            reg_type = config['type']
+            reg_type = config["type"]
 
             # Set default line color if not specified
-            if 'line_color' not in config:
-                config['line_color'] = regression_colors[color_idx % len(regression_colors)]
+            if "line_color" not in config:
+                config["line_color"] = regression_colors[color_idx % len(regression_colors)]
 
             self.add_regression(
                 reg_type,
                 name=f"Overall {reg_type}",
-                line_color=config.get('line_color', 'red'),
-                line_width=config.get('line_width', 2),
-                line_style=config.get('line_style', '-'),
-                line_alpha=config.get('line_alpha', 0.8)
+                line_color=config.get("line_color", "red"),
+                line_width=config.get("line_width", 2),
+                line_style=config.get("line_style", "-"),
+                line_alpha=config.get("line_alpha", 0.8),
             )
             regression_count += 1
             color_idx += 1
@@ -1222,20 +1244,20 @@ class Crossplot:
         # Add regression by color groups
         if self.regression_by_color:
             config = self._parse_regression_config(self.regression_by_color)
-            reg_type = config['type']
+            reg_type = config["type"]
 
             # Determine grouping column based on what's being used for colors in the plot
             group_column = None
 
-            if self.color and 'color_val' in data.columns:
+            if self.color and "color_val" in data.columns:
                 # User specified explicit color mapping
-                group_column = 'color_val'
-            elif self.shape == "well" and 'well' in data.columns:
+                group_column = "color_val"
+            elif self.shape == "well" and "well" in data.columns:
                 # When shape="well", each well gets a different color in the plot
-                group_column = 'well'
-            elif self.shape and self.shape != "well" and 'shape_val' in data.columns:
+                group_column = "well"
+            elif self.shape and self.shape != "well" and "shape_val" in data.columns:
                 # When shape is a property, each shape group gets a different color
-                group_column = 'shape_val'
+                group_column = "shape_val"
 
             if group_column is None:
                 warnings.warn(
@@ -1245,7 +1267,7 @@ class Crossplot:
             else:
                 # Check if color is categorical (not continuous like depth)
                 # Use _is_categorical_color() to properly handle discrete properties
-                if group_column == 'color_val':
+                if group_column == "color_val":
                     is_categorical = self._is_categorical_color(data[group_column].values)
                     if not is_categorical:
                         # For continuous values, we can't create separate regressions
@@ -1271,27 +1293,31 @@ class Crossplot:
                         group_colors_map = self._get_group_colors(data, group_column)
 
                         for idx, (group_name, group_data) in enumerate(color_groups):
-                            x_vals = group_data['x'].values
-                            y_vals = group_data['y'].values
+                            x_vals = group_data["x"].values
+                            y_vals = group_data["y"].values
                             mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                             if np.sum(mask) >= 2:
                                 # Copy config and use the same color as the data group
                                 group_config = config.copy()
-                                if 'line_color' not in group_config:
+                                if "line_color" not in group_config:
                                     # Use the same color as the data points for this group
-                                    group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
+                                    group_config["line_color"] = group_colors_map.get(
+                                        group_name,
+                                        regression_colors[color_idx % len(regression_colors)],
+                                    )
 
                                 # Get display label for group name (converts codes to formation names)
-                                group_display = self._get_display_label(group_name, 'color')
+                                group_display = self._get_display_label(group_name, "color")
 
                                 # Skip legend update for all but last regression
-                                is_last = (idx == n_groups - 1)
+                                is_last = idx == n_groups - 1
                                 self._add_group_regression(
-                                    x_vals[mask], y_vals[mask],
+                                    x_vals[mask],
+                                    y_vals[mask],
                                     reg_type,
                                     name=group_display,
                                     config=group_config,
-                                    update_legend=is_last
+                                    update_legend=is_last,
                                 )
                                 regression_count += 1
                                 color_idx += 1
@@ -1312,27 +1338,31 @@ class Crossplot:
                     group_colors_map = self._get_group_colors(data, group_column)
 
                     for idx, (group_name, group_data) in enumerate(color_groups):
-                        x_vals = group_data['x'].values
-                        y_vals = group_data['y'].values
+                        x_vals = group_data["x"].values
+                        y_vals = group_data["y"].values
                         mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                         if np.sum(mask) >= 2:
                             # Copy config and use the same color as the data group
                             group_config = config.copy()
-                            if 'line_color' not in group_config:
+                            if "line_color" not in group_config:
                                 # Use the same color as the data points for this group
-                                group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
+                                group_config["line_color"] = group_colors_map.get(
+                                    group_name,
+                                    regression_colors[color_idx % len(regression_colors)],
+                                )
 
                             # Get display label for group name (converts codes to formation names)
-                            group_display = self._get_display_label(group_name, 'color')
+                            group_display = self._get_display_label(group_name, "color")
 
                             # Skip legend update for all but last regression
-                            is_last = (idx == n_groups - 1)
+                            is_last = idx == n_groups - 1
                             self._add_group_regression(
-                                x_vals[mask], y_vals[mask],
+                                x_vals[mask],
+                                y_vals[mask],
                                 reg_type,
                                 name=group_display,
                                 config=group_config,
-                                update_legend=is_last
+                                update_legend=is_last,
                             )
                             regression_count += 1
                             color_idx += 1
@@ -1340,11 +1370,11 @@ class Crossplot:
         # Add regression by groups (well or shape)
         if self.regression_by_group:
             config = self._parse_regression_config(self.regression_by_group)
-            reg_type = config['type']
+            reg_type = config["type"]
 
             # Determine grouping
-            if self.shape == "well" or (self.shape and 'shape_val' in data.columns):
-                group_col = 'well' if self.shape == "well" else 'shape_val'
+            if self.shape == "well" or (self.shape and "shape_val" in data.columns):
+                group_col = "well" if self.shape == "well" else "shape_val"
                 groups = data.groupby(group_col)
                 n_groups = len(groups)
 
@@ -1360,24 +1390,27 @@ class Crossplot:
                 group_colors_map = self._get_group_colors(data, group_col)
 
                 for idx, (group_name, group_data) in enumerate(groups):
-                    x_vals = group_data['x'].values
-                    y_vals = group_data['y'].values
+                    x_vals = group_data["x"].values
+                    y_vals = group_data["y"].values
                     mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                     if np.sum(mask) >= 2:
                         # Copy config and use the same color as the data group
                         group_config = config.copy()
-                        if 'line_color' not in group_config:
+                        if "line_color" not in group_config:
                             # Use the same color as the data points for this group
-                            group_config['line_color'] = group_colors_map.get(group_name, regression_colors[color_idx % len(regression_colors)])
+                            group_config["line_color"] = group_colors_map.get(
+                                group_name, regression_colors[color_idx % len(regression_colors)]
+                            )
 
                         # Skip legend update for all but last regression
-                        is_last = (idx == n_groups - 1)
+                        is_last = idx == n_groups - 1
                         self._add_group_regression(
-                            x_vals[mask], y_vals[mask],
+                            x_vals[mask],
+                            y_vals[mask],
                             reg_type,
                             name=f"{group_col}={group_name}",
                             config=group_config,
-                            update_legend=is_last
+                            update_legend=is_last,
                         )
                         regression_count += 1
                         color_idx += 1
@@ -1390,7 +1423,7 @@ class Crossplot:
         # Add regression by color AND shape combinations
         if self.regression_by_color_and_shape:
             config = self._parse_regression_config(self.regression_by_color_and_shape)
-            reg_type = config['type']
+            reg_type = config["type"]
 
             # Determine color and shape columns
             color_col = None
@@ -1399,22 +1432,22 @@ class Crossplot:
             shape_label = None
 
             # Identify color column
-            if self.color and 'color_val' in data.columns:
+            if self.color and "color_val" in data.columns:
                 # Check if categorical
-                if self._is_categorical_color(data['color_val'].values):
-                    color_col = 'color_val'
+                if self._is_categorical_color(data["color_val"].values):
+                    color_col = "color_val"
                     color_label = self.color
-            elif self.shape == "well" and 'well' in data.columns:
+            elif self.shape == "well" and "well" in data.columns:
                 # When shape="well", wells provide colors
-                color_col = 'well'
-                color_label = 'well'
+                color_col = "well"
+                color_label = "well"
 
             # Identify shape column
-            if self.shape == "well" and 'well' in data.columns:
-                shape_col = 'well'
-                shape_label = 'well'
-            elif self.shape and self.shape != "well" and 'shape_val' in data.columns:
-                shape_col = 'shape_val'
+            if self.shape == "well" and "well" in data.columns:
+                shape_col = "well"
+                shape_label = "well"
+            elif self.shape and self.shape != "well" and "shape_val" in data.columns:
+                shape_col = "shape_val"
                 shape_label = self.shape
 
             # Need both color and shape columns for this to work
@@ -1446,32 +1479,35 @@ class Crossplot:
                 shape_colors_map = self._get_group_colors(data, shape_col)
 
                 for idx, ((color_val, shape_val), group_data) in enumerate(combined_groups):
-                    x_vals = group_data['x'].values
-                    y_vals = group_data['y'].values
+                    x_vals = group_data["x"].values
+                    y_vals = group_data["y"].values
                     mask = np.isfinite(x_vals) & np.isfinite(y_vals)
                     if np.sum(mask) >= 2:
                         # Copy config and use appropriate color
                         group_config = config.copy()
-                        if 'line_color' not in group_config:
+                        if "line_color" not in group_config:
                             # Prefer color from color dimension, fallback to shape dimension
-                            group_config['line_color'] = color_colors_map.get(
+                            group_config["line_color"] = color_colors_map.get(
                                 color_val,
-                                shape_colors_map.get(shape_val, regression_colors[color_idx % len(regression_colors)])
+                                shape_colors_map.get(
+                                    shape_val, regression_colors[color_idx % len(regression_colors)]
+                                ),
                             )
 
                         # Create descriptive name with both dimensions
-                        color_display = self._get_display_label(color_val, 'color')
-                        shape_display = self._get_display_label(shape_val, 'shape')
+                        color_display = self._get_display_label(color_val, "color")
+                        shape_display = self._get_display_label(shape_val, "shape")
                         name = f"{color_label}={color_display}, {shape_label}={shape_display}"
 
                         # Skip legend update for all but last regression
-                        is_last = (idx == n_groups - 1)
+                        is_last = idx == n_groups - 1
                         self._add_group_regression(
-                            x_vals[mask], y_vals[mask],
+                            x_vals[mask],
+                            y_vals[mask],
                             reg_type,
                             name=name,
                             config=group_config,
-                            update_legend=is_last
+                            update_legend=is_last,
                         )
                         regression_count += 1
                         color_idx += 1
@@ -1483,7 +1519,7 @@ class Crossplot:
         regression_type: str,
         name: str,
         config: dict,
-        update_legend: bool = True
+        update_legend: bool = True,
     ) -> None:
         """Add a regression line for a specific group of data.
 
@@ -1495,7 +1531,7 @@ class Crossplot:
             config: Configuration dict with optional keys: line_color, line_width, line_style, line_alpha, x_range
         """
         # Create regression object using factory function
-        reg = _create_regression(regression_type, degree=config.get('degree', 2))
+        reg = _create_regression(regression_type, degree=config.get("degree", 2))
 
         # Fit regression
         try:
@@ -1513,7 +1549,7 @@ class Crossplot:
         self._store_regression(regression_type, name, reg)
 
         # Get plot data using the regression helper method
-        x_range_param = config.get('x_range', None)
+        x_range_param = config.get("x_range", None)
         try:
             x_line, y_line = reg.get_plot_data(x_range=x_range_param, num_points=100)
         except ValueError as e:
@@ -1525,12 +1561,13 @@ class Crossplot:
 
         # Plot line with config parameters
         line = self.ax.plot(
-            x_line, y_line,
-            color=config.get('line_color', 'red'),
-            linewidth=config.get('line_width', 1.5),
-            linestyle=config.get('line_style', '--'),
-            alpha=config.get('line_alpha', 0.7),
-            label=label
+            x_line,
+            y_line,
+            color=config.get("line_color", "red"),
+            linewidth=config.get("line_width", 1.5),
+            linestyle=config.get("line_style", "--"),
+            alpha=config.get("line_alpha", 0.7),
+            label=label,
         )[0]
 
         self.regression_lines[name] = line
@@ -1569,7 +1606,7 @@ class Crossplot:
         # Apply the criteria
         return n_unique < 50
 
-    def plot(self) -> 'Crossplot':
+    def plot(self) -> "Crossplot":
         """Generate the crossplot figure."""
         # Reset legend placement tracking for new plot
         self._occupied_segments = {}
@@ -1584,20 +1621,21 @@ class Crossplot:
         self.fig, self.ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
 
         # Determine plotting approach based on shape mapping
-        if self.shape == "well" or (self.shape and 'shape_val' in data.columns):
+        if self.shape == "well" or (self.shape and "shape_val" in data.columns):
             self._plot_by_groups(data)
         else:
             self._plot_single_group(data)
 
         # Set scales
         if self.x_log:
-            self.ax.set_xscale('log')
+            self.ax.set_xscale("log")
         if self.y_log:
-            self.ax.set_yscale('log')
+            self.ax.set_yscale("log")
 
         # Disable scientific notation on linear axes only
         # (log axes use matplotlib's default log formatter for proper log scale labels)
         from matplotlib.ticker import ScalarFormatter
+
         formatter = ScalarFormatter(useOffset=False)
         formatter.set_scientific(False)
 
@@ -1608,22 +1646,30 @@ class Crossplot:
             self.ax.xaxis.set_major_formatter(formatter)
 
         # Labels and title
-        self.ax.set_xlabel(self.xlabel, fontsize=12, fontweight='bold')
-        self.ax.set_ylabel(self.ylabel, fontsize=12, fontweight='bold')
-        self.ax.set_title(self.title, fontsize=14, fontweight='bold', pad=20)
+        self.ax.set_xlabel(self.xlabel, fontsize=12, fontweight="bold")
+        self.ax.set_ylabel(self.ylabel, fontsize=12, fontweight="bold")
+        self.ax.set_title(self.title, fontsize=14, fontweight="bold", pad=20)
 
         # Grid
         if self.grid:
-            self.ax.grid(True, which='major', alpha=min(self.grid_alpha * 1.2, 1.0), linestyle='-', linewidth=0.7)
+            self.ax.grid(
+                True,
+                which="major",
+                alpha=min(self.grid_alpha * 1.2, 1.0),
+                linestyle="-",
+                linewidth=0.7,
+            )
             # Add minor grid lines for log scales
             if self.x_log or self.y_log:
-                self.ax.grid(True, which='minor', alpha=self.grid_alpha, linestyle='-', linewidth=0.5)
+                self.ax.grid(
+                    True, which="minor", alpha=self.grid_alpha, linestyle="-", linewidth=0.5
+                )
 
         # Modern styling
-        self.ax.spines['top'].set_visible(False)
-        self.ax.spines['right'].set_visible(False)
-        self.ax.spines['left'].set_linewidth(1.5)
-        self.ax.spines['bottom'].set_linewidth(1.5)
+        self.ax.spines["top"].set_visible(False)
+        self.ax.spines["right"].set_visible(False)
+        self.ax.spines["left"].set_linewidth(1.5)
+        self.ax.spines["bottom"].set_linewidth(1.5)
 
         # Add automatic regressions if specified
         self._add_automatic_regressions(data)
@@ -1632,8 +1678,8 @@ class Crossplot:
         if self._pending_regressions:
             for pending in self._pending_regressions:
                 # Get the already-fitted regression object
-                reg_type = pending['regression_type']
-                reg_name = pending['name'] if pending['name'] else reg_type
+                reg_type = pending["regression_type"]
+                reg_name = pending["name"] if pending["name"] else reg_type
 
                 # Retrieve stored regression
                 if reg_type in self._regressions and reg_name in self._regressions[reg_type]:
@@ -1641,26 +1687,32 @@ class Crossplot:
 
                     # Draw the regression line
                     try:
-                        x_line, y_line = reg.get_plot_data(x_range=pending['x_range'], num_points=200)
+                        x_line, y_line = reg.get_plot_data(
+                            x_range=pending["x_range"], num_points=200
+                        )
                     except ValueError as e:
-                        warnings.warn(f"Could not generate plot data for {reg_type} regression: {e}")
+                        warnings.warn(
+                            f"Could not generate plot data for {reg_type} regression: {e}"
+                        )
                         continue
 
                     # Create label using formatter
                     label = self._format_regression_label(
-                        reg_name, reg,
-                        include_equation=pending['show_equation'],
-                        include_r2=pending['show_r2']
+                        reg_name,
+                        reg,
+                        include_equation=pending["show_equation"],
+                        include_r2=pending["show_r2"],
                     )
 
                     # Plot line
                     line = self.ax.plot(
-                        x_line, y_line,
-                        color=pending['line_color'],
-                        linewidth=pending['line_width'],
-                        linestyle=pending['line_style'],
-                        alpha=pending['line_alpha'],
-                        label=label
+                        x_line,
+                        y_line,
+                        color=pending["line_color"],
+                        linewidth=pending["line_width"],
+                        linestyle=pending["line_style"],
+                        alpha=pending["line_alpha"],
+                        label=label,
                     )[0]
 
                     self.regression_lines[reg_name] = line
@@ -1679,13 +1731,13 @@ class Crossplot:
 
     def _plot_single_group(self, data: pd.DataFrame) -> None:
         """Plot all data as a single group."""
-        x_vals = data['x'].values
-        y_vals = data['y'].values
+        x_vals = data["x"].values
+        y_vals = data["y"].values
 
         # Determine colors
         is_categorical = False
         if self.color:
-            c_vals_raw = data['color_val'].values
+            c_vals_raw = data["color_val"].values
 
             # Check if color data is categorical
             is_categorical = self._is_categorical_color(c_vals_raw)
@@ -1703,8 +1755,10 @@ class Crossplot:
                     cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
                     color_palette = [cmap_obj(i) for i in range(n_categories)]
 
-                category_colors = {cat: color_palette[i % len(color_palette)]
-                                 for i, cat in enumerate(unique_categories)}
+                category_colors = {
+                    cat: color_palette[i % len(color_palette)]
+                    for i, cat in enumerate(unique_categories)
+                }
 
                 # Map each value to its color
                 c_vals = [category_colors.get(val, DEFAULT_COLORS[0]) for val in c_vals_raw]
@@ -1724,13 +1778,15 @@ class Crossplot:
             vmin = vmax = None
 
         # Determine sizes
-        if self.size and 'size_val' in data.columns:
-            s_vals = data['size_val'].values
+        if self.size and "size_val" in data.columns:
+            s_vals = data["size_val"].values
             # Normalize sizes to size_range
             s_min, s_max = np.nanmin(s_vals), np.nanmax(s_vals)
             if s_max > s_min:
                 s_normalized = (s_vals - s_min) / (s_max - s_min)
-                sizes = self.size_range[0] + s_normalized * (self.size_range[1] - self.size_range[0])
+                sizes = self.size_range[0] + s_normalized * (
+                    self.size_range[1] - self.size_range[0]
+                )
             else:
                 sizes = self.marker_size
         else:
@@ -1738,7 +1794,8 @@ class Crossplot:
 
         # Create scatter plot
         self.scatter = self.ax.scatter(
-            x_vals, y_vals,
+            x_vals,
+            y_vals,
             c=c_vals,
             s=sizes,
             cmap=cmap,
@@ -1747,21 +1804,25 @@ class Crossplot:
             alpha=self.marker_alpha,
             edgecolors=self.edge_color,
             linewidths=self.edge_width,
-            marker=self.marker
+            marker=self.marker,
         )
 
         # Add colorbar or legend based on color type
         if self.color:
             if is_categorical and self.show_legend:
                 # Create legend for categorical colors
-                c_vals_raw = data['color_val'].values
+                c_vals_raw = data["color_val"].values
                 unique_categories = pd.Series(c_vals_raw).dropna().unique()
 
                 # Create custom legend handles
-                legend_elements = [Patch(facecolor=category_colors[cat],
-                                       edgecolor=self.edge_color,
-                                       label=self._get_display_label(cat, 'color'))
-                                 for cat in unique_categories]
+                legend_elements = [
+                    Patch(
+                        facecolor=category_colors[cat],
+                        edgecolor=self.edge_color,
+                        label=self._get_display_label(cat, "color"),
+                    )
+                    for cat in unique_categories
+                ]
 
                 # Determine if legend is large
                 color_is_large = len(legend_elements) > 5
@@ -1769,50 +1830,52 @@ class Crossplot:
                 # Find optimal segment for color legend
                 if self._data is not None:
                     segment, location = self._find_optimal_legend_segment(
-                        self._data,
-                        legend_type='color',
-                        is_large=color_is_large
+                        self._data, legend_type="color", is_large=color_is_large
                     )
                     # Mark segment as occupied
-                    self._occupied_segments[segment] = 'color'
-                    self._occupied_segments[f'{segment}_large'] = color_is_large
+                    self._occupied_segments[segment] = "color"
+                    self._occupied_segments[f"{segment}_large"] = color_is_large
                 else:
-                    location = 'best'
+                    location = "best"
 
-                colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
-                legend = self.ax.legend(handles=legend_elements,
-                                      title=colorbar_label,
-                                      loc=location,
-                                      frameon=True,
-                                      framealpha=0.9,
-                                      edgecolor='black')
-                legend.get_title().set_fontweight('bold')
+                colorbar_label = (
+                    self.color if self.color != "depth" and self.color != "label" else "Category"
+                )
+                legend = self.ax.legend(
+                    handles=legend_elements,
+                    title=colorbar_label,
+                    loc=location,
+                    frameon=True,
+                    framealpha=0.9,
+                    edgecolor="black",
+                )
+                legend.get_title().set_fontweight("bold")
                 legend.set_clip_on(False)  # Prevent clipping outside axes
                 self.ax.add_artist(legend)
             elif not is_categorical and self.show_colorbar:
                 # Add colorbar for continuous colors
                 self.colorbar = self.fig.colorbar(self.scatter, ax=self.ax)
                 colorbar_label = self.color if self.color != "depth" else "Depth"
-                self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+                self.colorbar.set_label(colorbar_label, fontsize=11, fontweight="bold")
 
     def _plot_by_groups(self, data: pd.DataFrame) -> None:
         """Plot data grouped by shape/well."""
         # Determine grouping
         if self.shape == "well":
-            groups = data.groupby('well')
+            groups = data.groupby("well")
             group_label = "Well"
         else:
-            groups = data.groupby('shape_val')
+            groups = data.groupby("shape_val")
             group_label = self.shape
 
         # Define markers for different groups
-        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
+        markers = ["o", "s", "^", "D", "v", "<", ">", "p", "*", "h"]
 
         # Check if colors are categorical (check once for all data)
         is_categorical = False
         category_colors = {}
         if self.color:
-            c_vals_all = data['color_val'].values
+            c_vals_all = data["color_val"].values
             is_categorical = self._is_categorical_color(c_vals_all)
 
             if is_categorical:
@@ -1826,22 +1889,24 @@ class Crossplot:
                     cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
                     color_palette = [cmap_obj(i) for i in range(n_categories)]
 
-                category_colors = {cat: color_palette[i % len(color_palette)]
-                                 for i, cat in enumerate(unique_categories)}
+                category_colors = {
+                    cat: color_palette[i % len(color_palette)]
+                    for i, cat in enumerate(unique_categories)
+                }
 
         # Track for colorbar (use first scatter)
         first_scatter = None
 
         for idx, (group_name, group_data) in enumerate(groups):
-            x_vals = group_data['x'].values
-            y_vals = group_data['y'].values
+            x_vals = group_data["x"].values
+            y_vals = group_data["y"].values
 
             # Determine marker
             marker = markers[idx % len(markers)]
 
             # Determine colors
             if self.color:
-                c_vals_raw = group_data['color_val'].values
+                c_vals_raw = group_data["color_val"].values
 
                 if is_categorical:
                     # Map categorical values to colors
@@ -1856,20 +1921,22 @@ class Crossplot:
                         vmin, vmax = self.color_range
                     else:
                         # Use global range from all data
-                        vmin, vmax = np.nanmin(data['color_val']), np.nanmax(data['color_val'])
+                        vmin, vmax = np.nanmin(data["color_val"]), np.nanmax(data["color_val"])
             else:
                 c_vals = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
                 cmap = None
                 vmin = vmax = None
 
             # Determine sizes
-            if self.size and 'size_val' in group_data.columns:
-                s_vals = group_data['size_val'].values
+            if self.size and "size_val" in group_data.columns:
+                s_vals = group_data["size_val"].values
                 # Normalize sizes to size_range
                 s_min, s_max = np.nanmin(s_vals), np.nanmax(s_vals)
                 if s_max > s_min:
                     s_normalized = (s_vals - s_min) / (s_max - s_min)
-                    sizes = self.size_range[0] + s_normalized * (self.size_range[1] - self.size_range[0])
+                    sizes = self.size_range[0] + s_normalized * (
+                        self.size_range[1] - self.size_range[0]
+                    )
                 else:
                     sizes = self.marker_size
             else:
@@ -1877,7 +1944,8 @@ class Crossplot:
 
             # Create scatter plot for this group
             scatter = self.ax.scatter(
-                x_vals, y_vals,
+                x_vals,
+                y_vals,
                 c=c_vals,
                 s=sizes,
                 cmap=cmap,
@@ -1887,7 +1955,7 @@ class Crossplot:
                 edgecolors=self.edge_color,
                 linewidths=self.edge_width,
                 marker=marker,
-                label=self._get_display_label(group_name, 'shape')
+                label=self._get_display_label(group_name, "shape"),
             )
 
             if first_scatter is None and self.color and not is_categorical:
@@ -1903,12 +1971,16 @@ class Crossplot:
             shape_handles, _ = self.ax.get_legend_handles_labels()
 
             # Prepare color legend handles
-            c_vals_all = data['color_val'].values
+            c_vals_all = data["color_val"].values
             unique_categories = pd.Series(c_vals_all).dropna().unique()
-            color_handles = [Patch(facecolor=category_colors[cat],
-                                  edgecolor=self.edge_color,
-                                  label=self._get_display_label(cat, 'color'))
-                            for cat in unique_categories]
+            color_handles = [
+                Patch(
+                    facecolor=category_colors[cat],
+                    edgecolor=self.edge_color,
+                    label=self._get_display_label(cat, "color"),
+                )
+                for cat in unique_categories
+            ]
 
             # Determine if legends are large (more than 5 items)
             shape_is_large = len(shape_handles) > 5
@@ -1917,17 +1989,17 @@ class Crossplot:
             # Find optimal segment for the grouped legends
             if self._data is not None:
                 segment, location = self._find_optimal_legend_segment(
-                    self._data,
-                    legend_type='shape',
-                    is_large=shape_is_large or color_is_large
+                    self._data, legend_type="shape", is_large=shape_is_large or color_is_large
                 )
                 # Mark segment as occupied by both shape and color
-                self._occupied_segments[segment] = 'shape'
-                self._occupied_segments[f'{segment}_large'] = shape_is_large or color_is_large
+                self._occupied_segments[segment] = "shape"
+                self._occupied_segments[f"{segment}_large"] = shape_is_large or color_is_large
             else:
-                location = 'best'
+                location = "best"
 
-            colorbar_label = self.color if self.color != "depth" and self.color != "label" else "Category"
+            colorbar_label = (
+                self.color if self.color != "depth" and self.color != "label" else "Category"
+            )
 
             # Create grouped legends
             self._create_grouped_legends(
@@ -1935,7 +2007,7 @@ class Crossplot:
                 shape_title=group_label,
                 color_handles=color_handles,
                 color_title=colorbar_label,
-                location=location
+                location=location,
             )
 
         elif need_shape_legend:
@@ -1946,24 +2018,18 @@ class Crossplot:
             # Find optimal segment
             if self._data is not None:
                 segment, location = self._find_optimal_legend_segment(
-                    self._data,
-                    legend_type='shape',
-                    is_large=shape_is_large
+                    self._data, legend_type="shape", is_large=shape_is_large
                 )
                 # Mark segment as occupied
-                self._occupied_segments[segment] = 'shape'
-                self._occupied_segments[f'{segment}_large'] = shape_is_large
+                self._occupied_segments[segment] = "shape"
+                self._occupied_segments[f"{segment}_large"] = shape_is_large
             else:
-                location = 'best'
+                location = "best"
 
             legend = self.ax.legend(
-                title=group_label,
-                loc=location,
-                frameon=True,
-                framealpha=0.9,
-                edgecolor='black'
+                title=group_label, loc=location, frameon=True, framealpha=0.9, edgecolor="black"
             )
-            legend.get_title().set_fontweight('bold')
+            legend.get_title().set_fontweight("bold")
             # Store the primary legend so it persists when regression legend is added
             self.ax.add_artist(legend)
 
@@ -1972,21 +2038,21 @@ class Crossplot:
             # Add continuous colorbar
             self.colorbar = self.fig.colorbar(first_scatter, ax=self.ax)
             colorbar_label = self.color if self.color != "depth" else "Depth"
-            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight='bold')
+            self.colorbar.set_label(colorbar_label, fontsize=11, fontweight="bold")
 
     def add_regression(
         self,
         regression_type: str,
         name: Optional[str] = None,
-        line_color: str = 'red',
+        line_color: str = "red",
         line_width: float = 2,
-        line_style: str = '-',
+        line_style: str = "-",
         line_alpha: float = 0.8,
         show_equation: bool = True,
         show_r2: bool = True,
         x_range: Optional[tuple[float, float]] = None,
-        **kwargs
-    ) -> 'Crossplot':
+        **kwargs,
+    ) -> "Crossplot":
         """Add a regression line to the crossplot.
 
         Parameters
@@ -2029,8 +2095,8 @@ class Crossplot:
         """
         # Ensure data is prepared
         data = self._prepare_data()
-        x_vals = data['x'].values
-        y_vals = data['y'].values
+        x_vals = data["x"].values
+        y_vals = data["y"].values
 
         # Remove any remaining NaN values
         mask = np.isfinite(x_vals) & np.isfinite(y_vals)
@@ -2069,19 +2135,18 @@ class Crossplot:
 
             # Create label using formatter
             label = self._format_regression_label(
-                reg_name, reg,
-                include_equation=show_equation,
-                include_r2=show_r2
+                reg_name, reg, include_equation=show_equation, include_r2=show_r2
             )
 
             # Plot line
             line = self.ax.plot(
-                x_line, y_line,
+                x_line,
+                y_line,
                 color=line_color,
                 linewidth=line_width,
                 linestyle=line_style,
                 alpha=line_alpha,
-                label=label
+                label=label,
             )[0]
 
             self.regression_lines[reg_name] = line
@@ -2090,22 +2155,24 @@ class Crossplot:
             self._update_regression_legend()
         else:
             # Store for later when plot() is called
-            self._pending_regressions.append({
-                'regression_type': regression_type,
-                'name': name,
-                'line_color': line_color,
-                'line_width': line_width,
-                'line_style': line_style,
-                'line_alpha': line_alpha,
-                'show_equation': show_equation,
-                'show_r2': show_r2,
-                'x_range': x_range,
-                'kwargs': kwargs
-            })
+            self._pending_regressions.append(
+                {
+                    "regression_type": regression_type,
+                    "name": name,
+                    "line_color": line_color,
+                    "line_width": line_width,
+                    "line_style": line_style,
+                    "line_alpha": line_alpha,
+                    "show_equation": show_equation,
+                    "show_r2": show_r2,
+                    "x_range": x_range,
+                    "kwargs": kwargs,
+                }
+            )
 
         return self
 
-    def remove_regression(self, name: str, regression_type: Optional[str] = None) -> 'Crossplot':
+    def remove_regression(self, name: str, regression_type: Optional[str] = None) -> "Crossplot":
         """Remove a regression from the plot.
 
         Parameters
@@ -2144,7 +2211,7 @@ class Crossplot:
             del self.regression_lines[name]
             # Update legend
             if self.ax is not None:
-                self.ax.legend(loc='best', frameon=True, framealpha=0.9, edgecolor='black')
+                self.ax.legend(loc="best", frameon=True, framealpha=0.9, edgecolor="black")
 
         return self
 
@@ -2155,7 +2222,7 @@ class Crossplot:
 
         plt.show()
 
-    def save(self, filepath: str, dpi: Optional[int] = None, bbox_inches: str = 'tight') -> None:
+    def save(self, filepath: str, dpi: Optional[int] = None, bbox_inches: str = "tight") -> None:
         """Save the crossplot to a file.
 
         Parameters
@@ -2196,7 +2263,4 @@ class Crossplot:
         n_regressions = sum(len(regs) for regs in self._regressions.values())
         reg_info = f", regressions={n_regressions}" if n_regressions > 0 else ""
 
-        return (
-            f"Crossplot({well_info}, "
-            f"x='{self.x}', y='{self.y}'{reg_info})"
-        )
+        return f"Crossplot({well_info}, " f"x='{self.x}', y='{self.y}'{reg_info})"

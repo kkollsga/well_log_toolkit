@@ -1,6 +1,7 @@
 """
 Property class for well log data with filtering support.
 """
+
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING, Union
 
@@ -8,11 +9,19 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
-from ..exceptions import PropertyError, PropertyNotFoundError, PropertyTypeError, DepthAlignmentError
+from ..exceptions import (
+    PropertyError,
+    PropertyNotFoundError,
+    PropertyTypeError,
+    DepthAlignmentError,
+)
 from ..analysis.statistics import (
     compute_intervals,
     compute_zone_intervals,
-    mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
+    mean as stat_mean,
+    sum as stat_sum,
+    std as stat_std,
+    percentile as stat_percentile,
 )
 from ..utils import filter_names, suggest_similar_names
 from .operations import PropertyOperationsMixin
@@ -93,25 +102,25 @@ class Property(PropertyOperationsMixin):
     >>> filtered = phie.filter('Zone').filter('NTG_Flag')
     >>> stats = filtered.sums_avg()
     """
-    
+
     def __init__(
         self,
         name: str,
         depth: Optional[np.ndarray] = None,
         values: Optional[np.ndarray] = None,
-        parent_well: Optional['Well'] = None,
-        unit: str = '',
-        prop_type: str = 'continuous',
-        description: str = '',
+        parent_well: Optional["Well"] = None,
+        unit: str = "",
+        prop_type: str = "continuous",
+        description: str = "",
         null_value: float = -999.25,
         labels: Optional[dict[int, str]] = None,
         colors: Optional[dict[int, str]] = None,
         styles: Optional[dict[int, str]] = None,
         thicknesses: Optional[dict[int, float]] = None,
-        source_las: Optional['LasFile'] = None,
+        source_las: Optional["LasFile"] = None,
         source_name: Optional[str] = None,
         original_name: Optional[str] = None,
-        lazy: bool = False
+        lazy: bool = False,
     ):
         self.name = name  # Sanitized name for Python attribute access
         self.original_name = original_name or name  # Original name with special characters
@@ -165,21 +174,18 @@ class Property(PropertyOperationsMixin):
 
                 # Replace null values with np.nan
                 self._values_cache = np.where(
-                    np.abs(self._values_cache - null_value) < 1e-6,
-                    np.nan,
-                    self._values_cache
+                    np.abs(self._values_cache - null_value) < 1e-6, np.nan, self._values_cache
                 )
 
                 # For discrete properties, round to nearest integer to handle
                 # sampling artifacts at zone boundaries (e.g., 0.28 -> 0, 0.67 -> 1)
                 # This conversion happens once at initialization for efficiency
-                if prop_type == 'discrete':
+                if prop_type == "discrete":
                     self._values_cache = np.where(
                         np.isnan(self._values_cache),
                         np.nan,  # Keep NaN as NaN
-                        np.round(self._values_cache)  # Round valid values to nearest integer
+                        np.round(self._values_cache),  # Round valid values to nearest integer
                     )
-
 
     def __str__(self) -> str:
         """
@@ -210,13 +216,13 @@ class Property(PropertyOperationsMixin):
         last_valid = valid_indices[-1]
 
         # Clip to valid range
-        depth = depth[first_valid:last_valid + 1]
-        values = values[first_valid:last_valid + 1]
+        depth = depth[first_valid : last_valid + 1]
+        values = values[first_valid : last_valid + 1]
 
         # Also clip secondary properties to same range
         clipped_secondaries = []
         for sec_prop in self.secondary_properties:
-            clipped_secondaries.append(sec_prop.values[first_valid:last_valid + 1])
+            clipped_secondaries.append(sec_prop.values[first_valid : last_valid + 1])
 
         # Determine if we should clip (show 6 at each end if > 12 total)
         clip_threshold = 12
@@ -256,8 +262,12 @@ class Property(PropertyOperationsMixin):
                     sec_arr = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values)
                 else:
                     # Clip array (show first 6 ... last 6)
-                    sec_first = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[:6])
-                    sec_last = " ".join(self._format_discrete_value(v, sec_prop) for v in sec_values[-6:])
+                    sec_first = " ".join(
+                        self._format_discrete_value(v, sec_prop) for v in sec_values[:6]
+                    )
+                    sec_last = " ".join(
+                        self._format_discrete_value(v, sec_prop) for v in sec_values[-6:]
+                    )
                     sec_arr = f"{sec_first} ... {sec_last}"
 
                 # Add unit string if present
@@ -266,7 +276,7 @@ class Property(PropertyOperationsMixin):
 
         return result
 
-    def _format_discrete_value(self, value: float, prop: 'Property') -> str:
+    def _format_discrete_value(self, value: float, prop: "Property") -> str:
         """
         Format a discrete value with its label if available.
 
@@ -338,7 +348,7 @@ class Property(PropertyOperationsMixin):
         value : str
             Property type ('continuous', 'discrete', or 'sampled')
         """
-        if value not in ('continuous', 'discrete', 'sampled'):
+        if value not in ("continuous", "discrete", "sampled"):
             raise ValueError(f"type must be 'continuous', 'discrete', or 'sampled', got '{value}'")
 
         old_type = self._type
@@ -346,11 +356,11 @@ class Property(PropertyOperationsMixin):
             self._type = value
 
             # If changing TO discrete, round values to integers
-            if value == 'discrete' and self._values_cache is not None:
+            if value == "discrete" and self._values_cache is not None:
                 self._values_cache = np.where(
                     np.isnan(self._values_cache),
                     np.nan,  # Keep NaN as NaN
-                    np.round(self._values_cache)  # Round valid values to nearest integer
+                    np.round(self._values_cache),  # Round valid values to nearest integer
                 )
 
             # Note: No conversion needed when changing FROM discrete to continuous/sampled
@@ -385,8 +395,8 @@ class Property(PropertyOperationsMixin):
         """
         if value != self._labels:
             # Auto-set type to discrete if labels are being set
-            if value is not None and self._type != 'discrete':
-                self.type = 'discrete'  # Use setter to trigger value rounding
+            if value is not None and self._type != "discrete":
+                self.type = "discrete"  # Use setter to trigger value rounding
             self._labels = value
             self._mark_source_modified()
 
@@ -548,20 +558,16 @@ class Property(PropertyOperationsMixin):
             values = las_data[self.original_name].values.astype(np.float64)
 
             # Replace null values with np.nan
-            values = np.where(
-                np.abs(values - self._null_value) < 1e-6,
-                np.nan,
-                values
-            )
+            values = np.where(np.abs(values - self._null_value) < 1e-6, np.nan, values)
 
             # For discrete properties, round to nearest integer to handle
             # sampling artifacts at zone boundaries (e.g., 0.28 -> 0, 0.67 -> 1)
             # This conversion happens once at load time for efficiency
-            if self._type == 'discrete':
+            if self._type == "discrete":
                 values = np.where(
                     np.isnan(values),
                     np.nan,  # Keep NaN as NaN
-                    np.round(values)  # Round valid values to nearest integer
+                    np.round(values),  # Round valid values to nearest integer
                 )
 
             self._values_cache = values
@@ -625,7 +631,7 @@ class Property(PropertyOperationsMixin):
         """
         if self.parent_well is None:
             # Return array of empty strings if no parent well
-            return np.full(len(self.depth), '', dtype=object)
+            return np.full(len(self.depth), "", dtype=object)
 
         # Return array of well names, one for each depth point
         return np.full(len(self.depth), self.parent_well.name, dtype=object)
@@ -657,14 +663,16 @@ class Property(PropertyOperationsMixin):
             - boundary_samples_inserted: int - synthetic samples added at boundaries
         """
         return {
-            'is_filtered': self._is_filtered,
-            'filters': [sp.name for sp in self.secondary_properties],
-            'original_sample_count': self._original_sample_count if self._is_filtered else len(self.depth),
-            'current_sample_count': len(self.depth),
-            'boundary_samples_inserted': self._boundary_samples_inserted,
+            "is_filtered": self._is_filtered,
+            "filters": [sp.name for sp in self.secondary_properties],
+            "original_sample_count": (
+                self._original_sample_count if self._is_filtered else len(self.depth)
+            ),
+            "current_sample_count": len(self.depth),
+            "boundary_samples_inserted": self._boundary_samples_inserted,
         }
 
-    def resample(self, target_depth: Union[np.ndarray, 'Property']) -> 'Property':
+    def resample(self, target_depth: Union[np.ndarray, "Property"]) -> "Property":
         """
         Resample property to a new depth grid using appropriate interpolation.
 
@@ -713,13 +721,15 @@ class Property(PropertyOperationsMixin):
         filter : Add discrete property as grouping dimension (auto-resamples).
         """
         # Extract depth array if Property object passed
-        if hasattr(target_depth, 'depth'):
+        if hasattr(target_depth, "depth"):
             target_depth = target_depth.depth
 
         target_depth = np.asarray(target_depth, dtype=np.float64)
 
         # Check if already on same grid
-        if len(self.depth) == len(target_depth) and np.allclose(self.depth, target_depth, rtol=1e-9, atol=1e-9):
+        if len(self.depth) == len(target_depth) and np.allclose(
+            self.depth, target_depth, rtol=1e-9, atol=1e-9
+        ):
             # Already on same grid - return copy
             return Property(
                 name=self.name,
@@ -733,8 +743,8 @@ class Property(PropertyOperationsMixin):
                 colors=self.colors.copy() if self.colors else None,
                 styles=self.styles.copy() if self.styles else None,
                 thicknesses=self.thicknesses.copy() if self.thicknesses else None,
-                source_name='computed',
-                original_name=self.original_name
+                source_name="computed",
+                original_name=self.original_name,
             )
 
         # Handle NaN values - exclude from interpolation
@@ -753,19 +763,19 @@ class Property(PropertyOperationsMixin):
                 colors=self.colors.copy() if self.colors else None,
                 styles=self.styles.copy() if self.styles else None,
                 thicknesses=self.thicknesses.copy() if self.thicknesses else None,
-                source_name='computed',
-                original_name=self.original_name
+                source_name="computed",
+                original_name=self.original_name,
             )
 
         # Choose interpolation method based on type
-        if self.type == 'discrete':
+        if self.type == "discrete":
             # Use 'previous' (forward-fill) for discrete properties
             # This ensures geological zones extend from their top/boundary
             # until the next top is encountered (e.g., "Cerisa West top" at 2929.93
             # remains active until "Cerisa West SST 1 top" at 2955.10)
-            kind = 'previous'
+            kind = "previous"
         else:
-            kind = 'linear'
+            kind = "linear"
 
         # Perform interpolation
         interpolator = interp1d(
@@ -773,7 +783,7 @@ class Property(PropertyOperationsMixin):
             self.values[valid_mask],
             kind=kind,
             bounds_error=False,
-            fill_value=np.nan
+            fill_value=np.nan,
         )
         resampled_values = interpolator(target_depth)
 
@@ -790,11 +800,11 @@ class Property(PropertyOperationsMixin):
             colors=self.colors.copy() if self.colors else None,
             styles=self.styles.copy() if self.styles else None,
             thicknesses=self.thicknesses.copy() if self.thicknesses else None,
-            source_name='computed',
-            original_name=self.original_name
+            source_name="computed",
+            original_name=self.original_name,
         )
 
-    def apply(self, func, name: Optional[str] = None) -> 'Property':
+    def apply(self, func, name: Optional[str] = None) -> "Property":
         """
         Apply a function to values, returning a new Property.
 
@@ -823,13 +833,11 @@ class Property(PropertyOperationsMixin):
             values=new_values,
             parent_well=self.parent_well,
             unit=self.unit,
-            source_name='computed',
+            source_name="computed",
             original_name=self.original_name,
         )
 
-    def histogram(
-        self, bins: int = 50, weighted: bool = True
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def histogram(self, bins: int = 50, weighted: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute histogram of property values.
 
@@ -922,9 +930,9 @@ class Property(PropertyOperationsMixin):
         """
         if weighted:
             intervals = compute_intervals(self.depth)
-            return stat_mean(self.values, intervals, method='weighted')
+            return stat_mean(self.values, intervals, method="weighted")
         else:
-            return stat_mean(self.values, method='arithmetic')
+            return stat_mean(self.values, method="arithmetic")
 
     def std(self, weighted: bool = True) -> float:
         """
@@ -950,9 +958,9 @@ class Property(PropertyOperationsMixin):
         """
         if weighted:
             intervals = compute_intervals(self.depth)
-            return stat_std(self.values, intervals, method='weighted')
+            return stat_std(self.values, intervals, method="weighted")
         else:
-            return stat_std(self.values, method='arithmetic')
+            return stat_std(self.values, method="arithmetic")
 
     def percentile(self, p: float, weighted: bool = True) -> float:
         """
@@ -985,9 +993,9 @@ class Property(PropertyOperationsMixin):
         """
         if weighted:
             intervals = compute_intervals(self.depth)
-            return stat_percentile(self.values, p, intervals, method='weighted')
+            return stat_percentile(self.values, p, intervals, method="weighted")
         else:
-            return stat_percentile(self.values, p, method='arithmetic')
+            return stat_percentile(self.values, p, method="arithmetic")
 
     def median(self, weighted: bool = True) -> float:
         """
@@ -1046,11 +1054,17 @@ class Property(PropertyOperationsMixin):
 
         if weighted:
             intervals = compute_intervals(self.depth)
-            return stat_mode(self.values, intervals, method='weighted',
-                           bins=bins, is_discrete=(self.type == 'discrete'))
+            return stat_mode(
+                self.values,
+                intervals,
+                method="weighted",
+                bins=bins,
+                is_discrete=(self.type == "discrete"),
+            )
         else:
-            return stat_mode(self.values, method='arithmetic',
-                           bins=bins, is_discrete=(self.type == 'discrete'))
+            return stat_mode(
+                self.values, method="arithmetic", bins=bins, is_discrete=(self.type == "discrete")
+            )
 
     def get_value(self, target_depth: float) -> dict:
         """
@@ -1092,23 +1106,24 @@ class Property(PropertyOperationsMixin):
         ...     label = well.Zone.labels.get(int(zone['value']))
         """
         if len(self.depth) == 0:
-            return {
-                'depth': np.nan,
-                'value': np.nan,
-                'distance': np.nan
-            }
+            return {"depth": np.nan, "value": np.nan, "distance": np.nan}
 
         # Find index of closest depth
         distances = np.abs(self.depth - target_depth)
         closest_idx = np.argmin(distances)
 
         return {
-            'depth': float(self.depth[closest_idx]),
-            'value': float(self.values[closest_idx]),
-            'distance': round(float(distances[closest_idx]), 8)  # 8 decimals to avoid float drift
+            "depth": float(self.depth[closest_idx]),
+            "value": float(self.values[closest_idx]),
+            "distance": round(float(distances[closest_idx]), 8),  # 8 decimals to avoid float drift
         }
 
-    def filter(self, property_name: str, insert_boundaries: Optional[bool] = None, source: Optional[str] = None) -> 'Property':
+    def filter(
+        self,
+        property_name: str,
+        insert_boundaries: Optional[bool] = None,
+        source: Optional[str] = None,
+    ) -> "Property":
         """
         Add a discrete property from parent well as a filter dimension.
 
@@ -1181,7 +1196,7 @@ class Property(PropertyOperationsMixin):
             raise PropertyNotFoundError(msg)
 
         # Validate it's discrete
-        if discrete_prop.type != 'discrete':
+        if discrete_prop.type != "discrete":
             raise PropertyTypeError(
                 f"Property '{property_name}' must be discrete type, "
                 f"got '{discrete_prop.type}'. Set type with: "
@@ -1191,7 +1206,7 @@ class Property(PropertyOperationsMixin):
         # Determine if we should insert boundaries
         # Default: True for continuous, False for sampled
         if insert_boundaries is None:
-            insert_boundaries = self.type != 'sampled'
+            insert_boundaries = self.type != "sampled"
 
         # Insert synthetic samples at discrete property boundaries
         # This ensures accurate interval weighting when zone boundaries don't align with samples
@@ -1210,7 +1225,7 @@ class Property(PropertyOperationsMixin):
             discrete_prop.depth,
             discrete_prop.values,
             new_depth,  # Use expanded depth grid with boundary samples
-            method='previous'  # Forward fill: value applies from depth downward until next marker
+            method="previous",  # Forward fill: value applies from depth downward until next marker
         )
 
         # Mask out discrete values where main property is undefined (NaN)
@@ -1218,23 +1233,25 @@ class Property(PropertyOperationsMixin):
         interpolated_discrete = np.where(np.isnan(new_values), np.nan, interpolated_discrete)
 
         # Add new secondary property (already on same grid as other secondaries)
-        new_secondaries.append(Property(
-            name=discrete_prop.name,
-            depth=new_depth.copy(),  # Same depth grid with boundaries
-            values=interpolated_discrete,
-            parent_well=self.parent_well,
-            unit=discrete_prop.unit,
-            prop_type=discrete_prop.type,
-            description=discrete_prop.description,
-            null_value=-999.25,
-            labels=discrete_prop.labels,
-            colors=discrete_prop.colors,
-            styles=discrete_prop.styles,
-            thicknesses=discrete_prop.thicknesses,
-            source_las=discrete_prop.source_las,
-            source_name=discrete_prop.source_name,
-            original_name=discrete_prop.original_name
-        ))
+        new_secondaries.append(
+            Property(
+                name=discrete_prop.name,
+                depth=new_depth.copy(),  # Same depth grid with boundaries
+                values=interpolated_discrete,
+                parent_well=self.parent_well,
+                unit=discrete_prop.unit,
+                prop_type=discrete_prop.type,
+                description=discrete_prop.description,
+                null_value=-999.25,
+                labels=discrete_prop.labels,
+                colors=discrete_prop.colors,
+                styles=discrete_prop.styles,
+                thicknesses=discrete_prop.thicknesses,
+                source_las=discrete_prop.source_las,
+                source_name=discrete_prop.source_name,
+                original_name=discrete_prop.original_name,
+            )
+        )
 
         # Create new Property instance with all secondaries
         new_prop = Property(
@@ -1252,7 +1269,7 @@ class Property(PropertyOperationsMixin):
             thicknesses=self.thicknesses,
             source_las=self.source_las,
             source_name=self.source_name,
-            original_name=self.original_name
+            original_name=self.original_name,
         )
         new_prop.secondary_properties = new_secondaries
 
@@ -1262,7 +1279,7 @@ class Property(PropertyOperationsMixin):
         new_prop._boundary_samples_inserted = len(new_depth) - len(self.depth)
 
         # Preserve custom intervals if they exist (from filter_intervals)
-        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+        if hasattr(self, "_custom_intervals") and self._custom_intervals:
             new_prop._custom_intervals = self._custom_intervals
 
         return new_prop
@@ -1272,8 +1289,8 @@ class Property(PropertyOperationsMixin):
         intervals: Union[list[dict], dict[str, list[dict]], str],
         name: str = "Custom_Intervals",
         insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None
-    ) -> 'Property':
+        save: Optional[str] = None,
+    ) -> "Property":
         """
         Filter by custom depth intervals defined as top/base pairs.
 
@@ -1399,14 +1416,14 @@ class Property(PropertyOperationsMixin):
 
         # Determine if we should insert boundaries
         if insert_boundaries is None:
-            insert_boundaries = self.type != 'sampled'
+            insert_boundaries = self.type != "sampled"
 
         # Collect all boundary depths from intervals for boundary insertion
         if insert_boundaries and intervals:
             boundary_depths = []
             for interval in intervals:
-                boundary_depths.append(float(interval['top']))
-                boundary_depths.append(float(interval['base']))
+                boundary_depths.append(float(interval["top"]))
+                boundary_depths.append(float(interval["base"]))
             boundary_depths = np.unique(boundary_depths)
 
             # Create a temporary discrete property just for boundary insertion
@@ -1416,7 +1433,7 @@ class Property(PropertyOperationsMixin):
                 depth=boundary_depths,
                 values=np.arange(len(boundary_depths), dtype=float),
                 parent_well=self.parent_well,
-                prop_type='discrete'
+                prop_type="discrete",
             )
             new_depth, new_values, new_secondaries = self._insert_boundary_samples(temp_discrete)
         else:
@@ -1440,7 +1457,7 @@ class Property(PropertyOperationsMixin):
             thicknesses=self.thicknesses,
             source_las=self.source_las,
             source_name=self.source_name,
-            original_name=self.original_name
+            original_name=self.original_name,
         )
         new_prop.secondary_properties = new_secondaries
 
@@ -1472,19 +1489,18 @@ class Property(PropertyOperationsMixin):
         for i, interval in enumerate(intervals):
             if not isinstance(interval, dict):
                 raise ValueError(f"Interval {i} must be a dict, got {type(interval)}")
-            for key in ('name', 'top', 'base'):
+            for key in ("name", "top", "base"):
                 if key not in interval:
                     raise ValueError(f"Interval {i} missing required key '{key}'")
-            if interval['top'] >= interval['base']:
+            if interval["top"] >= interval["base"]:
                 raise ValueError(
                     f"Interval '{interval['name']}': top ({interval['top']}) must be "
                     f"less than base ({interval['base']})"
                 )
 
     def _insert_boundary_samples(
-        self,
-        discrete_prop: 'Property'
-    ) -> tuple[np.ndarray, np.ndarray, list['Property']]:
+        self, discrete_prop: "Property"
+    ) -> tuple[np.ndarray, np.ndarray, list["Property"]]:
         """
         Insert synthetic samples at discrete property boundaries.
 
@@ -1514,11 +1530,7 @@ class Property(PropertyOperationsMixin):
         valid_mask = ~np.isnan(self.values)
         if not np.any(valid_mask):
             # No valid data, return copies
-            return (
-                self.depth.copy(),
-                self.values.copy(),
-                [sp for sp in self.secondary_properties]
-            )
+            return (self.depth.copy(), self.values.copy(), [sp for sp in self.secondary_properties])
 
         valid_depths = self.depth[valid_mask]
         min_valid_depth = valid_depths.min()
@@ -1531,11 +1543,7 @@ class Property(PropertyOperationsMixin):
 
         if len(potential_boundaries) == 0:
             # No boundaries in range, return copies
-            return (
-                self.depth.copy(),
-                self.values.copy(),
-                [sp for sp in self.secondary_properties]
-            )
+            return (self.depth.copy(), self.values.copy(), [sp for sp in self.secondary_properties])
 
         # Vectorized check if boundaries already exist in depth array
         # Use searchsorted to find insertion points, then check distances to neighbors
@@ -1564,7 +1572,7 @@ class Property(PropertyOperationsMixin):
             return (
                 depth_array.copy(),
                 self.values.copy(),
-                [sp for sp in self.secondary_properties]
+                [sp for sp in self.secondary_properties],
             )
 
         boundaries_to_insert = np.array(sorted(boundaries_to_insert))
@@ -1577,7 +1585,7 @@ class Property(PropertyOperationsMixin):
             depth_array,
             self.values,
             new_depth,
-            method='linear' if self.type == 'continuous' else 'previous'
+            method="linear" if self.type == "continuous" else "previous",
         )
 
         # Interpolate all existing secondary properties
@@ -1590,30 +1598,32 @@ class Property(PropertyOperationsMixin):
                 sp_depth,
                 sp_values,
                 new_depth,
-                method='previous'  # Secondary properties are discrete
+                method="previous",  # Secondary properties are discrete
             )
-            new_secondaries.append(Property(
-                name=sp.name,
-                depth=new_depth.copy(),  # Copy to avoid shared references
-                values=new_sp_values,
-                parent_well=sp.parent_well,
-                unit=sp.unit,
-                prop_type=sp.type,
-                description=sp.description,
-                null_value=-999.25,
-                labels=sp.labels,
-                colors=sp.colors,
-                source_las=sp.source_las,
-                source_name=sp.source_name,
-                original_name=sp.original_name
-            ))
+            new_secondaries.append(
+                Property(
+                    name=sp.name,
+                    depth=new_depth.copy(),  # Copy to avoid shared references
+                    values=new_sp_values,
+                    parent_well=sp.parent_well,
+                    unit=sp.unit,
+                    prop_type=sp.type,
+                    description=sp.description,
+                    null_value=-999.25,
+                    labels=sp.labels,
+                    colors=sp.colors,
+                    source_las=sp.source_las,
+                    source_name=sp.source_name,
+                    original_name=sp.original_name,
+                )
+            )
 
         return new_depth, new_values, new_secondaries
 
-    def _align_depths(self, other: 'Property') -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _align_depths(self, other: "Property") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Align this property with another on a common depth grid.
-        
+
         Returns
         -------
         tuple[np.ndarray, np.ndarray, np.ndarray]
@@ -1622,45 +1632,42 @@ class Property(PropertyOperationsMixin):
         # Find common depth range (intersection)
         min_depth = max(self.depth.min(), other.depth.min())
         max_depth = min(self.depth.max(), other.depth.max())
-        
+
         if min_depth >= max_depth:
             raise DepthAlignmentError(
                 f"No overlapping depth range between '{self.name}' "
                 f"[{self.depth.min():.2f}, {self.depth.max():.2f}] and "
                 f"'{other.name}' [{other.depth.min():.2f}, {other.depth.max():.2f}]"
             )
-        
+
         # Use finer grid of the two
         step_self = np.median(np.diff(self.depth)) if len(self.depth) > 1 else 0.1
         step_other = np.median(np.diff(other.depth)) if len(other.depth) > 1 else 0.1
         common_step = min(step_self, step_other)
-        
+
         # Create common depth grid
-        common_depth = np.arange(min_depth, max_depth + common_step/2, common_step)
-        
+        common_depth = np.arange(min_depth, max_depth + common_step / 2, common_step)
+
         # Resample both properties
         resampled_self = self._resample_to_grid(
             self.depth,
             self.values,
             common_depth,
-            method='linear' if self.type == 'continuous' else 'previous'
+            method="linear" if self.type == "continuous" else "previous",
         )
 
         resampled_other = self._resample_to_grid(
             other.depth,
             other.values,
             common_depth,
-            method='linear' if other.type == 'continuous' else 'previous'
+            method="linear" if other.type == "continuous" else "previous",
         )
-        
+
         return common_depth, resampled_self, resampled_other
-    
+
     @staticmethod
     def _resample_to_grid(
-        old_depth: np.ndarray,
-        old_values: np.ndarray,
-        new_depth: np.ndarray,
-        method: str = 'linear'
+        old_depth: np.ndarray, old_values: np.ndarray, new_depth: np.ndarray, method: str = "linear"
     ) -> np.ndarray:
         """
         Resample values from old depth grid to new depth grid.
@@ -1711,35 +1718,31 @@ class Property(PropertyOperationsMixin):
 
         if len(valid_depth) == 1:
             # Single point, use nearest neighbor
-            method = 'nearest'
-        
+            method = "nearest"
+
         # Interpolate
         try:
             # Special handling for 'previous' to forward-fill beyond last point
-            if method == 'previous':
+            if method == "previous":
                 # Use 'previous' for interpolation but forward-fill beyond range
                 f = interp1d(
                     valid_depth,
                     valid_values,
                     kind=method,
                     bounds_error=False,
-                    fill_value=(np.nan, valid_values[-1])  # NaN before, last value after
+                    fill_value=(np.nan, valid_values[-1]),  # NaN before, last value after
                 )
             else:
                 f = interp1d(
-                    valid_depth,
-                    valid_values,
-                    kind=method,
-                    bounds_error=False,
-                    fill_value=np.nan
+                    valid_depth, valid_values, kind=method, bounds_error=False, fill_value=np.nan
                 )
             return f(new_depth)
         except Exception as e:
-            raise DepthAlignmentError(
-                f"Failed to resample data: {e}"
-            )
-    
-    def sums_avg(self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6) -> dict:
+            raise DepthAlignmentError(f"Failed to resample data: {e}")
+
+    def sums_avg(
+        self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6
+    ) -> dict:
         """
         Compute hierarchical statistics grouped by all secondary properties.
 
@@ -1804,7 +1807,7 @@ class Property(PropertyOperationsMixin):
         # Set defaults based on property type
         # Sampled data: use arithmetic (each sample has equal weight)
         # Continuous/discrete: use weighted (depth-weighted)
-        if self.type == 'sampled':
+        if self.type == "sampled":
             if weighted is None:
                 weighted = False
             if arithmetic is None:
@@ -1822,12 +1825,12 @@ class Property(PropertyOperationsMixin):
 
         # Check for custom intervals (from filter_intervals)
         # These are processed independently, allowing overlaps
-        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+        if hasattr(self, "_custom_intervals") and self._custom_intervals:
             return self._compute_stats_by_intervals(
                 weighted=weighted,
                 arithmetic=arithmetic,
                 gross_thickness=gross_thickness,
-                precision=precision
+                precision=precision,
             )
 
         if not self.secondary_properties:
@@ -1837,7 +1840,7 @@ class Property(PropertyOperationsMixin):
                 weighted=weighted,
                 arithmetic=arithmetic,
                 gross_thickness=gross_thickness,
-                precision=precision
+                precision=precision,
             )
 
         # Build hierarchical grouping
@@ -1847,15 +1850,11 @@ class Property(PropertyOperationsMixin):
             weighted=weighted,
             arithmetic=arithmetic,
             gross_thickness=gross_thickness,
-            precision=precision
+            precision=precision,
         )
 
     def _compute_stats_by_intervals(
-        self,
-        weighted: bool,
-        arithmetic: bool,
-        gross_thickness: float,
-        precision: int
+        self, weighted: bool, arithmetic: bool, gross_thickness: float, precision: int
     ) -> dict:
         """
         Compute statistics for each custom interval independently.
@@ -1869,9 +1868,9 @@ class Property(PropertyOperationsMixin):
         result = {}
 
         for interval in self._custom_intervals:
-            interval_name = interval['name']
-            top = float(interval['top'])
-            base = float(interval['base'])
+            interval_name = interval["name"]
+            top = float(interval["top"])
+            base = float(interval["base"])
 
             # Compute zone-aware intervals truncated at zone boundaries
             zone_intervals = compute_zone_intervals(self.depth, top, base)
@@ -1893,10 +1892,10 @@ class Property(PropertyOperationsMixin):
                     arithmetic=arithmetic,
                     gross_thickness=zone_thickness,  # Pass zone thickness as gross for children
                     precision=precision,
-                    zone_intervals=zone_intervals
+                    zone_intervals=zone_intervals,
                 )
                 # Add zone-level thickness
-                interval_result['thickness'] = round(zone_thickness, precision)
+                interval_result["thickness"] = round(zone_thickness, precision)
                 result[interval_name] = interval_result
             else:
                 # No secondary properties, compute stats directly for interval
@@ -1906,16 +1905,12 @@ class Property(PropertyOperationsMixin):
                     arithmetic=arithmetic,
                     gross_thickness=zone_thickness,  # Use zone thickness for fraction calc
                     precision=precision,
-                    zone_intervals=zone_intervals
+                    zone_intervals=zone_intervals,
                 )
 
         return result
 
-    def discrete_summary(
-        self,
-        precision: int = 6,
-        skip: Optional[list[str]] = None
-    ) -> dict:
+    def discrete_summary(self, precision: int = 6, skip: Optional[list[str]] = None) -> dict:
         """
         Compute summary statistics for discrete/categorical properties.
 
@@ -1973,17 +1968,16 @@ class Property(PropertyOperationsMixin):
 
         # Check for custom intervals (from filter_intervals)
         # These are processed independently, allowing overlaps
-        if hasattr(self, '_custom_intervals') and self._custom_intervals:
+        if hasattr(self, "_custom_intervals") and self._custom_intervals:
             result = self._compute_discrete_stats_by_intervals(
-                gross_thickness=gross_thickness,
-                precision=precision
+                gross_thickness=gross_thickness, precision=precision
             )
         elif not self.secondary_properties:
             # No filters, compute stats for all discrete values
             result = self._compute_discrete_stats(
                 np.ones(len(self.depth), dtype=bool),
                 gross_thickness=gross_thickness,
-                precision=precision
+                precision=precision,
             )
         else:
             # Build hierarchical grouping
@@ -1991,7 +1985,7 @@ class Property(PropertyOperationsMixin):
                 0,
                 np.ones(len(self.depth), dtype=bool),
                 gross_thickness=gross_thickness,
-                precision=precision
+                precision=precision,
             )
 
         # Remove skipped fields from output
@@ -2012,11 +2006,7 @@ class Property(PropertyOperationsMixin):
                 result[key] = value
         return result
 
-    def _compute_discrete_stats_by_intervals(
-        self,
-        gross_thickness: float,
-        precision: int
-    ) -> dict:
+    def _compute_discrete_stats_by_intervals(self, gross_thickness: float, precision: int) -> dict:
         """
         Compute discrete statistics for each custom interval independently.
 
@@ -2030,9 +2020,9 @@ class Property(PropertyOperationsMixin):
         result = {}
 
         for interval in self._custom_intervals:
-            interval_name = interval['name']
-            top = float(interval['top'])
-            base = float(interval['base'])
+            interval_name = interval["name"]
+            top = float(interval["top"])
+            base = float(interval["base"])
 
             # Compute zone-aware intervals truncated at zone boundaries
             zone_intervals = compute_zone_intervals(self.depth, top, base)
@@ -2049,16 +2039,16 @@ class Property(PropertyOperationsMixin):
             if np.any(valid_mask):
                 zone_depths = self.depth[valid_mask]
                 zone_depth_range = {
-                    'min': round(float(np.min(zone_depths)), precision),
-                    'max': round(float(np.max(zone_depths)), precision)
+                    "min": round(float(np.min(zone_depths)), precision),
+                    "max": round(float(np.max(zone_depths)), precision),
                 }
             else:
-                zone_depth_range = {'min': top, 'max': base}
+                zone_depth_range = {"min": top, "max": base}
 
             # Build interval result with zone-level metadata
             interval_result = {
-                'depth_range': zone_depth_range,
-                'thickness': round(zone_thickness, precision)
+                "depth_range": zone_depth_range,
+                "thickness": round(zone_thickness, precision),
             }
 
             # If there are secondary properties, group within this interval
@@ -2069,7 +2059,7 @@ class Property(PropertyOperationsMixin):
                     gross_thickness=zone_thickness,  # Use zone thickness for fractions
                     precision=precision,
                     include_depth_range=False,  # Don't include depth_range per facies
-                    zone_intervals=zone_intervals  # Pass zone-aware intervals
+                    zone_intervals=zone_intervals,  # Pass zone-aware intervals
                 )
             else:
                 # No secondary properties, compute stats directly for interval
@@ -2078,11 +2068,11 @@ class Property(PropertyOperationsMixin):
                     gross_thickness=zone_thickness,  # Use zone thickness for fractions
                     precision=precision,
                     include_depth_range=False,  # Don't include depth_range per facies
-                    zone_intervals=zone_intervals  # Pass zone-aware intervals
+                    zone_intervals=zone_intervals,  # Pass zone-aware intervals
                 )
 
             # Nest facies stats under 'facies' key for cleaner structure
-            interval_result['facies'] = facies_stats
+            interval_result["facies"] = facies_stats
             result[interval_name] = interval_result
 
         return result
@@ -2094,7 +2084,7 @@ class Property(PropertyOperationsMixin):
         gross_thickness: float,
         precision: int = 6,
         include_depth_range: bool = True,
-        zone_intervals: Optional[np.ndarray] = None
+        zone_intervals: Optional[np.ndarray] = None,
     ) -> dict:
         """
         Recursively group discrete statistics by secondary properties.
@@ -2122,7 +2112,9 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute discrete statistics for this group
-            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range, zone_intervals)
+            return self._compute_discrete_stats(
+                mask, gross_thickness, precision, include_depth_range, zone_intervals
+            )
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -2132,7 +2124,9 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_discrete_stats(mask, gross_thickness, precision, include_depth_range, zone_intervals)
+            return self._compute_discrete_stats(
+                mask, gross_thickness, precision, include_depth_range, zone_intervals
+            )
 
         # Group by each unique value
         depth_array = self.depth
@@ -2152,7 +2146,7 @@ class Property(PropertyOperationsMixin):
             group_thickness = float(np.sum(full_intervals[group_valid]))
 
             # Create readable key with label if available
-            if current_filter.type == 'discrete':
+            if current_filter.type == "discrete":
                 int_val = int(val)
             else:
                 int_val = int(val) if val == int(val) else None
@@ -2172,7 +2166,12 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_discrete_group(
-                filter_idx + 1, sub_mask, group_thickness, precision, include_depth_range, zone_intervals
+                filter_idx + 1,
+                sub_mask,
+                group_thickness,
+                precision,
+                include_depth_range,
+                zone_intervals,
             )
 
         return result
@@ -2183,7 +2182,7 @@ class Property(PropertyOperationsMixin):
         gross_thickness: float,
         precision: int = 6,
         include_depth_range: bool = True,
-        zone_intervals: Optional[np.ndarray] = None
+        zone_intervals: Optional[np.ndarray] = None,
     ) -> dict:
         """
         Compute categorical statistics for discrete property values.
@@ -2251,15 +2250,15 @@ class Property(PropertyOperationsMixin):
                 key = f"{self.name}_{int_val}"
 
             stats = {
-                'code': int_val,
-                'count': count,
-                'thickness': round(thickness, precision),
-                'fraction': round(fraction, precision)
+                "code": int_val,
+                "count": count,
+                "thickness": round(thickness, precision),
+                "fraction": round(fraction, precision),
             }
             if include_depth_range:
-                stats['depth_range'] = {
-                    'min': round(float(np.min(val_depths)), precision),
-                    'max': round(float(np.max(val_depths)), precision)
+                stats["depth_range"] = {
+                    "min": round(float(np.min(val_depths)), precision),
+                    "max": round(float(np.max(val_depths)), precision),
                 }
 
             result[key] = stats
@@ -2274,7 +2273,7 @@ class Property(PropertyOperationsMixin):
         arithmetic: bool,
         gross_thickness: float,
         precision: int = 6,
-        zone_intervals: Optional[np.ndarray] = None
+        zone_intervals: Optional[np.ndarray] = None,
     ) -> dict:
         """
         Recursively group by secondary properties.
@@ -2304,7 +2303,9 @@ class Property(PropertyOperationsMixin):
         """
         if filter_idx >= len(self.secondary_properties):
             # Base case: compute statistics for this group
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision, zone_intervals)
+            return self._compute_stats(
+                mask, weighted, arithmetic, gross_thickness, precision, zone_intervals
+            )
 
         # Get unique values for current filter
         current_filter = self.secondary_properties[filter_idx]
@@ -2315,7 +2316,9 @@ class Property(PropertyOperationsMixin):
 
         if len(unique_vals) == 0:
             # No valid values, return stats for current mask
-            return self._compute_stats(mask, weighted, arithmetic, gross_thickness, precision, zone_intervals)
+            return self._compute_stats(
+                mask, weighted, arithmetic, gross_thickness, precision, zone_intervals
+            )
 
         # Calculate parent thickness BEFORE subdividing
         # This becomes the gross_thickness for all child groups
@@ -2337,7 +2340,7 @@ class Property(PropertyOperationsMixin):
 
             # Discrete properties are already rounded to integers at load time,
             # so we can directly use integer conversion for label lookup
-            if current_filter.type == 'discrete':
+            if current_filter.type == "discrete":
                 int_val = int(val)  # Already rounded at load time
             else:
                 int_val = int(val) if val == int(val) else None
@@ -2361,7 +2364,13 @@ class Property(PropertyOperationsMixin):
                 key = f"{current_filter.name}_{val:.2f}"
 
             result[key] = self._recursive_group(
-                filter_idx + 1, sub_mask, weighted, arithmetic, parent_thickness, precision, zone_intervals
+                filter_idx + 1,
+                sub_mask,
+                weighted,
+                arithmetic,
+                parent_thickness,
+                precision,
+                zone_intervals,
             )
 
         return result
@@ -2373,7 +2382,7 @@ class Property(PropertyOperationsMixin):
         arithmetic: bool = False,
         gross_thickness: float = 0.0,
         precision: int = 6,
-        zone_intervals: Optional[np.ndarray] = None
+        zone_intervals: Optional[np.ndarray] = None,
     ) -> dict:
         """
         Compute statistics for values selected by mask.
@@ -2438,14 +2447,14 @@ class Property(PropertyOperationsMixin):
 
         # Determine calculation method for output
         if weighted and arithmetic:
-            calc_method = 'both'
+            calc_method = "both"
             stat_method = None  # Returns dict with both
         elif weighted:
-            calc_method = 'weighted'
-            stat_method = 'weighted'
+            calc_method = "weighted"
+            stat_method = "weighted"
         else:
-            calc_method = 'arithmetic'
-            stat_method = 'arithmetic'
+            calc_method = "arithmetic"
+            stat_method = "arithmetic"
 
         # Compute stats using unified functions
         from ..analysis.statistics import mode as stat_mode
@@ -2457,20 +2466,21 @@ class Property(PropertyOperationsMixin):
         p50_result = stat_percentile(values, 50, intervals, method=stat_method)
         p90_result = stat_percentile(values, 90, intervals, method=stat_method)
         median_result = p50_result  # Median is same as P50
-        mode_result = stat_mode(values, intervals, method=stat_method,
-                               bins=50, is_discrete=(self.type == 'discrete'))
+        mode_result = stat_mode(
+            values, intervals, method=stat_method, bins=50, is_discrete=(self.type == "discrete")
+        )
 
         # Build percentile dict
         percentile_dict = {
-            'p10': p10_result,
-            'p50': p50_result,
-            'p90': p90_result,
+            "p10": p10_result,
+            "p50": p50_result,
+            "p90": p90_result,
         }
 
         # Build range dict
         range_dict = {
-            'min': float(np.min(valid)) if len(valid) > 0 else np.nan,
-            'max': float(np.max(valid)) if len(valid) > 0 else np.nan,
+            "min": float(np.min(valid)) if len(valid) > 0 else np.nan,
+            "max": float(np.max(valid)) if len(valid) > 0 else np.nan,
         }
 
         # Build depth_range dict (zone boundaries)
@@ -2492,13 +2502,13 @@ class Property(PropertyOperationsMixin):
                 zone_bottom = float(self.depth[last_idx])
 
             depth_range_dict = {
-                'min': zone_top,
-                'max': zone_bottom,
+                "min": zone_top,
+                "max": zone_bottom,
             }
         else:
             depth_range_dict = {
-                'min': np.nan,
-                'max': np.nan,
+                "min": np.nan,
+                "max": np.nan,
             }
 
         # Helper function to round values recursively
@@ -2514,20 +2524,20 @@ class Property(PropertyOperationsMixin):
                 return val
 
         return {
-            'mean': _round_value(mean_result),
-            'median': _round_value(median_result),
-            'mode': _round_value(mode_result),
-            'sum': _round_value(sum_result),
-            'std_dev': _round_value(std_result),
-            'percentile': _round_value(percentile_dict),
-            'range': _round_value(range_dict),
-            'depth_range': _round_value(depth_range_dict),
-            'samples': int(len(valid)),
-            'thickness': round(thickness, precision),
-            'thickness_fraction': round(fraction, precision),
-            'calculation': calc_method,
+            "mean": _round_value(mean_result),
+            "median": _round_value(median_result),
+            "mode": _round_value(mode_result),
+            "sum": _round_value(sum_result),
+            "std_dev": _round_value(std_result),
+            "percentile": _round_value(percentile_dict),
+            "range": _round_value(range_dict),
+            "depth_range": _round_value(depth_range_dict),
+            "samples": int(len(valid)),
+            "thickness": round(thickness, precision),
+            "thickness_fraction": round(fraction, precision),
+            "calculation": calc_method,
         }
-    
+
     def _apply_labels(self, values: np.ndarray) -> np.ndarray:
         """
         Apply label mapping to numeric values.
@@ -2563,7 +2573,7 @@ class Property(PropertyOperationsMixin):
         exclude: Optional[Union[str, list[str]]] = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None
+        clip_to_property: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Export property and secondary properties as DataFrame.
@@ -2615,8 +2625,10 @@ class Property(PropertyOperationsMixin):
         """
         # Main property is always included
         data = {
-            'DEPT': self.depth,
-            self.name: self._apply_labels(self.values) if discrete_labels and self.labels else self.values
+            "DEPT": self.depth,
+            self.name: (
+                self._apply_labels(self.values) if discrete_labels and self.labels else self.values
+            ),
         }
 
         # Determine which secondary properties to include using filter_names helper
@@ -2647,7 +2659,7 @@ class Property(PropertyOperationsMixin):
         elif clip_edges and len(df) > 0:
             # Clip edges to remove leading/trailing NaN rows
             # Get data columns (exclude DEPT)
-            data_cols = [col for col in df.columns if col != 'DEPT']
+            data_cols = [col for col in df.columns if col != "DEPT"]
             if data_cols:
                 # Find first row where at least one data column is not NaN
                 not_all_nan = df[data_cols].notna().any(axis=1)
@@ -2662,7 +2674,7 @@ class Property(PropertyOperationsMixin):
         self,
         n: int = 5,
         include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None
+        exclude: Optional[Union[str, list[str]]] = None,
     ) -> pd.DataFrame:
         """
         Return first n rows of property data.
@@ -2696,7 +2708,7 @@ class Property(PropertyOperationsMixin):
         filepath: Union[str, Path],
         well_name: Optional[str] = None,
         store_labels: bool = True,
-        null_value: float = -999.25
+        null_value: float = -999.25,
     ) -> None:
         """
         Export property to LAS 2.0 format file.
@@ -2731,7 +2743,7 @@ class Property(PropertyOperationsMixin):
             if self.parent_well is not None:
                 well_name = self.parent_well.name
             else:
-                well_name = 'UNKNOWN'
+                well_name = "UNKNOWN"
 
         # Get DataFrame with property and secondary properties (numeric values)
         df = self.data(discrete_labels=False, clip_edges=False)
@@ -2745,10 +2757,7 @@ class Property(PropertyOperationsMixin):
         df = df.rename(columns=column_rename_map)
 
         # Build unit mappings (use original names)
-        unit_mappings = {
-            'DEPT': 'm',  # Default depth unit
-            self.original_name: self.unit
-        }
+        unit_mappings = {"DEPT": "m", self.original_name: self.unit}  # Default depth unit
 
         # Add secondary property units
         for sec_prop in self.secondary_properties:
@@ -2794,7 +2803,7 @@ class Property(PropertyOperationsMixin):
             discrete_labels=label_mappings if label_mappings else None,
             discrete_colors=color_mappings if color_mappings else None,
             discrete_styles=style_mappings if style_mappings else None,
-            discrete_thicknesses=thickness_mappings if thickness_mappings else None
+            discrete_thicknesses=thickness_mappings if thickness_mappings else None,
         )
 
     def __repr__(self) -> str:

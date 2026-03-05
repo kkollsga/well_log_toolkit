@@ -1,6 +1,7 @@
 """
 WellDataManager — global orchestrator for multi-well analysis.
 """
+
 from pathlib import Path
 from typing import Optional, Union, TYPE_CHECKING
 import warnings
@@ -19,18 +20,19 @@ from .proxy import _ManagerPropertyProxy, _ManagerMultiPropertyProxy
 if TYPE_CHECKING:
     from ..visualization import Template
 
+
 class WellDataManager:
     """
     Global orchestrator for multi-well analysis.
-    
+
     Manages multiple wells, each containing multiple properties.
     Provides attribute-based well access for clean API.
-    
+
     Attributes
     ----------
     wells : list[str]
         List of sanitized well names
-    
+
     Examples
     --------
     >>> manager = WellDataManager()
@@ -61,7 +63,7 @@ class WellDataManager:
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
         self._project_path: Optional[Path] = None  # Track project path for save()
-        self._templates: dict[str, 'Template'] = {}  # {template_name: Template}
+        self._templates: dict[str, "Template"] = {}  # {template_name: Template}
 
         # Load project if provided
         if project is not None:
@@ -80,7 +82,7 @@ class WellDataManager:
         >>> manager.Reservoir = manager.PHIE > 0.15    # Applies to all wells with PHIE
         """
         # Allow setting private attributes normally
-        if name.startswith('_'):
+        if name.startswith("_"):
             object.__setattr__(self, name, value)
             return
 
@@ -99,7 +101,7 @@ class WellDataManager:
         Handles both well access (well_XXX) and property broadcasting (PROPERTY_NAME).
         """
         # Check if it's a well access pattern
-        if name.startswith('well_'):
+        if name.startswith("well_"):
             if name in self._wells:
                 return self._wells[name]
             available = list(self._wells.keys())
@@ -175,8 +177,8 @@ class WellDataManager:
         sampled: bool = False,
         combine: Optional[str] = None,
         source_name: Optional[str] = None,
-        silent: bool = False
-    ) -> 'WellDataManager':
+        silent: bool = False,
+    ) -> "WellDataManager":
         """
         Load LAS file(s), auto-create well if needed.
 
@@ -263,6 +265,7 @@ class WellDataManager:
             if combine is not None:
                 # Group files by well name
                 from collections import defaultdict
+
                 well_groups = defaultdict(list)
 
                 for file_path in file_paths:
@@ -285,9 +288,7 @@ class WellDataManager:
                     # Ensure well exists
                     if well_key not in self._wells:
                         self._wells[well_key] = Well(
-                            name=well_name,
-                            sanitized_name=sanitized_name,
-                            parent_manager=self
+                            name=well_name, sanitized_name=sanitized_name, parent_manager=self
                         )
                         self._name_mapping[well_name] = well_key
 
@@ -297,20 +298,20 @@ class WellDataManager:
                         path=None,  # Path already prepended
                         sampled=sampled,
                         combine=combine,
-                        source_name=source_name
+                        source_name=source_name,
                     )
 
                     # Track what was loaded
                     actual_source_name = source_name if source_name else f"combined_{combine}"
-                    loaded_sources.append(
-                        (well_name, actual_source_name, len(files_for_well))
-                    )
+                    loaded_sources.append((well_name, actual_source_name, len(files_for_well)))
 
                 # Print debug output
                 if not silent:
                     print("Loaded sources:")
                     for well_name, src_name, file_count in loaded_sources:
-                        print(f"  - Well {well_name}: {src_name} ({file_count} file{'s' if file_count > 1 else ''} combined)")
+                        print(
+                            f"  - Well {well_name}: {src_name} ({file_count} file{'s' if file_count > 1 else ''} combined)"
+                        )
 
                 return self
 
@@ -377,9 +378,7 @@ class WellDataManager:
         else:
             # Create new well
             self._wells[well_key] = Well(
-                name=well_name,
-                sanitized_name=sanitized_name,
-                parent_manager=self
+                name=well_name, sanitized_name=sanitized_name, parent_manager=self
             )
             self._name_mapping[well_name] = well_key
 
@@ -409,8 +408,8 @@ class WellDataManager:
         x_col: Optional[str] = "X",
         y_col: Optional[str] = "Y",
         z_col: Optional[str] = "Z",
-        include_coordinates: bool = False
-    ) -> 'WellDataManager':
+        include_coordinates: bool = False,
+    ) -> "WellDataManager":
         """
         Load formation tops data from a DataFrame into wells.
 
@@ -534,9 +533,7 @@ class WellDataManager:
 
             if well_key not in self._wells:
                 self._wells[well_key] = Well(
-                    name=well_name,
-                    sanitized_name=sanitized_name,
-                    parent_manager=self
+                    name=well_name, sanitized_name=sanitized_name, parent_manager=self
                 )
                 self._name_mapping[well_name] = well_key
 
@@ -544,8 +541,8 @@ class WellDataManager:
 
             # Build DataFrame for this well
             well_data = {
-                'DEPT': well_df[depth_col].values,
-                property_name: well_df[discrete_col].map(value_to_code).values
+                "DEPT": well_df[depth_col].values,
+                property_name: well_df[discrete_col].map(value_to_code).values,
             }
 
             # Add coordinates if requested
@@ -560,24 +557,24 @@ class WellDataManager:
             tops_df = pd.DataFrame(well_data)
 
             # Build unit mappings
-            unit_mappings = {'DEPT': 'm', property_name: ''}
+            unit_mappings = {"DEPT": "m", property_name: ""}
             if include_coordinates:
                 if x_col and x_col in well_df.columns:
-                    unit_mappings[x_col] = 'm'
+                    unit_mappings[x_col] = "m"
                 if y_col and y_col in well_df.columns:
-                    unit_mappings[y_col] = 'm'
+                    unit_mappings[y_col] = "m"
                 if z_col and z_col in well_df.columns:
-                    unit_mappings[z_col] = 'm'
+                    unit_mappings[z_col] = "m"
 
             # Build type mappings (discrete property, coordinates are continuous)
-            type_mappings = {property_name: 'discrete'}
+            type_mappings = {property_name: "discrete"}
             if include_coordinates:
                 if x_col and x_col in well_df.columns:
-                    type_mappings[x_col] = 'continuous'
+                    type_mappings[x_col] = "continuous"
                 if y_col and y_col in well_df.columns:
-                    type_mappings[y_col] = 'continuous'
+                    type_mappings[y_col] = "continuous"
                 if z_col and z_col in well_df.columns:
-                    type_mappings[z_col] = 'continuous'
+                    type_mappings[z_col] = "continuous"
 
             # Add to well using add_dataframe with custom source name
             base_source_name = sanitize_property_name(source_name)
@@ -593,7 +590,7 @@ class WellDataManager:
                 source_name=base_source_name,
                 unit_mappings=unit_mappings,
                 type_mappings=type_mappings,
-                label_mappings={property_name: code_to_value}
+                label_mappings={property_name: code_to_value},
             )
 
             # Load it
@@ -611,8 +608,8 @@ class WellDataManager:
         unit_mappings: Optional[dict[str, str]] = None,
         type_mappings: Optional[dict[str, str]] = None,
         label_mappings: Optional[dict[str, dict[int, str]]] = None,
-        resample_method: Optional[str] = None
-    ) -> 'WellDataManager':
+        resample_method: Optional[str] = None,
+    ) -> "WellDataManager":
         """
         Load properties from a DataFrame into wells.
 
@@ -778,30 +775,28 @@ class WellDataManager:
 
             if well_key not in self._wells:
                 self._wells[well_key] = Well(
-                    name=well_name,
-                    sanitized_name=sanitized_name,
-                    parent_manager=self
+                    name=well_name, sanitized_name=sanitized_name, parent_manager=self
                 )
                 self._name_mapping[well_name] = well_key
 
             well = self._wells[well_key]
 
             # Build DataFrame for this well (rename depth column to DEPT)
-            well_data = {'DEPT': well_df[depth_col].values}
+            well_data = {"DEPT": well_df[depth_col].values}
             for prop_col in prop_cols:
                 well_data[prop_col] = well_df[prop_col].values
 
             props_df = pd.DataFrame(well_data)
 
             # Build unit mappings (include DEPT)
-            full_unit_mappings = {'DEPT': unit_mappings.get(depth_col, 'm')}
+            full_unit_mappings = {"DEPT": unit_mappings.get(depth_col, "m")}
             for prop_col in prop_cols:
-                full_unit_mappings[prop_col] = unit_mappings.get(prop_col, '')
+                full_unit_mappings[prop_col] = unit_mappings.get(prop_col, "")
 
             # Build type mappings
             full_type_mappings = {}
             for prop_col in prop_cols:
-                full_type_mappings[prop_col] = type_mappings.get(prop_col, 'continuous')
+                full_type_mappings[prop_col] = type_mappings.get(prop_col, "continuous")
 
             # Sanitize source name
             base_source_name = sanitize_property_name(source_name)
@@ -817,17 +812,17 @@ class WellDataManager:
                 source_name=base_source_name,
                 unit_mappings=full_unit_mappings,
                 type_mappings=full_type_mappings,
-                label_mappings=label_mappings
+                label_mappings=label_mappings,
             )
 
             # Check compatibility if well already has data
             if well._sources:
                 # Get an existing LAS file to check compatibility
                 existing_source = list(well._sources.values())[0]
-                existing_las = existing_source['las_file']
+                existing_las = existing_source["las_file"]
                 compatibility = las.check_depth_compatibility(existing_las)
 
-                if not compatibility['compatible']:
+                if not compatibility["compatible"]:
                     if resample_method is None:
                         # Strict mode - raise error and suggest resampling method
                         raise ValueError(
@@ -850,13 +845,15 @@ class WellDataManager:
                         warnings.warn(
                             f"Resampling new data to existing grid using method '{resample_method}' "
                             f"for well '{well.name}'. This may cause data loss for sampled properties.",
-                            UserWarning
+                            UserWarning,
                         )
 
             # Load it (with resampling if specified)
             well.load_las(las, resample_method=resample_method)
 
-            print(f"✓ Loaded {len(prop_cols)} properties into well '{well.name}' from source '{base_source_name}'")
+            print(
+                f"✓ Loaded {len(prop_cols)} properties into well '{well.name}' from source '{base_source_name}'"
+            )
 
         return self
 
@@ -938,10 +935,11 @@ class WellDataManager:
             well.delete_marked_sources(well_folder)
 
             # Save filter intervals if any exist
-            if hasattr(well, '_saved_filter_intervals') and well._saved_filter_intervals:
+            if hasattr(well, "_saved_filter_intervals") and well._saved_filter_intervals:
                 import json
+
                 intervals_file = well_folder / "intervals.json"
-                with open(intervals_file, 'w') as f:
+                with open(intervals_file, "w") as f:
                     json.dump(well._saved_filter_intervals, f, indent=2)
             else:
                 # Remove intervals file if no intervals (in case they were deleted)
@@ -958,7 +956,7 @@ class WellDataManager:
                 template_file = templates_folder / f"{template_name}.json"
                 template.save(template_file)
 
-    def load(self, path: Union[str, Path]) -> 'WellDataManager':
+    def load(self, path: Union[str, Path]) -> "WellDataManager":
         """
         Load all wells and templates from a project folder structure.
 
@@ -1008,6 +1006,7 @@ class WellDataManager:
         templates_folder = base_path / "templates"
         if templates_folder.exists() and templates_folder.is_dir():
             from ..visualization import Template
+
             template_files = sorted(templates_folder.glob("*.json"))
             for template_file in template_files:
                 try:
@@ -1019,10 +1018,13 @@ class WellDataManager:
                     warnings.warn(f"Could not load template {template_file.name}: {e}")
 
         # Find all well folders (well_*) - skip templates folder
-        well_folders = sorted([
-            folder for folder in base_path.glob("well_*")
-            if folder.is_dir() and folder.name != "templates"
-        ])
+        well_folders = sorted(
+            [
+                folder
+                for folder in base_path.glob("well_*")
+                if folder.is_dir() and folder.name != "templates"
+            ]
+        )
 
         if not well_folders:
             # Try loading all LAS files directly if no well folders
@@ -1043,8 +1045,9 @@ class WellDataManager:
             intervals_file = well_folder / "intervals.json"
             if intervals_file.exists():
                 import json
+
                 try:
-                    with open(intervals_file, 'r') as f:
+                    with open(intervals_file, "r") as f:
                         saved_intervals = json.load(f)
                     # Find the well for this folder and set its intervals
                     well_key = well_folder.name  # e.g., "well_35_9_16_A"
@@ -1080,9 +1083,7 @@ class WellDataManager:
 
         if well_key not in self._wells:
             self._wells[well_key] = Well(
-                name=well_name,
-                sanitized_name=sanitized_name,
-                parent_manager=self
+                name=well_name, sanitized_name=sanitized_name, parent_manager=self
             )
             self._name_mapping[well_name] = well_key
 
@@ -1092,12 +1093,12 @@ class WellDataManager:
     def wells(self) -> list[str]:
         """
         List of sanitized well names.
-        
+
         Returns
         -------
         list[str]
             List of well names (sanitized for attribute access)
-        
+
         Examples
         --------
         >>> manager.wells
@@ -1199,7 +1200,7 @@ class WellDataManager:
             return self._wells[name]
 
         # Try adding well_ prefix
-        if not name.startswith('well_'):
+        if not name.startswith("well_"):
             well_key = f"well_{name}"
             if well_key in self._wells:
                 return self._wells[well_key]
@@ -1211,12 +1212,9 @@ class WellDataManager:
             return self._wells[well_key]
 
         # Not found
-        available = ', '.join(self._wells.keys())
-        raise KeyError(
-            f"Well '{name}' not found. "
-            f"Available wells: {available or 'none'}"
-        )
-    
+        available = ", ".join(self._wells.keys())
+        raise KeyError(f"Well '{name}' not found. " f"Available wells: {available or 'none'}")
+
     def remove_well(self, name: str) -> None:
         """
         Remove a well from the manager.
@@ -1240,7 +1238,7 @@ class WellDataManager:
         if well.name in self._name_mapping:
             del self._name_mapping[well.name]
 
-    def add_template(self, template: 'Template') -> None:
+    def add_template(self, template: "Template") -> None:
         """
         Store a template using its built-in name.
 
@@ -1267,7 +1265,7 @@ class WellDataManager:
 
         self._templates[template.name] = template
 
-    def set_template(self, name: str, template: Union['Template', dict]) -> None:
+    def set_template(self, name: str, template: Union["Template", dict]) -> None:
         """
         Store a template with a custom name (overrides template.name).
 
@@ -1296,7 +1294,7 @@ class WellDataManager:
 
         self._templates[name] = template
 
-    def get_template(self, name: str) -> 'Template':
+    def get_template(self, name: str) -> "Template":
         """
         Get a stored template by name.
 
@@ -1321,10 +1319,9 @@ class WellDataManager:
         >>> print(template.tracks)
         """
         if name not in self._templates:
-            available = ', '.join(self._templates.keys())
+            available = ", ".join(self._templates.keys())
             raise KeyError(
-                f"Template '{name}' not found. "
-                f"Available templates: {available or 'none'}"
+                f"Template '{name}' not found. " f"Available templates: {available or 'none'}"
             )
         return self._templates[name]
 
@@ -1360,10 +1357,9 @@ class WellDataManager:
         if name in self._templates:
             del self._templates[name]
         else:
-            available = ', '.join(self._templates.keys())
+            available = ", ".join(self._templates.keys())
             raise KeyError(
-                f"Template '{name}' not found. "
-                f"Available templates: {available or 'none'}"
+                f"Template '{name}' not found. " f"Available templates: {available or 'none'}"
             )
 
     def Crossplot(
@@ -1401,7 +1397,7 @@ class WellDataManager:
         regression: Optional[Union[str, dict]] = None,
         regression_by_color: Optional[Union[str, dict]] = None,
         regression_by_group: Optional[Union[str, dict]] = None,
-    ) -> 'Crossplot':
+    ) -> "Crossplot":
         """
         Create a multi-well crossplot.
 
@@ -1618,7 +1614,7 @@ class WellDataManager:
 
             # Check each property for depth issues
             for source_data in well._sources.values():
-                for prop_name, prop in source_data['properties'].items():
+                for prop_name, prop in source_data["properties"].items():
                     depth = prop.depth
                     values = prop.values
 

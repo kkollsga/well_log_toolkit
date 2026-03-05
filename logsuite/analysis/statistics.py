@@ -61,11 +61,7 @@ def compute_intervals(depth: np.ndarray) -> np.ndarray:
     return intervals
 
 
-def compute_zone_intervals(
-    depth: np.ndarray,
-    top: float,
-    base: float
-) -> np.ndarray:
+def compute_zone_intervals(depth: np.ndarray, top: float, base: float) -> np.ndarray:
     """
     Compute depth intervals truncated to zone boundaries.
 
@@ -134,9 +130,7 @@ def compute_zone_intervals(
 
 
 def mean(
-    values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute mean with optional method selection.
@@ -168,6 +162,7 @@ def mean(
     >>> mean(values, weights, method='arithmetic')
     0.2
     """
+
     # Arithmetic mean computation
     def _arithmetic():
         valid = values[~np.isnan(values)]
@@ -186,23 +181,18 @@ def mean(
             return np.nan
         return float(np.sum(valid_values * valid_weights) / np.sum(valid_weights))
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {
-            'weighted': _weighted(),
-            'arithmetic': _arithmetic()
-        }
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
 def sum(
-    values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute sum with optional method selection.
@@ -232,6 +222,7 @@ def sum(
     >>> sum(values, weights, method='arithmetic')
     1.0  # Simple count of net samples
     """
+
     # Arithmetic sum computation
     def _arithmetic():
         valid = values[~np.isnan(values)]
@@ -250,23 +241,18 @@ def sum(
             return np.nan
         return float(np.sum(valid_values * valid_weights))
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {
-            'weighted': _weighted(),
-            'arithmetic': _arithmetic()
-        }
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
 def std(
-    values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute standard deviation with optional method selection.
@@ -294,6 +280,7 @@ def std(
     >>> std(values, weights)
     {'weighted': 0.0707..., 'arithmetic': 0.0707...}
     """
+
     # Arithmetic std computation
     def _arithmetic():
         valid = values[~np.isnan(values)]
@@ -310,28 +297,22 @@ def std(
         valid_weights = weights[valid_mask]
         if len(valid_values) < 2 or np.sum(valid_weights) == 0:
             return np.nan
-        w_mean = mean(values, weights, method='weighted')
+        w_mean = mean(values, weights, method="weighted")
         variance = np.sum(valid_weights * (valid_values - w_mean) ** 2) / np.sum(valid_weights)
         return float(np.sqrt(variance))
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {
-            'weighted': _weighted(),
-            'arithmetic': _arithmetic()
-        }
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
 def percentile(
-    values: np.ndarray,
-    p: float,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, p: float, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute percentile with optional method selection.
@@ -363,6 +344,7 @@ def percentile(
     >>> percentile(values, 50, weights, method='arithmetic')
     0.3
     """
+
     # Arithmetic percentile computation
     def _arithmetic():
         valid = values[~np.isnan(values)]
@@ -405,17 +387,16 @@ def percentile(
             w_below = cumulative_weight[idx - 1]
             w_above = cumulative_weight[idx]
             fraction = (target_weight - w_below) / (w_above - w_below)
-            return float(sorted_values[idx - 1] + fraction * (sorted_values[idx] - sorted_values[idx - 1]))
+            return float(
+                sorted_values[idx - 1] + fraction * (sorted_values[idx] - sorted_values[idx - 1])
+            )
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {
-            'weighted': _weighted(),
-            'arithmetic': _arithmetic()
-        }
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
@@ -425,7 +406,7 @@ def mode(
     weights: Optional[np.ndarray] = None,
     method: Optional[str] = None,
     bins: int = 50,
-    is_discrete: bool = False
+    is_discrete: bool = False,
 ) -> Union[float, dict]:
     """
     Compute mode (most frequent value) with optional method selection.
@@ -462,6 +443,7 @@ def mode(
     >>> mode(discrete_values, method='arithmetic', is_discrete=True)
     1.0
     """
+
     # Arithmetic mode computation
     def _arithmetic():
         valid = values[~np.isnan(values)]
@@ -513,23 +495,18 @@ def mode(
             mode_value = (bin_edges[mode_bin_idx] + bin_edges[mode_bin_idx + 1]) / 2.0
             return float(mode_value)
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {
-            'weighted': _weighted(),
-            'arithmetic': _arithmetic()
-        }
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
 def geometric_mean(
-    values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute geometric mean with optional method selection.
@@ -565,6 +542,7 @@ def geometric_mean(
     >>> geometric_mean(values, method='arithmetic')
     10.0
     """
+
     def _arithmetic():
         valid = values[~np.isnan(values)]
         if len(valid) == 0 or np.any(valid <= 0):
@@ -579,24 +557,20 @@ def geometric_mean(
         valid_weights = weights[valid_mask]
         if len(valid_values) == 0 or np.sum(valid_weights) == 0 or np.any(valid_values <= 0):
             return np.nan
-        return float(np.exp(
-            np.sum(valid_weights * np.log(valid_values)) / np.sum(valid_weights)
-        ))
+        return float(np.exp(np.sum(valid_weights * np.log(valid_values)) / np.sum(valid_weights)))
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {'weighted': _weighted(), 'arithmetic': _arithmetic()}
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
 def harmonic_mean(
-    values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None
+    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
 ) -> Union[float, dict]:
     """
     Compute harmonic mean with optional method selection.
@@ -633,6 +607,7 @@ def harmonic_mean(
     >>> harmonic_mean(values, method='arithmetic')
     1.714...
     """
+
     def _arithmetic():
         valid = values[~np.isnan(values)]
         if len(valid) == 0 or np.any(valid <= 0):
@@ -649,20 +624,17 @@ def harmonic_mean(
             return np.nan
         return float(np.sum(valid_weights) / np.sum(valid_weights / valid_values))
 
-    if method == 'weighted':
+    if method == "weighted":
         return _weighted()
-    elif method == 'arithmetic':
+    elif method == "arithmetic":
         return _arithmetic()
     elif method is None:
-        return {'weighted': _weighted(), 'arithmetic': _arithmetic()}
+        return {"weighted": _weighted(), "arithmetic": _arithmetic()}
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'weighted' or 'arithmetic'.")
 
 
-def compute_all_statistics(
-    values: np.ndarray,
-    depth: np.ndarray
-) -> dict:
+def compute_all_statistics(values: np.ndarray, depth: np.ndarray) -> dict:
     """
     Compute comprehensive statistics including both weighted and arithmetic measures.
 
@@ -697,22 +669,20 @@ def compute_all_statistics(
 
     return {
         # Depth-weighted statistics (preferred for well log analysis)
-        'weighted_mean': mean(values, intervals, method='weighted'),
-        'weighted_sum': sum(values, intervals, method='weighted'),
-        'weighted_std': std(values, intervals, method='weighted'),
-        'weighted_p10': percentile(values, 10, intervals, method='weighted'),
-        'weighted_p50': percentile(values, 50, intervals, method='weighted'),
-        'weighted_p90': percentile(values, 90, intervals, method='weighted'),
-
+        "weighted_mean": mean(values, intervals, method="weighted"),
+        "weighted_sum": sum(values, intervals, method="weighted"),
+        "weighted_std": std(values, intervals, method="weighted"),
+        "weighted_p10": percentile(values, 10, intervals, method="weighted"),
+        "weighted_p50": percentile(values, 50, intervals, method="weighted"),
+        "weighted_p90": percentile(values, 90, intervals, method="weighted"),
         # Arithmetic statistics (sample-based)
-        'arithmetic_mean': mean(values, method='arithmetic'),
-        'arithmetic_sum': sum(values, method='arithmetic'),
-        'arithmetic_std': std(values, method='arithmetic'),
-
+        "arithmetic_mean": mean(values, method="arithmetic"),
+        "arithmetic_sum": sum(values, method="arithmetic"),
+        "arithmetic_std": std(values, method="arithmetic"),
         # Counts and ranges
-        'count': int(len(valid_values)),
-        'depth_samples': int(len(values)),
-        'depth_thickness': float(np.sum(valid_intervals)) if len(valid_intervals) > 0 else 0.0,
-        'min': float(np.min(valid_values)) if len(valid_values) > 0 else np.nan,
-        'max': float(np.max(valid_values)) if len(valid_values) > 0 else np.nan,
+        "count": int(len(valid_values)),
+        "depth_samples": int(len(values)),
+        "depth_thickness": float(np.sum(valid_intervals)) if len(valid_intervals) > 0 else 0.0,
+        "min": float(np.min(valid_values)) if len(valid_values) > 0 else np.nan,
+        "max": float(np.max(valid_values)) if len(valid_values) > 0 else np.nan,
     }
