@@ -10,6 +10,17 @@ To add a changelog entry, create a file in the `changes/` directory.
 
 <!-- towncrier release notes start -->
 
+## [0.1.158] - 2026-03-05
+
+### Documentation
+
+- **Sphinx documentation**: Full docs site with furo theme, MyST markdown,
+  and autodoc API reference. Includes installation, quickstart, user guide
+  (loading data, wells/properties, statistics, visualization, regression,
+  multi-well), and API reference for all public classes and functions.
+- **ReadTheDocs configuration**: `.readthedocs.yaml` for automated builds.
+- **Documentation dependencies**: Added `[docs]` optional dependency group.
+
 ## [0.1.157] - 2026-03-05
 
 ### Features

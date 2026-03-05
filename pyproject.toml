@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "well-log-toolkit"
-version = "0.1.157"
+version = "0.1.158"
 description = "Petrophysical well log analysis with depth-weighted statistics, hierarchical filtering, and template-driven visualization"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,9 +52,17 @@ dev = [
     "towncrier>=23.6.0",
 ]
 
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.0",
+    "myst-parser>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=1.25",
+]
+
 [project.urls]
 Homepage = "https://github.com/kkollsga/well_log_toolkit"
-Documentation = "https://github.com/kkollsga/well_log_toolkit#readme"
+Documentation = "https://well-log-toolkit.readthedocs.io"
 Repository = "https://github.com/kkollsga/well_log_toolkit"
 Issues = "https://github.com/kkollsga/well_log_toolkit/issues"
 Changelog = "https://github.com/kkollsga/well_log_toolkit/blob/main/CHANGELOG.md"
