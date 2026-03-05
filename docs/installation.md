@@ -9,8 +9,8 @@ pip install well-log-toolkit
 ## From Source
 
 ```bash
-git clone https://github.com/kkollsga/well_log_toolkit.git
-cd well_log_toolkit
+git clone https://github.com/kkollsga/well-log-toolkit.git
+cd well-log-toolkit
 pip install -e .
 ```
 

@@ -20,6 +20,8 @@ To add a changelog entry, create a file in the `changes/` directory.
   multi-well), and API reference for all public classes and functions.
 - **ReadTheDocs configuration**: `.readthedocs.yaml` for automated builds.
 - **Documentation dependencies**: Added `[docs]` optional dependency group.
+- **Repo rename**: Updated all project URLs from `well_log_toolkit` to
+  `well-log-toolkit` to match PyPI package name.
 
 ## [0.1.157] - 2026-03-05
 

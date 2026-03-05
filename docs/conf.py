@@ -28,7 +28,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 html_theme = "furo"
 html_title = "well-log-toolkit"
 html_theme_options = {
-    "source_repository": "https://github.com/kkollsga/well_log_toolkit",
+    "source_repository": "https://github.com/kkollsga/well-log-toolkit",
     "source_branch": "main",
     "source_directory": "docs/",
 }

@@ -61,11 +61,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kkollsga/well_log_toolkit"
+Homepage = "https://github.com/kkollsga/well-log-toolkit"
 Documentation = "https://well-log-toolkit.readthedocs.io"
-Repository = "https://github.com/kkollsga/well_log_toolkit"
-Issues = "https://github.com/kkollsga/well_log_toolkit/issues"
-Changelog = "https://github.com/kkollsga/well_log_toolkit/blob/main/CHANGELOG.md"
+Repository = "https://github.com/kkollsga/well-log-toolkit"
+Issues = "https://github.com/kkollsga/well-log-toolkit/issues"
+Changelog = "https://github.com/kkollsga/well-log-toolkit/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -120,7 +120,7 @@ package = "well_log_toolkit"
 directory = "changes"
 filename = "CHANGELOG.md"
 title_format = "## [{version}] - {project_date}"
-issue_format = "[#{issue}](https://github.com/kkollsga/well_log_toolkit/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/kkollsga/well-log-toolkit/issues/{issue})"
 
 [[tool.towncrier.type]]
 directory = "feature"
