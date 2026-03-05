@@ -98,12 +98,12 @@ else:
 
 ### Modified Files
 
-1. `/pylog/manager.py`:
+1. `/logsuite/manager.py`:
    - Updated `load_properties()` signature and implementation
    - Updated `load_tops()` signature and implementation
    - Enhanced docstrings with examples for all three patterns
 
-2. `/pylog/__init__.py`:
+2. `/logsuite/__init__.py`:
    - Version bumped to 0.1.57
 
 ### Testing

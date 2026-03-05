@@ -5,7 +5,7 @@
 A `Template` defines the track layout for well log plots:
 
 ```python
-from pylog import Template
+from logsuite import Template
 
 template = Template()
 
@@ -26,7 +26,7 @@ template.add_curve("Saturation", "SW", color="red", scale=(0, 1))
 `WellView` renders a well log display using a template:
 
 ```python
-from pylog import WellView
+from logsuite import WellView
 
 view = WellView(well, template)
 view.plot()
@@ -38,7 +38,7 @@ view.plot(depth_range=(2800, 3200))
 Create crossplots with optional regression:
 
 ```python
-from pylog import Crossplot
+from logsuite import Crossplot
 
 xplot = Crossplot(
     x=well.PHIE,
@@ -51,7 +51,7 @@ xplot.plot()
 ### With Regression
 
 ```python
-from pylog import Crossplot, ExponentialRegression
+from logsuite import Crossplot, ExponentialRegression
 
 xplot = Crossplot(x=well.PHIE, y=well.PERM)
 xplot.add_regression(ExponentialRegression)

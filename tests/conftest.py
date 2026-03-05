@@ -1,5 +1,5 @@
 """
-Centralized pytest fixtures for pylog test suite.
+Centralized pytest fixtures for logsuite test suite.
 
 Provides reusable depth arrays, properties, wells, and managers
 for tests without requiring external LAS files.
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylog import WellDataManager, Well, Property
+from logsuite import WellDataManager, Well, Property
 
 
 # ---------------------------------------------------------------------------

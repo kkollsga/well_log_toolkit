@@ -3,7 +3,7 @@ Tests for weighted and arithmetic statistics functions.
 """
 import numpy as np
 import pytest
-from pylog.analysis.statistics import (
+from logsuite.analysis.statistics import (
     compute_intervals,
     mean,
     sum as stat_sum,  # Avoid shadowing builtin
@@ -270,7 +270,7 @@ class TestBoundaryInsertion:
 
     def test_boundary_sample_inserted_at_zone_top(self):
         """Test that boundary samples are inserted at zone tops."""
-        from pylog import Property
+        from logsuite import Property
 
         # NTG log with samples at 1500, 1501, 1505
         ntg = Property(
@@ -300,7 +300,7 @@ class TestBoundaryInsertion:
 
     def test_continuous_property_interpolates_at_boundary(self):
         """Test that continuous properties use linear interpolation at boundaries."""
-        from pylog import Property
+        from logsuite import Property
 
         porosity = Property(
             name='PHIE',
@@ -324,7 +324,7 @@ class TestBoundaryInsertion:
 
     def test_zone_statistics_with_boundary_insertion(self):
         """Test that zone statistics properly partition intervals at boundaries."""
-        from pylog import Property
+        from logsuite import Property
 
         ntg = Property(
             name='NTG_Flag',
@@ -360,7 +360,7 @@ class TestBoundaryInsertion:
 
     def test_no_insertion_when_boundary_aligns_with_sample(self):
         """Test no duplicate samples when boundary aligns with existing sample."""
-        from pylog import Property
+        from logsuite import Property
 
         ntg = Property(
             name='NTG_Flag',

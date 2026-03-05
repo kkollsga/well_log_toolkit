@@ -2,9 +2,9 @@
 
 import numpy as np
 import pandas as pd
-from pylog.manager import WellDataManager
-from pylog.core.well import Well
-from pylog.core.property import Property
+from logsuite.manager import WellDataManager
+from logsuite.core.well import Well
+from logsuite.core.property import Property
 
 print("=" * 70)
 print("STANDARDIZED MD (Measured Depth) AND WELL ACCESS")

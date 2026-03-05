@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from pylog import Property, geometric_mean, harmonic_mean
-from pylog.analysis.statistics import compute_intervals
+from logsuite import Property, geometric_mean, harmonic_mean
+from logsuite.analysis.statistics import compute_intervals
 
 
 class TestGeometricMean:

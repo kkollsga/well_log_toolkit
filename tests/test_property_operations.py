@@ -14,7 +14,7 @@ Run with: python test_property_operations.py
 """
 
 import numpy as np
-from pylog import WellDataManager, Well, Property
+from logsuite import WellDataManager, Well, Property
 
 
 def print_section(title):

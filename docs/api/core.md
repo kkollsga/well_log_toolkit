@@ -3,7 +3,7 @@
 ## Well
 
 ```{eval-rst}
-.. autoclass:: pylog.Well
+.. autoclass:: logsuite.Well
    :members:
    :undoc-members:
 ```
@@ -11,7 +11,7 @@
 ## Property
 
 ```{eval-rst}
-.. autoclass:: pylog.Property
+.. autoclass:: logsuite.Property
    :members:
    :undoc-members:
 ```

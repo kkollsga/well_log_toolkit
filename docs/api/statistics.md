@@ -1,7 +1,7 @@
 # Statistics
 
 ```{eval-rst}
-.. automodule:: pylog.analysis.statistics
+.. automodule:: logsuite.analysis.statistics
    :members:
    :undoc-members:
 ```

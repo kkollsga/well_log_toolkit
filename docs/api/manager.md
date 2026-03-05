@@ -1,7 +1,7 @@
 # WellDataManager
 
 ```{eval-rst}
-.. autoclass:: pylog.WellDataManager
+.. autoclass:: logsuite.WellDataManager
    :members:
    :undoc-members:
 ```

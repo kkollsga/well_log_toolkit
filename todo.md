@@ -1,4 +1,4 @@
-# pylog — 10-Step Improvement Plan
+# logsuite — 10-Step Improvement Plan
 
 ## Current State
 
@@ -18,9 +18,9 @@
 **Goal:** CI actually runs the test suite instead of just a smoke import.
 
 **Current problem:**
-- `build-and-publish.yml` test job only does `python -c "from pylog import ..."`
+- `build-and-publish.yml` test job only does `python -c "from logsuite import ..."`
 - `pyproject.toml` has `testpaths = ["tests"]` but the directory is `pytest/`
-- `addopts` includes `--cov=pylog` but `pytest-cov` isn't installed in CI
+- `addopts` includes `--cov=logsuite` but `pytest-cov` isn't installed in CI
 
 **Tasks:**
 - [x] Rename `pytest/` → `tests/`
@@ -41,7 +41,7 @@
 
 **Current structure (flat):**
 ```
-pylog/
+logsuite/
 ├── __init__.py          (139 lines)
 ├── exceptions.py        (48 lines)
 ├── las_file.py          (1,343 lines)
@@ -57,7 +57,7 @@ pylog/
 
 **Target structure (domain-driven):**
 ```
-pylog/
+logsuite/
 ├── __init__.py                     # Public API re-exports (keep stable)
 ├── _version.py                     # Version detection logic
 ├── exceptions.py                   # Exception hierarchy (unchanged)
@@ -104,7 +104,7 @@ pylog/
 ```
 
 **Migration rules:**
-1. Every existing `from pylog import X` must keep working — the top-level `__init__.py` re-exports everything
+1. Every existing `from logsuite import X` must keep working — the top-level `__init__.py` re-exports everything
 2. Each subpackage `__init__.py` re-exports its public API
 3. Internal cross-references use relative imports within subpackages
 4. No circular imports — the dependency graph flows: `io → core → analysis → manager → visualization`
@@ -352,7 +352,7 @@ def filter(self, property_name: str) -> 'Property':
 
 - [ ] Configure `docs/conf.py`:
   ```python
-  project = 'pylog'
+  project = 'logsuite'
   extensions = [
       'sphinx.ext.autodoc',
       'sphinx.ext.napoleon',       # NumPy-style docstrings
@@ -419,7 +419,7 @@ def filter(self, property_name: str) -> 'Property':
 **Goal:** Professional first impression. Accurate metadata. Concise README that points to full docs.
 
 **Current problems:**
-- Issues URL: `github.com/yourusername/pylog/issues`
+- Issues URL: `github.com/yourusername/logsuite/issues`
 - Classifier: `Development Status :: 3 - Alpha` at 152 releases
 - Description undersells: "Fast LAS file processing" (it's a full analytics library)
 - README is 2,367 lines (should be ~300 with links to docs site)
@@ -501,7 +501,7 @@ def filter(self, property_name: str) -> 'Property':
 - [ ] Add `Property.histogram()` returning bin edges and weighted counts
 - [ ] Add a registration pattern for custom statistics in `sums_avg()`:
   ```python
-  from pylog import register_statistic
+  from logsuite import register_statistic
 
   @register_statistic
   def dykstra_parsons(values, weights):

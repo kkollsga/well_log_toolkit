@@ -4,7 +4,7 @@ Supports: multi-well, single-well with name, single-well with default
 """
 import pandas as pd
 import numpy as np
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 print("=" * 80)
 print("Testing Flexible Loading Patterns (v0.1.57)")

@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylog import WellDataManager, Well, Property
-from pylog.io import LasFile
+from logsuite import WellDataManager, Well, Property
+from logsuite.io import LasFile
 
 
 class TestExportRoundTrip:

@@ -1,11 +1,11 @@
 # Quick Start
 
-A 5-minute introduction to pyLog.
+A 5-minute introduction to logSuite.
 
 ## Loading LAS Files
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("12_3-2_B.las")
@@ -54,7 +54,7 @@ zone_stats = manager.PHIE.filter('Zone').sums_avg()
 ## Visualization
 
 ```python
-from pylog import Template, WellView
+from logsuite import Template, WellView
 
 # Define track layout
 template = Template()

@@ -1,11 +1,11 @@
 """
-Examples demonstrating the usage of pylog.
+Examples demonstrating the usage of logsuite.
 
-This module provides practical examples of how to use the pylog
+This module provides practical examples of how to use the logsuite
 for loading, analyzing, and filtering well log data from LAS files.
 """
 
-from pylog import WellDataManager, LasFile
+from logsuite import WellDataManager, LasFile
 
 
 # =============================================================================
@@ -481,7 +481,7 @@ def example_las_export():
     print("Exported with custom null value (-9999.0)")
 
     # 8. Standalone export using LasFile.export_las()
-    from pylog import LasFile
+    from logsuite import LasFile
 
     # Create any DataFrame with DEPT column
     df = well.data(include=['DEPT', 'PHIE', 'SW'])

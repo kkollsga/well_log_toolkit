@@ -3,13 +3,13 @@ Test that regression legend title includes the regression type.
 """
 
 import numpy as np
-from pylog.visualization import Crossplot
+from logsuite.visualization import Crossplot
 import pytest
 
 
 def create_test_wells():
     """Create wells for testing."""
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):
@@ -36,7 +36,7 @@ def create_test_wells():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}", i) for i in range(3)]

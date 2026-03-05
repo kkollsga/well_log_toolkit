@@ -1,19 +1,19 @@
-# pyLog — Claude Code Conventions
+# logSuite — Claude Code Conventions
 
 ## Build & Test
 
 ```bash
 python -m pytest                              # run full test suite
-python -m pytest --cov=pylog       # with coverage
-ruff check pylog/                  # lint (always run before pushing)
-black pylog/                       # format
-mypy pylog/                        # type check
+python -m pytest --cov=logsuite       # with coverage
+ruff check logsuite/                  # lint (always run before pushing)
+black logsuite/                       # format
+mypy logsuite/                        # type check
 ```
 
 ## Architecture
 
 ```text
-pylog/
+logsuite/
 ├── io/              LAS 2.0 reader with lazy loading (headers on init, data on .data())
 │   └── las_file.py
 ├── core/            Well → Property → PropertyOperationsMixin

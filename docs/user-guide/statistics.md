@@ -7,7 +7,7 @@ Depth-weighted statistics account for the thickness each sample represents,
 giving physically meaningful results.
 
 ```python
-from pylog import mean, compute_intervals
+from logsuite import mean, compute_intervals
 
 # Compute depth intervals (midpoint method)
 intervals = compute_intervals(depth)
@@ -41,7 +41,7 @@ For permeability and other log-normally distributed properties:
 - `harmonic_mean()` — n / sum(1/v): appropriate for parallel flow properties
 
 ```python
-from pylog import geometric_mean, harmonic_mean
+from logsuite import geometric_mean, harmonic_mean
 
 # Permeability averaging
 geo = geometric_mean(perm_values, intervals, method='weighted')
@@ -53,7 +53,7 @@ har = harmonic_mean(perm_values, intervals, method='weighted')
 ### Comprehensive Statistics
 
 ```python
-from pylog import compute_all_statistics
+from logsuite import compute_all_statistics
 
 stats = compute_all_statistics(values, depth)
 # Returns dict with weighted_mean, arithmetic_mean, weighted_std,
@@ -78,8 +78,8 @@ result = well.PHIE.filter('Zone').filter('NTG_Flag').sums_avg()
 ## Interval Computation
 
 ```python
-from pylog import compute_intervals
-from pylog.analysis.statistics import compute_zone_intervals
+from logsuite import compute_intervals
+from logsuite.analysis.statistics import compute_zone_intervals
 
 # Full depth grid intervals (midpoint method)
 intervals = compute_intervals(depth)

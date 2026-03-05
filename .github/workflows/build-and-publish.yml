@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'pyproject.toml'
-      - 'pylog/**'
+      - 'logsuite/**'
   workflow_dispatch:
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "pyproject.toml version: $VERSION"
 
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/pylog/$VERSION/json")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/logsuite/$VERSION/json")
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "Version $VERSION already exists on PyPI — skipping build"
             echo "should_publish=false" >> $GITHUB_OUTPUT

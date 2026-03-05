@@ -8,8 +8,8 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pylog import WellDataManager, Template
-from pylog.core.property import Property
+from logsuite import WellDataManager, Template
+from logsuite.core.property import Property
 
 
 def test_labels_auto_sets_discrete_type_on_property():
@@ -141,7 +141,7 @@ def test_tops_with_duplicate_depths():
     template.add_track(track_type="continuous", logs=[{"name": "Well_Tops"}], title="Test")
 
     # Create WellView - this should work now
-    from pylog.visualization import WellView
+    from logsuite.visualization import WellView
 
     # Test that we can look up tops by name
     view = WellView(
@@ -195,7 +195,7 @@ def test_tops_depth_range_from_names():
     template.add_tops(property_name='Tops')
     template.add_track(track_type="continuous", logs=[{"name": "Tops"}], title="Test")
 
-    from pylog.visualization import WellView
+    from logsuite.visualization import WellView
 
     # This should now work - looking up "Top Agat" and "Top Sola" by name
     try:

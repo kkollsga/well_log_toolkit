@@ -1,4 +1,4 @@
-# pyLog
+# logSuite
 
 Fast, Pythonic petrophysical well log analysis with depth-weighted statistics,
 hierarchical filtering, and template-driven visualization.
@@ -16,7 +16,7 @@ hierarchical filtering, and template-driven visualization.
 ## Quick Start
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("well_a.las").load_las("well_b.las")

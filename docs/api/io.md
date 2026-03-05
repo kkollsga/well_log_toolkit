@@ -1,7 +1,7 @@
 # I/O: LasFile
 
 ```{eval-rst}
-.. autoclass:: pylog.LasFile
+.. autoclass:: logsuite.LasFile
    :members:
    :undoc-members:
 ```

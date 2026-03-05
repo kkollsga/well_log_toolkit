@@ -1,10 +1,10 @@
-# pyLog
+# logSuite
 
 Fast, intuitive Python library for petrophysical well log analysis. Load LAS files, filter by zones, compute depth-weighted statistics, and create publication-quality log displays—all in just a few lines.
 
-[![PyPI version](https://img.shields.io/pypi/v/pylog.svg)](https://pypi.org/project/pylog/)
+[![PyPI version](https://img.shields.io/pypi/v/logsuite.svg)](https://pypi.org/project/logsuite/)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/kkollsga/pylog/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/kkollsga/pylog/actions)
+[![CI](https://github.com/kkollsga/logsuite/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/kkollsga/logsuite/actions)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Key Features
@@ -46,7 +46,7 @@ Fast, intuitive Python library for petrophysical well log analysis. Load LAS fil
 ## Installation
 
 ```bash
-pip install pylog
+pip install logsuite
 ```
 
 **Requirements:** Python 3.9+, numpy, pandas, scipy, matplotlib
@@ -58,7 +58,7 @@ pip install pylog
 Load LAS files, filter by zones, and compute statistics:
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 # Load and analyze
 manager = WellDataManager()
@@ -81,7 +81,7 @@ print(stats['Top_Brent']['mean'])  # → 0.182 (depth-weighted)
 ### Step 1: Load Your Data
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 import pandas as pd
 
 # Create manager and load LAS files
@@ -145,7 +145,7 @@ manager.PHIE_percent = manager.PHIE * 100
 ### Step 5: Visualize Well Logs
 
 ```python
-from pylog import Template
+from logsuite import Template
 
 # Create template
 template = Template("basic")
@@ -435,7 +435,7 @@ Create publication-quality well log displays optimized for Jupyter Lab. Build cu
 ### Quick Start
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 # Load data
 manager = WellDataManager()
@@ -484,7 +484,7 @@ Templates define the layout and styling of well log displays. Think of a templat
 #### Basic Template Structure
 
 ```python
-from pylog import Template
+from logsuite import Template
 
 # Create template
 template = Template("reservoir")
@@ -939,7 +939,7 @@ view.save("well_log.svg")
 A comprehensive template showcasing all features:
 
 ```python
-from pylog import WellDataManager, Template
+from logsuite import WellDataManager, Template
 
 # Setup
 manager = WellDataManager()
@@ -1056,7 +1056,7 @@ Create beautiful, publication-quality crossplots for petrophysical analysis with
 ### Quick Start
 
 ```python
-from pylog import WellDataManager
+from logsuite import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("well.las")
@@ -1401,7 +1401,7 @@ print(f"RMSE: {reg.rmse:.4f}")
 Use regression classes independently for data analysis:
 
 ```python
-from pylog import LinearRegression, PolynomialRegression
+from logsuite import LinearRegression, PolynomialRegression
 import numpy as np
 
 # Prepare data
@@ -1431,7 +1431,7 @@ print(poly.equation())
 #### All Regression Classes
 
 ```python
-from pylog import (
+from logsuite import (
     LinearRegression,          # y = ax + b
     PolynomialRegression,      # y = aₙxⁿ + ... + a₀
     ExponentialRegression,     # y = ae^(bx)
@@ -1581,7 +1581,7 @@ plot.add_regression("linear", line_color="red")
 plot.show()
 
 # Standalone regression
-from pylog import LinearRegression
+from logsuite import LinearRegression
 reg = LinearRegression()
 reg.fit(x, y)
 predictions = reg([10, 20, 30])
@@ -1910,7 +1910,7 @@ print(manager.PHIE)
 ### Main Classes
 
 ```python
-from pylog import WellDataManager, Well, Property, LasFile
+from logsuite import WellDataManager, Well, Property, LasFile
 ```
 
 **WellDataManager** - Manages multiple wells
@@ -1947,7 +1947,7 @@ from pylog import WellDataManager, Well, Property, LasFile
 ### Visualization Classes
 
 ```python
-from pylog import Template, WellView, Crossplot
+from logsuite import Template, WellView, Crossplot
 ```
 
 **Template** - Display layout configuration
@@ -1981,7 +1981,7 @@ from pylog import Template, WellView, Crossplot
 ### Regression Classes
 
 ```python
-from pylog import (
+from logsuite import (
     LinearRegression,
     PolynomialRegression,
     ExponentialRegression,
@@ -2004,7 +2004,7 @@ All regression classes share the same interface:
 ### Statistics Functions
 
 ```python
-from pylog import compute_intervals, mean, sum, std, percentile
+from logsuite import compute_intervals, mean, sum, std, percentile
 ```
 
 These are low-level functions used internally. Most users should use the high-level filtering API (`property.filter().sums_avg()`).
@@ -2012,7 +2012,7 @@ These are low-level functions used internally. Most users should use the high-le
 ### Exceptions
 
 ```python
-from pylog import (
+from logsuite import (
     DepthAlignmentError,
     PropertyNotFoundError,
     PropertyTypeError
@@ -2121,7 +2121,7 @@ reg = plot.regressions["linear"]
 predictions = reg([2.3, 2.4, 2.5])
 
 # Standalone
-from pylog import LinearRegression
+from logsuite import LinearRegression
 reg = LinearRegression()
 reg.fit(x_data, y_data)
 print(reg.equation())
@@ -2364,6 +2364,6 @@ MIT License
 
 ## Need Help?
 
-- **Issues:** [GitHub Issues](https://github.com/kkollsga/pylog/issues)
+- **Issues:** [GitHub Issues](https://github.com/kkollsga/logsuite/issues)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **Documentation:** See sections above

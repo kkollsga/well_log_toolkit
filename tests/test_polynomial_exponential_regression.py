@@ -6,8 +6,8 @@ which is ideal for petrophysical relationships like porosity-permeability.
 """
 
 import numpy as np
-from pylog.analysis.regression import PolynomialExponentialRegression
-from pylog.visualization import Crossplot
+from logsuite.analysis.regression import PolynomialExponentialRegression
+from logsuite.visualization import Crossplot
 import pytest
 
 
@@ -108,7 +108,7 @@ def test_polynomial_exponential_in_crossplot():
     print("TEST 3: Polynomial-Exponential in Crossplot")
     print("="*70)
 
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -139,7 +139,7 @@ def test_polynomial_exponential_in_crossplot():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     well = MockWell("TestWell")
@@ -191,7 +191,7 @@ def test_improved_error_message():
     print("TEST 4: Improved Error Message")
     print("="*70)
 
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self):

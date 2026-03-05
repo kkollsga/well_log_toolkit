@@ -3,7 +3,7 @@
 ## Template
 
 ```{eval-rst}
-.. autoclass:: pylog.Template
+.. autoclass:: logsuite.Template
    :members:
    :undoc-members:
 ```
@@ -11,7 +11,7 @@
 ## WellView
 
 ```{eval-rst}
-.. autoclass:: pylog.WellView
+.. autoclass:: logsuite.WellView
    :members:
    :undoc-members:
 ```
@@ -19,7 +19,7 @@
 ## Crossplot
 
 ```{eval-rst}
-.. autoclass:: pylog.Crossplot
+.. autoclass:: logsuite.Crossplot
    :members:
    :undoc-members:
 ```

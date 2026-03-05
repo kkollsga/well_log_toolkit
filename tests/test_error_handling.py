@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylog import Well, Property, WellDataManager
-from pylog.exceptions import (
+from logsuite import Well, Property, WellDataManager
+from logsuite.exceptions import (
     LasFileError,
     PropertyNotFoundError,
     PropertyTypeError,
@@ -64,7 +64,7 @@ class TestLasFileError:
 
     def test_missing_file(self):
         with pytest.raises(LasFileError, match="File not found"):
-            from pylog.io import LasFile
+            from logsuite.io import LasFile
             LasFile("/nonexistent/path/to/file.las")
 
 
@@ -144,7 +144,7 @@ class TestInputValidation:
 
     def test_las_rejects_non_las_extension(self):
         """LasFile should reject files without .las extension."""
-        from pylog.io import LasFile
+        from logsuite.io import LasFile
         with pytest.raises(LasFileError, match="Expected .las"):
             LasFile("/some/path/data.csv")
 

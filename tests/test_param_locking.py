@@ -1,7 +1,7 @@
 """Test script demonstrating parameter locking functionality."""
 
 import numpy as np
-from pylog.analysis.regression import (
+from logsuite.analysis.regression import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,

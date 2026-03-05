@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from pylog import Property
+from logsuite import Property
 
 
 class TestResampleGrids:

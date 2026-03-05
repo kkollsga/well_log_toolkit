@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pylog"
-version = "0.1.159"
+name = "logsuite"
+version = "0.2.0"
 description = "Petrophysical well log analysis with depth-weighted statistics, hierarchical filtering, and template-driven visualization"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,18 +61,18 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kkollsga/pylog"
-Documentation = "https://pylog.readthedocs.io"
-Repository = "https://github.com/kkollsga/pylog"
-Issues = "https://github.com/kkollsga/pylog/issues"
-Changelog = "https://github.com/kkollsga/pylog/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/kkollsga/logsuite"
+Documentation = "https://logsuite.readthedocs.io"
+Repository = "https://github.com/kkollsga/logsuite"
+Issues = "https://github.com/kkollsga/logsuite/issues"
+Changelog = "https://github.com/kkollsga/logsuite/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pylog*"]
+include = ["logsuite*"]
 
 [tool.setuptools.package-data]
-pylog = ["py.typed"]
+logsuite = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -116,11 +116,11 @@ addopts = [
 ]
 
 [tool.towncrier]
-package = "pylog"
+package = "logsuite"
 directory = "changes"
 filename = "CHANGELOG.md"
 title_format = "## [{version}] - {project_date}"
-issue_format = "[#{issue}](https://github.com/kkollsga/pylog/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/kkollsga/logsuite/issues/{issue})"
 
 [[tool.towncrier.type]]
 directory = "feature"

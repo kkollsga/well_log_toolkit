@@ -1,11 +1,11 @@
-"""Version detection for pylog."""
+"""Version detection for logsuite."""
 
 
 def _get_version():
     """Get version from installed package metadata or pyproject.toml."""
     try:
         from importlib.metadata import version
-        return version("pylog")
+        return version("logsuite")
     except Exception:
         try:
             from pathlib import Path

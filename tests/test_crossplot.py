@@ -10,7 +10,7 @@ This script tests:
 
 import numpy as np
 import pytest
-from pylog import (
+from logsuite import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,
@@ -80,15 +80,15 @@ def test_crossplot_imports():
     print("\nTesting Crossplot imports...")
 
     try:
-        from pylog import Crossplot
-        print("✓ Crossplot can be imported from pylog")
+        from logsuite import Crossplot
+        print("✓ Crossplot can be imported from logsuite")
     except ImportError as e:
         print(f"✗ Failed to import Crossplot: {e}")
         pytest.skip("Test precondition not met")
 
     try:
-        from pylog.visualization import Crossplot
-        print("✓ Crossplot can be imported from pylog.visualization")
+        from logsuite.visualization import Crossplot
+        print("✓ Crossplot can be imported from logsuite.visualization")
     except ImportError as e:
         print(f"✗ Failed to import Crossplot from visualization: {e}")
         pytest.skip("Test precondition not met")
@@ -99,7 +99,7 @@ def test_api_structure():
     """Test that the API is properly structured."""
     print("\nTesting API structure...")
 
-    from pylog import Well, WellDataManager
+    from logsuite import Well, WellDataManager
 
     # Check if Well has Crossplot method
     if hasattr(Well, 'Crossplot'):

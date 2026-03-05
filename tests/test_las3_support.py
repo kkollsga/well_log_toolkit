@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from pylog.io import LasFile
+from logsuite.io import LasFile
 
 
 @pytest.fixture

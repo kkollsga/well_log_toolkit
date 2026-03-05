@@ -6,13 +6,13 @@ identified as categorical and can be used with regression_by_color.
 """
 
 import numpy as np
-from pylog.visualization import Crossplot
+from logsuite.visualization import Crossplot
 import pytest
 
 
 def create_well_with_discrete_property():
     """Create a well with discrete Well_Tops property."""
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -57,7 +57,7 @@ def create_well_with_discrete_property():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return MockWell("Well_A")
@@ -133,7 +133,7 @@ def test_continuous_property_warns():
     print("="*70)
 
     # Create a well with continuous property used as color
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -157,7 +157,7 @@ def test_continuous_property_warns():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     well = MockWell("Well_A")

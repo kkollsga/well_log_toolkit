@@ -1,13 +1,13 @@
 """
 Performance test for numpy vectorization.
 
-Demonstrates that pylog uses vectorized numpy operations
+Demonstrates that logsuite uses vectorized numpy operations
 for fast array computations.
 """
 import numpy as np
 import time
-from pylog import Well, Property
-from pylog.analysis.statistics import compute_intervals, compute_zone_intervals
+from logsuite import Well, Property
+from logsuite.analysis.statistics import compute_intervals, compute_zone_intervals
 
 
 def test_compute_intervals_correctness():
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     print("\n" + "=" * 70)
     print("NUMPY VECTORIZATION PERFORMANCE TEST")
     print("=" * 70)
-    print("\nThis test verifies that pylog uses vectorized")
+    print("\nThis test verifies that logsuite uses vectorized")
     print("numpy operations for fast array computations.")
 
     test_compute_intervals_correctness()

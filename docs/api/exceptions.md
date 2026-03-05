@@ -1,7 +1,7 @@
 # Exceptions
 
 ```{eval-rst}
-.. automodule:: pylog.exceptions
+.. automodule:: logsuite.exceptions
    :members:
    :undoc-members:
    :show-inheritance:

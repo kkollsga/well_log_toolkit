@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 # Import statistics functions
-from pylog.analysis.statistics import compute_intervals, compute_zone_intervals
+from logsuite.analysis.statistics import compute_intervals, compute_zone_intervals
 
 
 # =============================================================================
@@ -491,7 +491,7 @@ class TestNumericalPrecision:
 # Test Integration with Property Class
 # =============================================================================
 
-from pylog import Property
+from logsuite import Property
 
 
 class TestPropertyIntegration:

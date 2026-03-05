@@ -3,14 +3,14 @@
 ## From PyPI
 
 ```bash
-pip install pylog
+pip install logsuite
 ```
 
 ## From Source
 
 ```bash
-git clone https://github.com/kkollsga/pylog.git
-cd pylog
+git clone https://github.com/kkollsga/logsuite.git
+cd logsuite
 pip install -e .
 ```
 

@@ -9,13 +9,13 @@ This test verifies that:
 """
 
 import numpy as np
-from pylog.visualization import Crossplot
+from logsuite.visualization import Crossplot
 import pytest
 
 
 def create_well_with_tops():
     """Create a mock well with continuous logs and sparse discrete tops."""
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -72,7 +72,7 @@ def create_well_with_tops():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return MockWell("Well_A")
@@ -168,7 +168,7 @@ def test_discrete_vs_continuous_alignment():
     print("TEST 2: Discrete forward-fill (previous) vs continuous interpolation")
     print("="*70)
 
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     # Create a discrete property with sparse samples (like well tops)
     discrete_depth = np.array([2800.0, 2850.0, 2900.0, 2950.0, 3000.0])

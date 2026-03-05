@@ -7,13 +7,13 @@ This verifies that when using discrete properties (like Well_Tops) for shape or 
 """
 
 import numpy as np
-from pylog.visualization import Crossplot
+from logsuite.visualization import Crossplot
 import pytest
 
 
 def create_well_with_labeled_tops():
     """Create a well with discrete Well_Tops that have string labels."""
-    from pylog.core.property import Property
+    from logsuite.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -59,7 +59,7 @@ def create_well_with_labeled_tops():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return MockWell("Well_A")

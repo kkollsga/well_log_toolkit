@@ -11,7 +11,7 @@ This test verifies that when both shape and color legends are needed:
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.legend import Legend
-from pylog.visualization import Crossplot
+from logsuite.visualization import Crossplot
 import pytest
 
 
@@ -36,7 +36,7 @@ def create_test_wells(num_wells=3):
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from pylog.exceptions import PropertyNotFoundError
+            from logsuite.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}") for i in range(num_wells)]

@@ -1,11 +1,11 @@
-"""Sphinx configuration for pyLog documentation."""
+"""Sphinx configuration for logSuite documentation."""
 
 import importlib.metadata
 
-project = "pyLog"
+project = "logSuite"
 copyright = "2024, Kristian dF Kollsgård"
 author = "Kristian dF Kollsgård"
-release = importlib.metadata.version("pylog")
+release = importlib.metadata.version("logsuite")
 version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
@@ -26,9 +26,9 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = "furo"
-html_title = "pyLog"
+html_title = "logSuite"
 html_theme_options = {
-    "source_repository": "https://github.com/kkollsga/pylog",
+    "source_repository": "https://github.com/kkollsga/logsuite",
     "source_branch": "main",
     "source_directory": "docs/",
 }

@@ -6,7 +6,7 @@ Demonstrates:
 2. Filtered property printing (well.phie.filter("NTG"))
 """
 import numpy as np
-from pylog import WellDataManager, Well, Property
+from logsuite import WellDataManager, Well, Property
 
 
 def print_section(title):

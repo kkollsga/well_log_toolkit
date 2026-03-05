@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-from pylog import WellDataManager
+from logsuite import WellDataManager
 import pytest
 
 def test_basic_loading():
