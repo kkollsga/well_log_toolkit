@@ -9,8 +9,8 @@ def _get_version():
         return version("logsuite")
     except Exception:
         try:
-            from pathlib import Path
             import re
+            from pathlib import Path
 
             pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
             if pyproject_path.exists():

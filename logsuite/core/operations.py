@@ -15,9 +15,9 @@ with different depth grids must be explicitly resampled first:
     result = well.PHIE + core_resampled
 """
 
+from typing import TYPE_CHECKING, Union
+
 import numpy as np
-import warnings
-from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .property import Property
@@ -151,7 +151,7 @@ class PropertyOperationsMixin:
             )
         return NotImplemented
 
-    def __radd__(self, other: Union[float, int]) -> "Property":
+    def __radd__(self, other: float | int) -> "Property":
         """Reverse add: other + self"""
         return self.__add__(other)
 
@@ -174,7 +174,7 @@ class PropertyOperationsMixin:
             )
         return NotImplemented
 
-    def __rsub__(self, other: Union[float, int]) -> "Property":
+    def __rsub__(self, other: float | int) -> "Property":
         """Reverse subtract: other - self"""
         if np.isscalar(other):
             return self._create_result_property(
@@ -204,7 +204,7 @@ class PropertyOperationsMixin:
             )
         return NotImplemented
 
-    def __rmul__(self, other: Union[float, int]) -> "Property":
+    def __rmul__(self, other: float | int) -> "Property":
         """Reverse multiply: other * self"""
         return self.__mul__(other)
 
@@ -227,7 +227,7 @@ class PropertyOperationsMixin:
             )
         return NotImplemented
 
-    def __rtruediv__(self, other: Union[float, int]) -> "Property":
+    def __rtruediv__(self, other: float | int) -> "Property":
         """Reverse divide: other / self"""
         if np.isscalar(other):
             return self._create_result_property(
@@ -238,7 +238,7 @@ class PropertyOperationsMixin:
             )
         return NotImplemented
 
-    def __pow__(self, other: Union[float, int]) -> "Property":
+    def __pow__(self, other: float | int) -> "Property":
         """Power: self ** other"""
         if np.isscalar(other):
             return self._create_result_property(

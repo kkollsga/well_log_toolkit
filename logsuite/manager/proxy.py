@@ -5,19 +5,17 @@ Provides _ManagerPropertyProxy and _ManagerMultiPropertyProxy which enable
 broadcasting property operations across all wells in a WellDataManager.
 """
 
-from typing import Optional, Union, TYPE_CHECKING
 import warnings
+from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 
-from ..exceptions import PropertyNotFoundError, PropertyTypeError
+from ..analysis.sums_avg import SumsAvgResult, _flatten_to_dataframe, _sanitize_for_json
 from ..core.property import Property
-from ..analysis.sums_avg import SumsAvgResult, _sanitize_for_json, _flatten_to_dataframe
+from ..exceptions import PropertyNotFoundError, PropertyTypeError
 
 if TYPE_CHECKING:
     from .data_manager import WellDataManager
-    from ..core.well import Well
 
 
 class _ManagerPropertyProxy:
@@ -321,7 +319,7 @@ class _ManagerPropertyProxy:
     @property
     def type(self):
         """Get type from first well with this property."""
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 return prop.type
@@ -333,7 +331,7 @@ class _ManagerPropertyProxy:
     def type(self, value: str):
         """Set type for this property in all wells."""
         count = 0
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 prop.type = value
@@ -346,7 +344,7 @@ class _ManagerPropertyProxy:
     @property
     def labels(self):
         """Get labels from first well with this property."""
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 return prop.labels
@@ -362,7 +360,7 @@ class _ManagerPropertyProxy:
         since labels are only meaningful for discrete properties.
         """
         count = 0
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 # Auto-set type to discrete if labels are being set
@@ -378,7 +376,7 @@ class _ManagerPropertyProxy:
     @property
     def colors(self):
         """Get colors from first well with this property."""
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 return prop.colors
@@ -390,7 +388,7 @@ class _ManagerPropertyProxy:
     def colors(self, value: dict):
         """Set colors for this property in all wells."""
         count = 0
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 prop.colors = value
@@ -403,7 +401,7 @@ class _ManagerPropertyProxy:
     @property
     def styles(self):
         """Get styles from first well with this property."""
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 return prop.styles
@@ -415,7 +413,7 @@ class _ManagerPropertyProxy:
     def styles(self, value: dict):
         """Set styles for this property in all wells."""
         count = 0
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 prop.styles = value
@@ -428,7 +426,7 @@ class _ManagerPropertyProxy:
     @property
     def thicknesses(self):
         """Get thicknesses from first well with this property."""
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 return prop.thicknesses
@@ -440,7 +438,7 @@ class _ManagerPropertyProxy:
     def thicknesses(self, value: dict):
         """Set thicknesses for this property in all wells."""
         count = 0
-        for well_name, well in self._manager._wells.items():
+        for _well_name, well in self._manager._wells.items():
             try:
                 prop = well.get_property(self._property_name)
                 prop.thicknesses = value
@@ -1106,7 +1104,7 @@ class _ManagerPropertyProxy:
         return merged
 
     def filter(
-        self, property_name: str, insert_boundaries: Optional[bool] = None
+        self, property_name: str, insert_boundaries: bool | None = None
     ) -> "_ManagerPropertyProxy":
         """
         Add a discrete property filter for grouped statistics across all wells.
@@ -1147,10 +1145,10 @@ class _ManagerPropertyProxy:
 
     def filter_intervals(
         self,
-        intervals: Union[str, dict],
+        intervals: str | dict,
         name: str = "Custom_Intervals",
-        insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None,
+        insert_boundaries: bool | None = None,
+        save: str | None = None,
     ) -> "_ManagerPropertyProxy":
         """
         Filter by custom depth intervals across all wells.
@@ -1195,7 +1193,7 @@ class _ManagerPropertyProxy:
             self._manager, self._property_name, self._operation, self._filters, intervals_config
         )
 
-    def discrete_summary(self, precision: int = 6, skip: Optional[list] = None) -> dict:
+    def discrete_summary(self, precision: int = 6, skip: list | None = None) -> dict:
         """
         Compute discrete summary statistics across all wells.
 
@@ -1244,7 +1242,7 @@ class _ManagerPropertyProxy:
 
         return _sanitize_for_json(result)
 
-    def _compute_discrete_summary_for_well(self, well, precision: int, skip: Optional[list]):
+    def _compute_discrete_summary_for_well(self, well, precision: int, skip: list | None):
         """
         Helper to compute discrete_summary for a property in a well.
         """
@@ -1271,8 +1269,8 @@ class _ManagerPropertyProxy:
 
     def sums_avg(
         self,
-        weighted: Optional[bool] = None,
-        arithmetic: Optional[bool] = None,
+        weighted: bool | None = None,
+        arithmetic: bool | None = None,
         precision: int = 6,
         nested: bool = False,
     ) -> SumsAvgResult:
@@ -1387,8 +1385,8 @@ class _ManagerPropertyProxy:
     def _compute_sums_avg_for_well(
         self,
         well,
-        weighted: Optional[bool],
-        arithmetic: Optional[bool],
+        weighted: bool | None,
+        arithmetic: bool | None,
         precision: int,
         nested: bool,
     ):
@@ -1430,7 +1428,7 @@ class _ManagerPropertyProxy:
                     # Add well-level thickness for this source if using filter_intervals
                     if self._custom_intervals and result:
                         well_thickness = 0.0
-                        for key, value in result.items():
+                        for _key, value in result.items():
                             if isinstance(value, dict) and "thickness" in value:
                                 well_thickness += value["thickness"]
                         if well_thickness > 0:
@@ -1474,7 +1472,7 @@ class _ManagerPropertyProxy:
             # Add well-level thickness (sum of all zone thicknesses) if using filter_intervals
             if self._custom_intervals and result:
                 well_thickness = 0.0
-                for key, value in result.items():
+                for _key, value in result.items():
                     if isinstance(value, dict) and "thickness" in value:
                         well_thickness += value["thickness"]
                 if well_thickness > 0:
@@ -1518,7 +1516,7 @@ class _ManagerPropertyProxy:
                         # Add well-level thickness for this source if using filter_intervals
                         if self._custom_intervals and result:
                             well_thickness = 0.0
-                            for key, value in result.items():
+                            for _key, value in result.items():
                                 if isinstance(value, dict) and "thickness" in value:
                                     well_thickness += value["thickness"]
                             if well_thickness > 0:
@@ -1567,7 +1565,6 @@ class _ManagerPropertyProxy:
         [PHIE] (856 samples)
         ...
         """
-        import numpy as np
 
         # Get all wells that have this property
         wells_with_prop = []
@@ -1633,6 +1630,7 @@ class _ManagerPropertyProxy:
                 f"Skipped {len(skipped_wells)} well(s) without property '{self._property_name}': "
                 f"{', '.join(skipped_wells[:3])}{'...' if len(skipped_wells) > 3 else ''}",
                 UserWarning,
+                stacklevel=2,
             )
 
 
@@ -1656,8 +1654,8 @@ class _ManagerMultiPropertyProxy:
         self,
         manager: "WellDataManager",
         property_names: list[str],
-        filters: Optional[list[tuple]] = None,
-        custom_intervals: Optional[dict] = None,
+        filters: list[tuple] | None = None,
+        custom_intervals: dict | None = None,
     ):
         self._manager = manager
         self._property_names = property_names
@@ -1678,7 +1676,7 @@ class _ManagerMultiPropertyProxy:
         return self.filter(name)
 
     def filter(
-        self, property_name: str, insert_boundaries: Optional[bool] = None
+        self, property_name: str, insert_boundaries: bool | None = None
     ) -> "_ManagerMultiPropertyProxy":
         """
         Add a filter (discrete property) to group statistics by.
@@ -1702,10 +1700,10 @@ class _ManagerMultiPropertyProxy:
 
     def filter_intervals(
         self,
-        intervals: Union[str, list, dict],
+        intervals: str | list | dict,
         name: str = "Custom_Intervals",
-        insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None,
+        insert_boundaries: bool | None = None,
+        save: str | None = None,
     ) -> "_ManagerMultiPropertyProxy":
         """
         Filter by custom depth intervals.
@@ -1739,7 +1737,7 @@ class _ManagerMultiPropertyProxy:
         )
 
     def sums_avg(
-        self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6
+        self, weighted: bool | None = None, arithmetic: bool | None = None, precision: int = 6
     ) -> SumsAvgResult:
         """
         Compute statistics for multiple properties across all wells.
@@ -1799,7 +1797,7 @@ class _ManagerMultiPropertyProxy:
         return SumsAvgResult(_sanitize_for_json(result))
 
     def _compute_sums_avg_for_well(
-        self, well, weighted: Optional[bool], arithmetic: Optional[bool], precision: int
+        self, well, weighted: bool | None, arithmetic: bool | None, precision: int
     ):
         """
         Compute multi-property sums_avg for a single well.
@@ -1865,7 +1863,7 @@ class _ManagerMultiPropertyProxy:
         # Add well-level thickness (sum of all zone thicknesses)
         if self._custom_intervals and merged:
             well_thickness = 0.0
-            for key, value in merged.items():
+            for _key, value in merged.items():
                 if isinstance(value, dict) and "thickness" in value:
                     well_thickness += value["thickness"]
             merged["thickness"] = round(well_thickness, 6)

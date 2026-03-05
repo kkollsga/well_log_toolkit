@@ -1,13 +1,11 @@
 """Template class for well log display configuration."""
 
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Union
+
 import json
+from pathlib import Path
 
 import pandas as pd
-
-from . import DEFAULT_COLORS
 
 
 class Template:
@@ -67,7 +65,7 @@ class Template:
     >>> template2 = Template.load("reservoir_template.json")
     """
 
-    def __init__(self, name: str = "default", tracks: Optional[list[dict]] = None):
+    def __init__(self, name: str = "default", tracks: list[dict] | None = None):
         """Initialize template."""
         self.name = name
         self.tracks = tracks if tracks is not None else []
@@ -76,13 +74,13 @@ class Template:
     def add_track(
         self,
         track_type: str = "continuous",
-        logs: Optional[list[dict]] = None,
-        fill: Optional[Union[dict, list[dict]]] = None,
-        tops: Optional[dict] = None,
+        logs: list[dict] | None = None,
+        fill: dict | list[dict] | None = None,
+        tops: dict | None = None,
         width: float = 1.0,
-        title: Optional[str] = None,
+        title: str | None = None,
         log_scale: bool = False,
-    ) -> "Template":
+    ) -> Template:
         """
         Add a track to the template.
 
@@ -319,7 +317,7 @@ class Template:
         self.tracks.append(track)
         return self
 
-    def remove_track(self, index: int) -> "Template":
+    def remove_track(self, index: int) -> Template:
         """
         Remove track at specified index.
 
@@ -345,12 +343,12 @@ class Template:
 
     def add_tops(
         self,
-        property_name: Optional[str] = None,
-        tops_dict: Optional[dict[float, str]] = None,
-        colors: Optional[dict[float, str]] = None,
-        styles: Optional[dict[float, str]] = None,
-        thicknesses: Optional[dict[float, float]] = None,
-    ) -> "Template":
+        property_name: str | None = None,
+        tops_dict: dict[float, str] | None = None,
+        colors: dict[float, str] | None = None,
+        styles: dict[float, str] | None = None,
+        thicknesses: dict[float, float] | None = None,
+    ) -> Template:
         """
         Add well tops configuration to the template.
 
@@ -431,7 +429,7 @@ class Template:
         self.tops.append(tops_config)
         return self
 
-    def edit_track(self, index: int, **kwargs) -> "Template":
+    def edit_track(self, index: int, **kwargs) -> Template:
         """
         Edit track at specified index.
 
@@ -524,7 +522,7 @@ class Template:
             )
         return pd.DataFrame(rows)
 
-    def save(self, filepath: Union[str, Path]) -> None:
+    def save(self, filepath: str | Path) -> None:
         """
         Save template to JSON file.
 
@@ -543,7 +541,7 @@ class Template:
             json.dump(data, f, indent=2)
 
     @classmethod
-    def load(cls, filepath: Union[str, Path]) -> "Template":
+    def load(cls, filepath: str | Path) -> Template:
         """
         Load template from JSON file.
 
@@ -562,7 +560,7 @@ class Template:
         >>> template = Template.load("reservoir_template.json")
         """
         filepath = Path(filepath)
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             data = json.load(f)
         template = cls(name=data.get("name", "loaded"), tracks=data.get("tracks", []))
         template.tops = data.get("tops", [])
@@ -586,7 +584,7 @@ class Template:
         return {"name": self.name, "tracks": self.tracks, "tops": self.tops}
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Template":
+    def from_dict(cls, data: dict) -> Template:
         """
         Create template from dictionary.
 

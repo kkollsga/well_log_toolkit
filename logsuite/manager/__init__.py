@@ -8,7 +8,7 @@ proxy : Property proxy classes for broadcasting operations across wells
 """
 
 from .data_manager import WellDataManager
-from .proxy import _ManagerPropertyProxy, _ManagerMultiPropertyProxy
+from .proxy import _ManagerMultiPropertyProxy, _ManagerPropertyProxy
 
 __all__ = [
     "WellDataManager",

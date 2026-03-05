@@ -5,16 +5,16 @@ for prediction. Each regression class can be used independently or as part of
 crossplot visualizations.
 """
 
-from typing import Optional, Union, Tuple, Callable, Dict
+from abc import ABC, abstractmethod
+
 import numpy as np
 from numpy.typing import ArrayLike
-from abc import ABC, abstractmethod
 
 
 class RegressionBase(ABC):
     """Base class for all regression types."""
 
-    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, locked_params: dict[str, float] | None = None):
         """Initialize regression base class.
 
         Args:
@@ -22,12 +22,12 @@ class RegressionBase(ABC):
                           These parameters will not be fitted and will remain constant.
         """
         self.fitted = False
-        self.x_data: Optional[np.ndarray] = None
-        self.y_data: Optional[np.ndarray] = None
-        self.r_squared: Optional[float] = None
-        self.rmse: Optional[float] = None
-        self.x_range: Optional[Tuple[float, float]] = None
-        self._locked_params: Dict[str, float] = locked_params if locked_params is not None else {}
+        self.x_data: np.ndarray | None = None
+        self.y_data: np.ndarray | None = None
+        self.r_squared: float | None = None
+        self.rmse: float | None = None
+        self.x_range: tuple[float, float] | None = None
+        self._locked_params: dict[str, float] = locked_params if locked_params is not None else {}
 
     @abstractmethod
     def fit(self, x: ArrayLike, y: ArrayLike) -> "RegressionBase":
@@ -105,7 +105,7 @@ class RegressionBase(ABC):
         # RMSE calculation (always in linear space)
         self.rmse = np.sqrt(np.mean((y - y_pred) ** 2))
 
-    def _prepare_data(self, x: ArrayLike, y: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
+    def _prepare_data(self, x: ArrayLike, y: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
         """Prepare and clean data for regression.
 
         Args:
@@ -167,7 +167,7 @@ class RegressionBase(ABC):
                 self._locked_params.pop(name, None)
         return self
 
-    def get_locked_params(self) -> Dict[str, float]:
+    def get_locked_params(self) -> dict[str, float]:
         """Get currently locked parameters.
 
         Returns:
@@ -187,8 +187,8 @@ class RegressionBase(ABC):
         return param_name in self._locked_params
 
     def get_plot_data(
-        self, x_range: Optional[Tuple[float, float]] = None, num_points: int = 100
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self, x_range: tuple[float, float] | None = None, num_points: int = 100
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Get x and y data for plotting the regression line.
 
         Args:
@@ -241,15 +241,15 @@ class LinearRegression(RegressionBase):
         >>> reg.fit(x, y)  # Only fits intercept
     """
 
-    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, locked_params: dict[str, float] | None = None):
         """Initialize linear regression.
 
         Args:
             locked_params: Dictionary to lock parameters. Valid keys: 'slope', 'intercept'
         """
         super().__init__(locked_params)
-        self.slope: Optional[float] = None
-        self.intercept: Optional[float] = None
+        self.slope: float | None = None
+        self.intercept: float | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "LinearRegression":
         """Fit linear regression model.
@@ -330,15 +330,15 @@ class LogarithmicRegression(RegressionBase):
         >>> reg.fit(x, y)  # Only fits b
     """
 
-    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, locked_params: dict[str, float] | None = None):
         """Initialize logarithmic regression.
 
         Args:
             locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
         """
         super().__init__(locked_params)
-        self.a: Optional[float] = None
-        self.b: Optional[float] = None
+        self.a: float | None = None
+        self.b: float | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "LogarithmicRegression":
         """Fit logarithmic regression model.
@@ -429,15 +429,15 @@ class ExponentialRegression(RegressionBase):
         >>> reg.fit(x, y)  # Only fits b
     """
 
-    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, locked_params: dict[str, float] | None = None):
         """Initialize exponential regression.
 
         Args:
             locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
         """
         super().__init__(locked_params)
-        self.a: Optional[float] = None
-        self.b: Optional[float] = None
+        self.a: float | None = None
+        self.b: float | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "ExponentialRegression":
         """Fit exponential regression model.
@@ -525,7 +525,7 @@ class PolynomialRegression(RegressionBase):
         >>> reg.fit(x, y)  # Only fits c1 and c2
     """
 
-    def __init__(self, degree: int = 2, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, degree: int = 2, locked_params: dict[str, float] | None = None):
         """Initialize polynomial regression.
 
         Args:
@@ -537,7 +537,7 @@ class PolynomialRegression(RegressionBase):
         if degree < 1:
             raise ValueError("Polynomial degree must be at least 1")
         self.degree = degree
-        self.coefficients: Optional[np.ndarray] = None
+        self.coefficients: np.ndarray | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "PolynomialRegression":
         """Fit polynomial regression model.
@@ -672,15 +672,15 @@ class PowerRegression(RegressionBase):
         >>> reg.fit(x, y)  # Only fits a
     """
 
-    def __init__(self, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, locked_params: dict[str, float] | None = None):
         """Initialize power regression.
 
         Args:
             locked_params: Dictionary to lock parameters. Valid keys: 'a', 'b'
         """
         super().__init__(locked_params)
-        self.a: Optional[float] = None
-        self.b: Optional[float] = None
+        self.a: float | None = None
+        self.b: float | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "PowerRegression":
         """Fit power regression model.
@@ -791,7 +791,7 @@ class PolynomialExponentialRegression(RegressionBase):
         >>> reg.fit(x, y)  # Forces constant term to 0
     """
 
-    def __init__(self, degree: int = 2, locked_params: Optional[Dict[str, float]] = None):
+    def __init__(self, degree: int = 2, locked_params: dict[str, float] | None = None):
         """Initialize polynomial-exponential regression.
 
         Args:
@@ -803,7 +803,7 @@ class PolynomialExponentialRegression(RegressionBase):
         if degree < 1:
             raise ValueError("Polynomial degree must be at least 1")
         self.degree = degree
-        self.coefficients: Optional[np.ndarray] = None
+        self.coefficients: np.ndarray | None = None
 
     def fit(self, x: ArrayLike, y: ArrayLike) -> "PolynomialExponentialRegression":
         """Fit polynomial-exponential regression model.

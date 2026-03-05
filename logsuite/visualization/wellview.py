@@ -1,15 +1,16 @@
 """WellView class for interactive well log display."""
 
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Union, TYPE_CHECKING
-import warnings
 
-import numpy as np
+import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.collections import PolyCollection
-from matplotlib.colors import Normalize, LogNorm
-from matplotlib.patches import Rectangle, Patch
+from matplotlib.colors import LogNorm, Normalize
+from matplotlib.patches import Rectangle
 
 from . import DEFAULT_COLORS, _downsample_for_plotting
 from .template import Template
@@ -114,13 +115,13 @@ class WellView:
 
     def __init__(
         self,
-        well: "Well",
-        depth_range: Optional[tuple[float, float]] = None,
-        tops: Optional[list[str]] = None,
-        template: Optional[Union[Template, dict, str]] = None,
-        figsize: Optional[tuple[float, float]] = None,
+        well: Well,
+        depth_range: tuple[float, float] | None = None,
+        tops: list[str] | None = None,
+        template: Template | dict | str | None = None,
+        figsize: tuple[float, float] | None = None,
         dpi: int = 100,
-        header_config: Optional[dict] = None,
+        header_config: dict | None = None,
     ):
         """
         Initialize WellView.
@@ -246,7 +247,7 @@ class WellView:
 
         # Calculate figure size if not provided
         if figsize is None:
-            n_tracks = len(self.template.tracks)
+            len(self.template.tracks)
             total_width = sum(track.get("width", 1.0) for track in self.template.tracks)
             figsize = (max(2 * total_width, 8), 10)
 
@@ -339,7 +340,7 @@ class WellView:
 
         # Only raise error if NONE of the tops were found
         if not tops_depths:
-            available_tops = list(set(name for _, name in all_tops_list))
+            available_tops = list({name for _, name in all_tops_list})
             raise ValueError(
                 f"None of the specified formation tops were found: {tops_list}. "
                 f"Available tops: {available_tops}"
@@ -367,12 +368,12 @@ class WellView:
     def add_track(
         self,
         track_type: str = "continuous",
-        logs: Optional[list[dict]] = None,
-        fill: Optional[Union[dict, list[dict]]] = None,
+        logs: list[dict] | None = None,
+        fill: dict | list[dict] | None = None,
         width: float = 1.0,
-        title: Optional[str] = None,
+        title: str | None = None,
         log_scale: bool = False,
-    ) -> "WellView":
+    ) -> WellView:
         """
         Add a temporary track to this view (not saved to template).
 
@@ -437,13 +438,13 @@ class WellView:
 
     def add_tops(
         self,
-        property_name: Optional[str] = None,
-        tops_dict: Optional[dict[float, str]] = None,
-        colors: Optional[dict[float, str]] = None,
-        styles: Optional[dict[float, str]] = None,
-        thicknesses: Optional[dict[float, float]] = None,
-        source: Optional[str] = None,
-    ) -> "WellView":
+        property_name: str | None = None,
+        tops_dict: dict[float, str] | None = None,
+        colors: dict[float, str] | None = None,
+        styles: dict[float, str] | None = None,
+        thicknesses: dict[float, float] | None = None,
+        source: str | None = None,
+    ) -> WellView:
         """
         Add temporary well tops to this view (not saved to template).
 
@@ -549,7 +550,7 @@ class WellView:
                 raise ValueError(
                     f"Property '{property_name}' not found in well. "
                     f"Available properties: {available}"
-                )
+                ) from None
 
             if prop.type != "discrete":
                 raise ValueError(
@@ -637,7 +638,7 @@ class WellView:
         """
         # Identify which tracks are depth tracks (skip those)
         non_depth_axes = []
-        for ax, track in zip(self.axes, all_tracks):
+        for ax, track in zip(self.axes, all_tracks, strict=False):
             if track.get("type", "continuous") != "depth":
                 non_depth_axes.append(ax)
 
@@ -679,9 +680,12 @@ class WellView:
                     va="bottom",
                     fontsize=8,
                     color="#272E39",  # Dark grey text color
-                    bbox=dict(
-                        facecolor="white", edgecolor=color, boxstyle="round,pad=0.3", alpha=0.9
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "edgecolor": color,
+                        "boxstyle": "round,pad=0.3",
+                        "alpha": 0.9,
+                    },
                     zorder=11,
                     clip_on=False,  # Allow label to extend beyond axes
                 )
@@ -714,7 +718,7 @@ class WellView:
             try:
                 prop = self.well.get_property(prop_name)
             except Exception as e:
-                warnings.warn(f"Could not get property '{prop_name}': {e}")
+                warnings.warn(f"Could not get property '{prop_name}': {e}", stacklevel=2)
                 continue
 
             # Check if property has its own depth array (different from reference depth)
@@ -1115,9 +1119,12 @@ class WellView:
                     color=color,
                     clip_on=False,
                     zorder=11,
-                    bbox=dict(
-                        facecolor="white", edgecolor="none", boxstyle="round,pad=0.3", alpha=1.0
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "edgecolor": "none",
+                        "boxstyle": "round,pad=0.3",
+                        "alpha": 1.0,
+                    },
                 )
 
                 # Add max value text on right side of line (with white background)
@@ -1132,9 +1139,12 @@ class WellView:
                     color=color,
                     clip_on=False,
                     zorder=11,
-                    bbox=dict(
-                        facecolor="white", edgecolor="none", boxstyle="round,pad=0.3", alpha=1.0
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "edgecolor": "none",
+                        "boxstyle": "round,pad=0.3",
+                        "alpha": 1.0,
+                    },
                 )
 
     def _add_discrete_legend(self, ax: plt.Axes, legend_info: list[dict], title: str) -> None:
@@ -1336,7 +1346,7 @@ class WellView:
                 else:
                     left_values = values
             else:
-                warnings.warn(f"Fill left curve '{curve_name}' not found")
+                warnings.warn(f"Fill left curve '{curve_name}' not found", stacklevel=2)
                 return
         elif "value" in left_spec:
             # For fixed values, need to know which curve's scale to use
@@ -1362,7 +1372,7 @@ class WellView:
             else:
                 left_values = np.full(n_points, 1.0)
         else:
-            warnings.warn("Fill left boundary not properly specified")
+            warnings.warn("Fill left boundary not properly specified", stacklevel=2)
             return
 
         # Get right boundary (normalized)
@@ -1384,7 +1394,7 @@ class WellView:
                 else:
                     right_values = values
             else:
-                warnings.warn(f"Fill right curve '{curve_name}' not found")
+                warnings.warn(f"Fill right curve '{curve_name}' not found", stacklevel=2)
                 return
         elif "value" in right_spec:
             fixed_val = right_spec["value"]
@@ -1408,7 +1418,7 @@ class WellView:
             else:
                 right_values = np.full(n_points, 1.0)
         else:
-            warnings.warn("Fill right boundary not properly specified")
+            warnings.warn("Fill right boundary not properly specified", stacklevel=2)
             return
 
         # Handle crossover - collapse fill where left is to the right of right
@@ -1445,7 +1455,8 @@ class WellView:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
                     warnings.warn(
-                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves"
+                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves",
+                        stacklevel=2,
                     )
                     # Try left boundary curve first, then right boundary curve
                     if "curve" in left_spec and left_spec["curve"] in plotted_curves:
@@ -1453,7 +1464,7 @@ class WellView:
                     elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
                         colormap_values, _ = plotted_curves[right_spec["curve"]]
                     else:
-                        warnings.warn("Cannot determine colormap values")
+                        warnings.warn("Cannot determine colormap values", stacklevel=2)
                         return
             else:
                 # Default: use left boundary curve's original values if available,
@@ -1464,7 +1475,8 @@ class WellView:
                     colormap_values, _ = plotted_curves[right_spec["curve"]]
                 else:
                     warnings.warn(
-                        "Cannot determine colormap values (no curve specified for left or right)"
+                        "Cannot determine colormap values (no curve specified for left or right)",
+                        stacklevel=2,
                     )
                     return
 
@@ -1477,7 +1489,8 @@ class WellView:
             valid_mask = ~np.isnan(colormap_values)
             if not np.any(valid_mask):
                 warnings.warn(
-                    f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill."
+                    "Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.",
+                    stacklevel=2,
                 )
                 return
 
@@ -1643,14 +1656,14 @@ class WellView:
             if curve_name in plotted_curves:
                 left_values, _ = plotted_curves[curve_name]
             else:
-                warnings.warn(f"Fill left curve '{curve_name}' not found")
+                warnings.warn(f"Fill left curve '{curve_name}' not found", stacklevel=2)
                 return
         elif "value" in left_spec:
             left_values = np.full_like(depth, left_spec["value"])
         elif "track_edge" in left_spec:
             left_values = np.full_like(depth, ax.get_xlim()[0])
         else:
-            warnings.warn("Fill left boundary not properly specified")
+            warnings.warn("Fill left boundary not properly specified", stacklevel=2)
             return
 
         # Get right boundary
@@ -1659,14 +1672,14 @@ class WellView:
             if curve_name in plotted_curves:
                 right_values, _ = plotted_curves[curve_name]
             else:
-                warnings.warn(f"Fill right curve '{curve_name}' not found")
+                warnings.warn(f"Fill right curve '{curve_name}' not found", stacklevel=2)
                 return
         elif "value" in right_spec:
             right_values = np.full_like(depth, right_spec["value"])
         elif "track_edge" in right_spec:
             right_values = np.full_like(depth, ax.get_xlim()[1])
         else:
-            warnings.warn("Fill right boundary not properly specified")
+            warnings.warn("Fill right boundary not properly specified", stacklevel=2)
             return
 
         # Handle crossover - collapse fill where left is to the right of right
@@ -1704,7 +1717,8 @@ class WellView:
                     colormap_values, _ = plotted_curves[colormap_curve_name]
                 else:
                     warnings.warn(
-                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves"
+                        f"Colormap curve '{colormap_curve_name}' not found, using boundary curves",
+                        stacklevel=2,
                     )
                     # Try left boundary curve first, then right boundary curve
                     if "curve" in left_spec and left_spec["curve"] in plotted_curves:
@@ -1712,7 +1726,7 @@ class WellView:
                     elif "curve" in right_spec and right_spec["curve"] in plotted_curves:
                         colormap_values, _ = plotted_curves[right_spec["curve"]]
                     else:
-                        warnings.warn("Cannot determine colormap values")
+                        warnings.warn("Cannot determine colormap values", stacklevel=2)
                         return
             else:
                 # Default: use left boundary curve if available, otherwise right boundary curve
@@ -1722,7 +1736,8 @@ class WellView:
                     colormap_values, _ = plotted_curves[right_spec["curve"]]
                 else:
                     warnings.warn(
-                        "Cannot determine colormap values (no curve specified for left or right)"
+                        "Cannot determine colormap values (no curve specified for left or right)",
+                        stacklevel=2,
                     )
                     return
 
@@ -1735,7 +1750,8 @@ class WellView:
             valid_mask = ~np.isnan(colormap_values)
             if not np.any(valid_mask):
                 warnings.warn(
-                    f"Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill."
+                    "Colormap curve has no valid (non-NaN) values in the current depth range. Skipping fill.",
+                    stacklevel=2,
                 )
                 return
 
@@ -1809,7 +1825,7 @@ class WellView:
         try:
             prop = self.well.get_property(prop_name)
         except Exception as e:
-            warnings.warn(f"Could not get property '{prop_name}': {e}")
+            warnings.warn(f"Could not get property '{prop_name}': {e}", stacklevel=2)
             return
 
         # For discrete data, we need ALL depth/value pairs (not masked) to properly
@@ -1852,7 +1868,7 @@ class WellView:
         else:
             # No custom colors defined, use defaults
             colors = DEFAULT_COLORS[: len(unique_vals)]
-            color_map = dict(zip(unique_vals, colors))
+            color_map = dict(zip(unique_vals, colors, strict=False))
 
         # For discrete data, the value at depth[i] represents the zone from depth[i] to depth[i+1]
         # Build segments, then clip to depth range
@@ -1946,7 +1962,7 @@ class WellView:
         try:
             tops_prop = self.well.get_property(prop_name)
         except Exception as e:
-            warnings.warn(f"Could not get tops property '{prop_name}': {e}")
+            warnings.warn(f"Could not get tops property '{prop_name}': {e}", stacklevel=2)
             return
 
         # Cache masked depth array
@@ -2045,7 +2061,7 @@ class WellView:
             self.axes = [self.axes]
 
         # Plot each track
-        for ax, track in zip(self.axes, all_tracks):
+        for ax, track in zip(self.axes, all_tracks, strict=False):
             track_type = track.get("type", "continuous")
 
             if track_type == "continuous":
@@ -2107,7 +2123,7 @@ class WellView:
         plt.show()
 
     def save(
-        self, filepath: Union[str, Path], dpi: Optional[int] = None, bbox_inches: str = "tight"
+        self, filepath: str | Path, dpi: int | None = None, bbox_inches: str = "tight"
     ) -> None:
         """
         Save the well log plot to file.

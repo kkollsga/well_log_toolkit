@@ -3,15 +3,15 @@ Well class for managing log properties from a single well.
 """
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import numpy as np
 import pandas as pd
 
-from ..exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
-from .property import Property
+from ..exceptions import PropertyNotFoundError, WellError, WellNameMismatchError
 from ..io import LasFile
-from ..utils import sanitize_property_name, sanitize_well_name, filter_names, suggest_similar_names
+from ..utils import filter_names, sanitize_property_name, sanitize_well_name, suggest_similar_names
+from .property import Property
 
 if TYPE_CHECKING:
     from ..manager import WellDataManager
@@ -64,10 +64,10 @@ class SourceView:
 
     def data(
         self,
-        include: Optional[Union[str, list[str]]] = None,
+        include: str | list[str] | None = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None,
+        clip_to_property: str | None = None,
     ) -> pd.DataFrame:
         """
         Export properties from this source to DataFrame.
@@ -241,7 +241,7 @@ class Well:
         if isinstance(value, Property) and not name.startswith("_"):
             # Check if property already exists
             try:
-                existing_prop = self.get_property(name)
+                self.get_property(name)
                 # Property exists - overwrite its data
                 self._overwrite_property(name, value)
             except (AttributeError, PropertyNotFoundError):
@@ -341,13 +341,13 @@ class Well:
 
     def load_las(
         self,
-        las: Union[LasFile, str, Path, list[Union[str, Path]]],
-        path: Optional[Union[str, Path]] = None,
+        las: LasFile | str | Path | list[str | Path],
+        path: str | Path | None = None,
         sampled: bool = False,
-        resample_method: Optional[str] = None,
+        resample_method: str | None = None,
         merge: bool = False,
-        combine: Optional[str] = None,
-        source_name: Optional[str] = None,
+        combine: str | None = None,
+        source_name: str | None = None,
     ) -> "Well":
         """
         Load LAS file(s) into this well, organized by source.
@@ -554,7 +554,6 @@ class Well:
             ]
 
             # Check each variant
-            suffix_found = False
             for well_variant in well_name_variants:
                 # Check if filename starts with this variant (case-insensitive for robustness)
                 if base_source_name.lower().startswith(well_variant.lower()):
@@ -563,7 +562,6 @@ class Well:
                     suffix = suffix.lstrip("_-")
                     if suffix:
                         base_source_name = suffix
-                        suffix_found = True
                         break
 
             # Now sanitize for Python attribute access
@@ -621,7 +619,7 @@ class Well:
         depth_col = las.depth_column
 
         if depth_col is None:
-            raise WellError(f"No depth column found in LAS file")
+            raise WellError("No depth column found in LAS file")
 
         # Get discrete property information from LAS file (from header, no data loading)
         discrete_props = las.discrete_properties
@@ -723,9 +721,9 @@ class Well:
     def add_dataframe(
         self,
         df: pd.DataFrame,
-        unit_mappings: Optional[dict[str, str]] = None,
-        type_mappings: Optional[dict[str, str]] = None,
-        label_mappings: Optional[dict[str, dict[int, str]]] = None,
+        unit_mappings: dict[str, str] | None = None,
+        type_mappings: dict[str, str] | None = None,
+        label_mappings: dict[str, dict[int, str]] | None = None,
     ) -> "Well":
         """
         Add properties from a DataFrame to this well as a new source.
@@ -908,7 +906,7 @@ class Well:
         self._sources[name]["modified"] = True
         return self
 
-    def remove_source(self, name: Union[str, list[str]]) -> "Well":
+    def remove_source(self, name: str | list[str]) -> "Well":
         """
         Remove one or more sources and all their properties from the well.
 
@@ -966,7 +964,7 @@ class Well:
 
         return self
 
-    def __getattr__(self, name: str) -> Union[SourceView, Property]:
+    def __getattr__(self, name: str) -> SourceView | Property:
         """
         Enable source and property access via attributes.
 
@@ -1136,7 +1134,7 @@ class Well:
         return list(self._sources.keys())
 
     @property
-    def original_las(self) -> Optional[LasFile]:
+    def original_las(self) -> LasFile | None:
         """
         Get the first (original) LAS file loaded into this well.
 
@@ -1159,7 +1157,7 @@ class Well:
         first_source = next(iter(self._sources.values()))
         return first_source["las_file"]
 
-    def get_property(self, name: str, source: Optional[str] = None) -> Property:
+    def get_property(self, name: str, source: str | None = None) -> Property:
         """
         Explicit property getter.
 
@@ -1313,9 +1311,7 @@ class Well:
         return list(self._saved_filter_intervals.keys())
 
     @staticmethod
-    def _is_regular_grid(
-        depth: np.ndarray, tolerance: float = 1e-6
-    ) -> tuple[bool, Optional[float]]:
+    def _is_regular_grid(depth: np.ndarray, tolerance: float = 1e-6) -> tuple[bool, float | None]:
         """
         Check if a depth grid has regular spacing.
 
@@ -1351,12 +1347,12 @@ class Well:
     def _merge_properties(
         self,
         method: str = "match",
-        sources: Optional[list[str]] = None,
-        properties: Optional[list[str]] = None,
-        depth_step: Optional[float] = None,
-        depth_range: Optional[tuple[float, float]] = None,
-        depth_grid: Optional[np.ndarray] = None,
-        source_name: Optional[str] = None,
+        sources: list[str] | None = None,
+        properties: list[str] | None = None,
+        depth_step: float | None = None,
+        depth_range: tuple[float, float] | None = None,
+        depth_grid: np.ndarray | None = None,
+        source_name: str | None = None,
     ) -> dict[str, Property]:
         """
         Internal method to merge properties without modifying originals.
@@ -1541,7 +1537,7 @@ class Well:
             # Create new concatenated properties
             for name, prop in props_to_merge.items():
                 # Create a mapping from original depth to values
-                depth_to_value = dict(zip(prop.depth, prop.values))
+                depth_to_value = dict(zip(prop.depth, prop.values, strict=False))
 
                 # Fill values for unique depths (NaN where depth doesn't exist)
                 concat_values = np.array([depth_to_value.get(d, np.nan) for d in unique_depths])
@@ -1619,7 +1615,7 @@ class Well:
             for name, prop in props_to_merge.items():
                 if prop.type == "continuous":
                     # Continuous properties: require exact depth match
-                    depth_to_value = dict(zip(prop.depth, prop.values))
+                    depth_to_value = dict(zip(prop.depth, prop.values, strict=False))
 
                     # Match values to reference depth (NaN where depth doesn't exist in this property)
                     matched_values = np.array(
@@ -1655,12 +1651,12 @@ class Well:
     def merge(
         self,
         method: str = "match",
-        sources: Optional[list[str]] = None,
-        properties: Optional[list[str]] = None,
-        depth_step: Optional[float] = None,
-        depth_range: Optional[tuple[float, float]] = None,
-        depth_grid: Optional[np.ndarray] = None,
-        source_name: Optional[str] = None,
+        sources: list[str] | None = None,
+        properties: list[str] | None = None,
+        depth_step: float | None = None,
+        depth_range: tuple[float, float] | None = None,
+        depth_grid: np.ndarray | None = None,
+        source_name: str | None = None,
     ) -> "Well":
         """
         Merge properties from multiple sources into a new "merged" source.
@@ -1765,13 +1761,13 @@ class Well:
 
     def data(
         self,
-        reference_property: Optional[str] = None,
-        include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None,
+        reference_property: str | None = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
         merge_method: str = "match",
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None,
+        clip_to_property: str | None = None,
     ) -> pd.DataFrame:
         """
         Export properties as DataFrame with optional merging and filtering.
@@ -1958,8 +1954,8 @@ class Well:
     def head(
         self,
         n: int = 5,
-        include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Return first n rows of well data.
@@ -1991,10 +1987,10 @@ class Well:
 
     def to_las(
         self,
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
         store_labels: bool = True,
-        use_template: Union[bool, LasFile, None] = None,
+        use_template: bool | LasFile | None = None,
     ) -> LasFile:
         """
         Convert well properties to a LasFile object.
@@ -2058,7 +2054,7 @@ class Well:
 
         # Collect all properties across all sources
         all_properties = {}  # {prop_name: property}
-        for source_name, source_data in self._sources.items():
+        for _source_name, source_data in self._sources.items():
             for prop_name, prop in source_data["properties"].items():
                 if prop_name not in all_properties:
                     all_properties[prop_name] = prop
@@ -2122,7 +2118,7 @@ class Well:
         ref_prop = next(iter(props_dict.values()))
         data = {"DEPT": ref_prop.depth}
 
-        for name, prop in props_dict.items():
+        for _name, prop in props_dict.items():
             data[prop.original_name] = prop.values
 
         df = pd.DataFrame(data)
@@ -2164,12 +2160,12 @@ class Well:
 
     def export_to_las(
         self,
-        filepath: Union[str, Path],
-        include: Optional[list[str]] = None,
-        exclude: Optional[list[str]] = None,
+        filepath: str | Path,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
         store_labels: bool = True,
         null_value: float = -999.25,
-        use_template: Union[bool, LasFile, None] = None,
+        use_template: bool | LasFile | None = None,
     ) -> None:
         """
         Export well data to LAS 2.0 format file.
@@ -2230,7 +2226,7 @@ class Well:
         )
         las.export(filepath, null_value=null_value)
 
-    def delete_renamed_sources(self, folder_path: Union[str, Path]) -> None:
+    def delete_renamed_sources(self, folder_path: str | Path) -> None:
         """
         Delete old LAS files for sources that were renamed.
 
@@ -2269,7 +2265,7 @@ class Well:
         # Clear the rename list after processing
         self._renamed_sources.clear()
 
-    def delete_marked_sources(self, folder_path: Union[str, Path]) -> None:
+    def delete_marked_sources(self, folder_path: str | Path) -> None:
         """
         Delete LAS files for sources marked for deletion.
 
@@ -2306,7 +2302,7 @@ class Well:
         # Clear the deletion list after processing
         self._deleted_sources.clear()
 
-    def export_sources(self, folder_path: Union[str, Path]) -> None:
+    def export_sources(self, folder_path: str | Path) -> None:
         """
         Export all sources as individual LAS files to a folder.
 
@@ -2360,7 +2356,7 @@ class Well:
 
                 # Build data dictionary with original property names
                 las_data = {original_las.depth_column: depth_data}
-                for prop_name, prop in source_data["properties"].items():
+                for _prop_name, prop in source_data["properties"].items():
                     las_data[prop.original_name] = prop.values
 
                 # Update the LAS data
@@ -2369,7 +2365,7 @@ class Well:
                 # Sync discrete metadata from Property objects to LAS parameter_info
                 # This ensures user-modified labels, colors, styles, and thicknesses are persisted
                 discrete_props = []
-                for prop_name, prop in source_data["properties"].items():
+                for _prop_name, prop in source_data["properties"].items():
                     if prop.type == "discrete" and prop.labels:
                         discrete_props.append(prop.original_name)
                         # Add label mappings to parameter_info
@@ -2429,7 +2425,7 @@ class Well:
                 style_mappings = {}
                 thickness_mappings = {}
 
-                for prop_name, prop in source_data["properties"].items():
+                for _prop_name, prop in source_data["properties"].items():
                     data[prop.original_name] = prop.values
                     unit_mappings[prop.original_name] = prop.unit
                     type_mappings[prop.original_name] = prop.type
@@ -2462,12 +2458,12 @@ class Well:
 
     def WellView(
         self,
-        depth_range: Optional[tuple[float, float]] = None,
-        tops: Optional[list[str]] = None,
-        template: Optional[Union["Template", dict, str]] = None,
-        figsize: Optional[tuple[float, float]] = None,
+        depth_range: tuple[float, float] | None = None,
+        tops: list[str] | None = None,
+        template: Union["Template", dict, str] | None = None,
+        figsize: tuple[float, float] | None = None,
         dpi: int = 100,
-        header_config: Optional[dict] = None,
+        header_config: dict | None = None,
     ) -> "WellView":
         """
         Create a well log display for this well.
@@ -2549,18 +2545,18 @@ class Well:
 
     def Crossplot(
         self,
-        x: Optional[str] = None,
-        y: Optional[str] = None,
-        layers: Optional[dict[str, list[str]]] = None,
-        shape: Optional[str] = None,
-        color: Optional[str] = None,
-        size: Optional[str] = None,
+        x: str | None = None,
+        y: str | None = None,
+        layers: dict[str, list[str]] | None = None,
+        shape: str | None = None,
+        color: str | None = None,
+        size: str | None = None,
         colortemplate: str = "viridis",
-        color_range: Optional[tuple[float, float]] = None,
+        color_range: tuple[float, float] | None = None,
         size_range: tuple[float, float] = (20, 200),
         title: str = "Cross Plot",
-        xlabel: Optional[str] = None,
-        ylabel: Optional[str] = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
         figsize: tuple[float, float] = (10, 8),
         dpi: int = 100,
         marker: str = "o",
@@ -2572,7 +2568,7 @@ class Well:
         y_log: bool = False,
         grid: bool = True,
         grid_alpha: float = 0.3,
-        depth_range: Optional[tuple[float, float]] = None,
+        depth_range: tuple[float, float] | None = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
     ) -> "Crossplot":

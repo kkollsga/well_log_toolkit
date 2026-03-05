@@ -44,41 +44,41 @@ from ._version import _get_version
 
 __version__ = _get_version()
 
-from .manager import WellDataManager
-from .core import Well, Property
-from .io import LasFile
-from .utils import sanitize_well_name, sanitize_property_name
+from .analysis.regression import (
+    ExponentialRegression,
+    LinearRegression,
+    LogarithmicRegression,
+    PolynomialExponentialRegression,
+    PolynomialRegression,
+    PowerRegression,
+)
 from .analysis.statistics import (
+    compute_all_statistics,
     compute_intervals,
-    mean,
-    sum,
-    std,
-    percentile,
-    mode,
     geometric_mean,
     harmonic_mean,
-    compute_all_statistics,
+    mean,
+    mode,
+    percentile,
+    std,
+    sum,
 )
+from .core import Property, Well
 from .exceptions import (
-    WellLogError,
+    DepthAlignmentError,
     LasFileError,
-    UnsupportedVersionError,
     PropertyError,
     PropertyNotFoundError,
     PropertyTypeError,
+    UnsupportedVersionError,
     WellError,
+    WellLogError,
     WellNameMismatchError,
-    DepthAlignmentError,
 )
-from .visualization import Template, WellView, Crossplot
-from .analysis.regression import (
-    LinearRegression,
-    LogarithmicRegression,
-    ExponentialRegression,
-    PolynomialRegression,
-    PowerRegression,
-    PolynomialExponentialRegression,
-)
+from .io import LasFile
+from .manager import WellDataManager
+from .utils import sanitize_property_name, sanitize_well_name
+from .visualization import Crossplot, Template, WellView
 
 __all__ = [
     # Main classes

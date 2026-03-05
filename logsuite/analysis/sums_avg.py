@@ -5,8 +5,6 @@ Provides the SumsAvgResult dictionary subclass with cross-well reporting capabil
 along with helper functions for JSON sanitization and DataFrame flattening.
 """
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
@@ -61,7 +59,7 @@ class SumsAvgResult(dict):
         groups: dict[str, list[str]],
         columns: list[dict],
         print_report: bool = True,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Generate a structured report with cross-well aggregation.
 
@@ -173,7 +171,7 @@ class SumsAvgResult(dict):
             "agg": col.get("agg", default_agg),
         }
 
-    def _extract_value(self, facies_data: dict, col: dict) -> Optional[float]:
+    def _extract_value(self, facies_data: dict, col: dict) -> float | None:
         """Extract a value from facies data based on column spec."""
         col = self._get_column_defaults(col)
         prop = col["property"]
@@ -219,7 +217,7 @@ class SumsAvgResult(dict):
 
                 # Calculate total zone thickness from all facies
                 zone_thickness = 0.0
-                for facies_name, facies_data in zone_data.items():
+                for _facies_name, facies_data in zone_data.items():
                     if isinstance(facies_data, dict) and "thickness" in facies_data:
                         zone_thickness += facies_data["thickness"]
 
@@ -340,8 +338,12 @@ class SumsAvgResult(dict):
                             if not any(valid_mask):
                                 continue
 
-                            valid_vals = np.array([v for v, m in zip(values, valid_mask) if m])
-                            valid_thicks = np.array([t for t, m in zip(thicks, valid_mask) if m])
+                            valid_vals = np.array(
+                                [v for v, m in zip(values, valid_mask, strict=False) if m]
+                            )
+                            valid_thicks = np.array(
+                                [t for t, m in zip(thicks, valid_mask, strict=False) if m]
+                            )
                             valid_total = np.sum(valid_thicks)
 
                             if valid_total > 0:
@@ -389,8 +391,12 @@ class SumsAvgResult(dict):
                             facies_summary[label] = None
                             continue
 
-                        valid_vals = np.array([v for v, m in zip(values, valid_mask) if m])
-                        valid_thicks = np.array([t for t, m in zip(thicks, valid_mask) if m])
+                        valid_vals = np.array(
+                            [v for v, m in zip(values, valid_mask, strict=False) if m]
+                        )
+                        valid_thicks = np.array(
+                            [t for t, m in zip(thicks, valid_mask, strict=False) if m]
+                        )
                         valid_total = np.sum(valid_thicks)
 
                         if valid_total <= 0:
@@ -440,20 +446,20 @@ class SumsAvgResult(dict):
                             # Both must be valid
                             combined_mask = [
                                 m is not None and s is not None
-                                for m, s in zip(mean_values, std_values)
+                                for m, s in zip(mean_values, std_values, strict=False)
                             ]
                             if not any(combined_mask):
                                 facies_summary[label] = None
                                 continue
 
                             combined_means = np.array(
-                                [v for v, m in zip(mean_values, combined_mask) if m]
+                                [v for v, m in zip(mean_values, combined_mask, strict=False) if m]
                             )
                             combined_stds = np.array(
-                                [v for v, m in zip(std_values, combined_mask) if m]
+                                [v for v, m in zip(std_values, combined_mask, strict=False) if m]
                             )
                             combined_thicks = np.array(
-                                [t for t, m in zip(thicks, combined_mask) if m]
+                                [t for t, m in zip(thicks, combined_mask, strict=False) if m]
                             )
                             combined_total = np.sum(combined_thicks)
 

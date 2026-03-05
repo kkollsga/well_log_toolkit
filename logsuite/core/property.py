@@ -3,32 +3,40 @@ Property class for well log data with filtering support.
 """
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
-from ..exceptions import (
-    PropertyError,
-    PropertyNotFoundError,
-    PropertyTypeError,
-    DepthAlignmentError,
-)
 from ..analysis.statistics import (
     compute_intervals,
     compute_zone_intervals,
+)
+from ..analysis.statistics import (
     mean as stat_mean,
-    sum as stat_sum,
-    std as stat_std,
+)
+from ..analysis.statistics import (
     percentile as stat_percentile,
+)
+from ..analysis.statistics import (
+    std as stat_std,
+)
+from ..analysis.statistics import (
+    sum as stat_sum,
+)
+from ..exceptions import (
+    DepthAlignmentError,
+    PropertyError,
+    PropertyNotFoundError,
+    PropertyTypeError,
 )
 from ..utils import filter_names, suggest_similar_names
 from .operations import PropertyOperationsMixin
 
 if TYPE_CHECKING:
-    from .well import Well
     from ..io.las_file import LasFile
+    from .well import Well
 
 
 class Property(PropertyOperationsMixin):
@@ -106,20 +114,20 @@ class Property(PropertyOperationsMixin):
     def __init__(
         self,
         name: str,
-        depth: Optional[np.ndarray] = None,
-        values: Optional[np.ndarray] = None,
+        depth: np.ndarray | None = None,
+        values: np.ndarray | None = None,
         parent_well: Optional["Well"] = None,
         unit: str = "",
         prop_type: str = "continuous",
         description: str = "",
         null_value: float = -999.25,
-        labels: Optional[dict[int, str]] = None,
-        colors: Optional[dict[int, str]] = None,
-        styles: Optional[dict[int, str]] = None,
-        thicknesses: Optional[dict[int, float]] = None,
+        labels: dict[int, str] | None = None,
+        colors: dict[int, str] | None = None,
+        styles: dict[int, str] | None = None,
+        thicknesses: dict[int, float] | None = None,
         source_las: Optional["LasFile"] = None,
-        source_name: Optional[str] = None,
-        original_name: Optional[str] = None,
+        source_name: str | None = None,
+        original_name: str | None = None,
         lazy: bool = False,
     ):
         self.name = name  # Sanitized name for Python attribute access
@@ -141,8 +149,8 @@ class Property(PropertyOperationsMixin):
 
         # Lazy loading support
         self._lazy = lazy
-        self._depth_cache: Optional[np.ndarray] = None
-        self._values_cache: Optional[np.ndarray] = None
+        self._depth_cache: np.ndarray | None = None
+        self._values_cache: np.ndarray | None = None
 
         # Filtered copy tracking
         self._is_filtered = False  # True if this is a filtered copy with modified depth grid
@@ -304,7 +312,7 @@ class Property(PropertyOperationsMixin):
             return f"{value:7.0f}"
 
     @property
-    def source(self) -> Optional[str]:
+    def source(self) -> str | None:
         """
         Get the source this property came from.
 
@@ -369,7 +377,7 @@ class Property(PropertyOperationsMixin):
             self._mark_source_modified()
 
     @property
-    def labels(self) -> Optional[dict[int, str]]:
+    def labels(self) -> dict[int, str] | None:
         """
         Get the label mapping for discrete property values.
 
@@ -381,7 +389,7 @@ class Property(PropertyOperationsMixin):
         return self._labels
 
     @labels.setter
-    def labels(self, value: Optional[dict[int, str]]) -> None:
+    def labels(self, value: dict[int, str] | None) -> None:
         """
         Set the label mapping and mark source as modified.
 
@@ -401,7 +409,7 @@ class Property(PropertyOperationsMixin):
             self._mark_source_modified()
 
     @property
-    def colors(self) -> Optional[dict[int, str]]:
+    def colors(self) -> dict[int, str] | None:
         """
         Get the color mapping for discrete property values.
 
@@ -413,7 +421,7 @@ class Property(PropertyOperationsMixin):
         return self._colors
 
     @colors.setter
-    def colors(self, value: Optional[dict[int, str]]) -> None:
+    def colors(self, value: dict[int, str] | None) -> None:
         """
         Set the color mapping and mark source as modified.
 
@@ -427,7 +435,7 @@ class Property(PropertyOperationsMixin):
             self._mark_source_modified()
 
     @property
-    def styles(self) -> Optional[dict[int, str]]:
+    def styles(self) -> dict[int, str] | None:
         """
         Get the line style mapping for discrete property values.
 
@@ -439,7 +447,7 @@ class Property(PropertyOperationsMixin):
         return self._styles
 
     @styles.setter
-    def styles(self, value: Optional[dict[int, str]]) -> None:
+    def styles(self, value: dict[int, str] | None) -> None:
         """
         Set the line style mapping and mark source as modified.
 
@@ -453,7 +461,7 @@ class Property(PropertyOperationsMixin):
             self._mark_source_modified()
 
     @property
-    def thicknesses(self) -> Optional[dict[int, float]]:
+    def thicknesses(self) -> dict[int, float] | None:
         """
         Get the line thickness mapping for discrete property values.
 
@@ -465,7 +473,7 @@ class Property(PropertyOperationsMixin):
         return self._thicknesses
 
     @thicknesses.setter
-    def thicknesses(self, value: Optional[dict[int, float]]) -> None:
+    def thicknesses(self, value: dict[int, float] | None) -> None:
         """
         Set the line thickness mapping and mark source as modified.
 
@@ -804,7 +812,7 @@ class Property(PropertyOperationsMixin):
             original_name=self.original_name,
         )
 
-    def apply(self, func, name: Optional[str] = None) -> "Property":
+    def apply(self, func, name: str | None = None) -> "Property":
         """
         Apply a function to values, returning a new Property.
 
@@ -1121,8 +1129,8 @@ class Property(PropertyOperationsMixin):
     def filter(
         self,
         property_name: str,
-        insert_boundaries: Optional[bool] = None,
-        source: Optional[str] = None,
+        insert_boundaries: bool | None = None,
+        source: str | None = None,
     ) -> "Property":
         """
         Add a discrete property from parent well as a filter dimension.
@@ -1193,7 +1201,7 @@ class Property(PropertyOperationsMixin):
             if suggestions:
                 msg += f" Did you mean: {', '.join(suggestions)}?"
             msg += f" Available properties: {', '.join(available)}"
-            raise PropertyNotFoundError(msg)
+            raise PropertyNotFoundError(msg) from None
 
         # Validate it's discrete
         if discrete_prop.type != "discrete":
@@ -1217,7 +1225,7 @@ class Property(PropertyOperationsMixin):
             # No boundary insertion - just copy existing data
             new_depth = self.depth.copy()
             new_values = self.values.copy()
-            new_secondaries = [sp for sp in self.secondary_properties]
+            new_secondaries = list(self.secondary_properties)
 
         # Interpolate discrete property to the NEW depth grid (with boundary samples)
         # Use 'previous' (forward fill) for discrete: value at MD applies from that depth downward
@@ -1286,10 +1294,10 @@ class Property(PropertyOperationsMixin):
 
     def filter_intervals(
         self,
-        intervals: Union[list[dict], dict[str, list[dict]], str],
+        intervals: list[dict] | dict[str, list[dict]] | str,
         name: str = "Custom_Intervals",
-        insert_boundaries: Optional[bool] = None,
-        save: Optional[str] = None,
+        insert_boundaries: bool | None = None,
+        save: str | None = None,
     ) -> "Property":
         """
         Filter by custom depth intervals defined as top/base pairs.
@@ -1439,7 +1447,7 @@ class Property(PropertyOperationsMixin):
         else:
             new_depth = self.depth.copy()
             new_values = self.values.copy()
-            new_secondaries = [sp for sp in self.secondary_properties]
+            new_secondaries = list(self.secondary_properties)
 
         # Create new Property instance
         new_prop = Property(
@@ -1530,7 +1538,7 @@ class Property(PropertyOperationsMixin):
         valid_mask = ~np.isnan(self.values)
         if not np.any(valid_mask):
             # No valid data, return copies
-            return (self.depth.copy(), self.values.copy(), [sp for sp in self.secondary_properties])
+            return (self.depth.copy(), self.values.copy(), list(self.secondary_properties))
 
         valid_depths = self.depth[valid_mask]
         min_valid_depth = valid_depths.min()
@@ -1543,7 +1551,7 @@ class Property(PropertyOperationsMixin):
 
         if len(potential_boundaries) == 0:
             # No boundaries in range, return copies
-            return (self.depth.copy(), self.values.copy(), [sp for sp in self.secondary_properties])
+            return (self.depth.copy(), self.values.copy(), list(self.secondary_properties))
 
         # Vectorized check if boundaries already exist in depth array
         # Use searchsorted to find insertion points, then check distances to neighbors
@@ -1572,7 +1580,7 @@ class Property(PropertyOperationsMixin):
             return (
                 depth_array.copy(),
                 self.values.copy(),
-                [sp for sp in self.secondary_properties],
+                list(self.secondary_properties),
             )
 
         boundaries_to_insert = np.array(sorted(boundaries_to_insert))
@@ -1738,10 +1746,10 @@ class Property(PropertyOperationsMixin):
                 )
             return f(new_depth)
         except Exception as e:
-            raise DepthAlignmentError(f"Failed to resample data: {e}")
+            raise DepthAlignmentError(f"Failed to resample data: {e}") from e
 
     def sums_avg(
-        self, weighted: Optional[bool] = None, arithmetic: Optional[bool] = None, precision: int = 6
+        self, weighted: bool | None = None, arithmetic: bool | None = None, precision: int = 6
     ) -> dict:
         """
         Compute hierarchical statistics grouped by all secondary properties.
@@ -1910,7 +1918,7 @@ class Property(PropertyOperationsMixin):
 
         return result
 
-    def discrete_summary(self, precision: int = 6, skip: Optional[list[str]] = None) -> dict:
+    def discrete_summary(self, precision: int = 6, skip: list[str] | None = None) -> dict:
         """
         Compute summary statistics for discrete/categorical properties.
 
@@ -2084,7 +2092,7 @@ class Property(PropertyOperationsMixin):
         gross_thickness: float,
         precision: int = 6,
         include_depth_range: bool = True,
-        zone_intervals: Optional[np.ndarray] = None,
+        zone_intervals: np.ndarray | None = None,
     ) -> dict:
         """
         Recursively group discrete statistics by secondary properties.
@@ -2182,7 +2190,7 @@ class Property(PropertyOperationsMixin):
         gross_thickness: float,
         precision: int = 6,
         include_depth_range: bool = True,
-        zone_intervals: Optional[np.ndarray] = None,
+        zone_intervals: np.ndarray | None = None,
     ) -> dict:
         """
         Compute categorical statistics for discrete property values.
@@ -2273,7 +2281,7 @@ class Property(PropertyOperationsMixin):
         arithmetic: bool,
         gross_thickness: float,
         precision: int = 6,
-        zone_intervals: Optional[np.ndarray] = None,
+        zone_intervals: np.ndarray | None = None,
     ) -> dict:
         """
         Recursively group by secondary properties.
@@ -2382,7 +2390,7 @@ class Property(PropertyOperationsMixin):
         arithmetic: bool = False,
         gross_thickness: float = 0.0,
         precision: int = 6,
-        zone_intervals: Optional[np.ndarray] = None,
+        zone_intervals: np.ndarray | None = None,
     ) -> dict:
         """
         Compute statistics for values selected by mask.
@@ -2569,11 +2577,11 @@ class Property(PropertyOperationsMixin):
 
     def data(
         self,
-        include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
         discrete_labels: bool = True,
         clip_edges: bool = True,
-        clip_to_property: Optional[str] = None,
+        clip_to_property: str | None = None,
     ) -> pd.DataFrame:
         """
         Export property and secondary properties as DataFrame.
@@ -2673,8 +2681,8 @@ class Property(PropertyOperationsMixin):
     def head(
         self,
         n: int = 5,
-        include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Return first n rows of property data.
@@ -2705,8 +2713,8 @@ class Property(PropertyOperationsMixin):
 
     def export_to_las(
         self,
-        filepath: Union[str, Path],
-        well_name: Optional[str] = None,
+        filepath: str | Path,
+        well_name: str | None = None,
         store_labels: bool = True,
         null_value: float = -999.25,
     ) -> None:

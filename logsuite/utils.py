@@ -4,7 +4,7 @@ Utility functions for well log toolkit.
 
 import difflib
 import re
-from typing import Optional, List, Iterable
+from collections.abc import Iterable
 
 
 def suggest_similar_names(
@@ -190,9 +190,9 @@ def parse_las_line(line: str) -> tuple[str, str, str]:
 
 def filter_names(
     all_names: Iterable[str],
-    include: Optional[List[str]] = None,
-    exclude: Optional[List[str]] = None,
-) -> Optional[List[str]]:
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
+) -> list[str] | None:
     """
     Filter a list of names based on include/exclude parameters.
 

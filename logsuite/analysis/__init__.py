@@ -8,26 +8,26 @@ regression : Regression models for crossplot analysis
 sums_avg : SumsAvgResult container for multi-well aggregation
 """
 
-from .statistics import (
-    compute_intervals,
-    mean,
-    sum,
-    std,
-    percentile,
-    mode,
-    geometric_mean,
-    harmonic_mean,
-    compute_all_statistics,
-)
 from .regression import (
+    ExponentialRegression,
     LinearRegression,
     LogarithmicRegression,
-    ExponentialRegression,
+    PolynomialExponentialRegression,
     PolynomialRegression,
     PowerRegression,
-    PolynomialExponentialRegression,
 )
-from .sums_avg import SumsAvgResult, _sanitize_for_json, _flatten_to_dataframe
+from .statistics import (
+    compute_all_statistics,
+    compute_intervals,
+    geometric_mean,
+    harmonic_mean,
+    mean,
+    mode,
+    percentile,
+    std,
+    sum,
+)
+from .sums_avg import SumsAvgResult, _flatten_to_dataframe, _sanitize_for_json
 
 __all__ = [
     # Statistics

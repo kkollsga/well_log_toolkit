@@ -8,9 +8,9 @@ property : Property class with filtering and statistics
 operations : Arithmetic operator overloading for properties
 """
 
-from .well import Well, SourceView
-from .property import Property
 from .operations import PropertyOperationsMixin
+from .property import Property
+from .well import SourceView, Well
 
 __all__ = [
     "Well",

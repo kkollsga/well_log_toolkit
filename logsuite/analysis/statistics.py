@@ -6,7 +6,6 @@ statistical functions for well log analysis.
 """
 
 import numpy as np
-from typing import Optional, Union
 
 
 def compute_intervals(depth: np.ndarray) -> np.ndarray:
@@ -130,8 +129,8 @@ def compute_zone_intervals(depth: np.ndarray, top: float, base: float) -> np.nda
 
 
 def mean(
-    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute mean with optional method selection.
 
@@ -192,8 +191,8 @@ def mean(
 
 
 def sum(
-    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute sum with optional method selection.
 
@@ -252,8 +251,8 @@ def sum(
 
 
 def std(
-    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute standard deviation with optional method selection.
 
@@ -312,8 +311,8 @@ def std(
 
 
 def percentile(
-    values: np.ndarray, p: float, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, p: float, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute percentile with optional method selection.
 
@@ -403,11 +402,11 @@ def percentile(
 
 def mode(
     values: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    method: Optional[str] = None,
+    weights: np.ndarray | None = None,
+    method: str | None = None,
     bins: int = 50,
     is_discrete: bool = False,
-) -> Union[float, dict]:
+) -> float | dict:
     """
     Compute mode (most frequent value) with optional method selection.
 
@@ -506,8 +505,8 @@ def mode(
 
 
 def geometric_mean(
-    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute geometric mean with optional method selection.
 
@@ -570,8 +569,8 @@ def geometric_mean(
 
 
 def harmonic_mean(
-    values: np.ndarray, weights: Optional[np.ndarray] = None, method: Optional[str] = None
-) -> Union[float, dict]:
+    values: np.ndarray, weights: np.ndarray | None = None, method: str | None = None
+) -> float | dict:
     """
     Compute harmonic mean with optional method selection.
 

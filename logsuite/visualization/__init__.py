@@ -1,36 +1,22 @@
 """
 Well log visualization for Jupyter Lab.
 
-Provides Template and WellView classes for creating customizable well log displays.
+Provides Template, WellView, and Crossplot classes for creating customizable well log displays.
 """
 
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Union, TYPE_CHECKING
-import json
-import warnings
 
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib.collections import PolyCollection
-from matplotlib.colors import Normalize, LogNorm
-from matplotlib.patches import Rectangle, Patch
-
-if TYPE_CHECKING:
-    from ..core.well import Well
 
 # Import regression classes at module level for performance
 from ..analysis.regression import (
+    ExponentialRegression,
     LinearRegression,
     LogarithmicRegression,
-    ExponentialRegression,
+    PolynomialExponentialRegression,
     PolynomialRegression,
     PowerRegression,
-    PolynomialExponentialRegression,
 )
-from ..exceptions import PropertyNotFoundError
 
 # Default color palettes
 DEFAULT_COLORS = [
@@ -230,8 +216,8 @@ def _downsample_for_plotting(
     return out_depth[:out_idx], out_values[:out_idx]
 
 
-from .template import Template
-from .wellview import WellView
-from .crossplot import Crossplot
+from .crossplot import Crossplot  # noqa: E402
+from .template import Template  # noqa: E402
+from .wellview import WellView  # noqa: E402
 
 __all__ = ["Template", "WellView", "Crossplot"]

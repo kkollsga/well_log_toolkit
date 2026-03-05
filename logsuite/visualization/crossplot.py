@@ -1,19 +1,18 @@
 """Crossplot class for well log cross-plotting and analysis."""
 
 from __future__ import annotations
-from typing import Optional, Union, TYPE_CHECKING
-import warnings
 
+import warnings
+from typing import TYPE_CHECKING
+
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib.collections import PolyCollection
-from matplotlib.colors import Normalize, LogNorm
-from matplotlib.patches import Rectangle, Patch
+from matplotlib.patches import Patch
 
-from . import DEFAULT_COLORS, _create_regression
 from ..exceptions import PropertyNotFoundError
+from . import DEFAULT_COLORS, _create_regression
 
 if TYPE_CHECKING:
     from ..core.well import Well
@@ -209,19 +208,19 @@ class Crossplot:
 
     def __init__(
         self,
-        wells: Union["Well", list["Well"]],
-        x: Optional[str] = None,
-        y: Optional[str] = None,
-        layers: Optional[dict[str, list[str]]] = None,
-        shape: Optional[str] = None,
-        color: Optional[str] = None,
-        size: Optional[str] = None,
+        wells: Well | list[Well],
+        x: str | None = None,
+        y: str | None = None,
+        layers: dict[str, list[str]] | None = None,
+        shape: str | None = None,
+        color: str | None = None,
+        size: str | None = None,
         colortemplate: str = "viridis",
-        color_range: Optional[tuple[float, float]] = None,
+        color_range: tuple[float, float] | None = None,
         size_range: tuple[float, float] = (20, 200),
         title: str = "Cross Plot",
-        xlabel: Optional[str] = None,
-        ylabel: Optional[str] = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
         figsize: tuple[float, float] = (10, 8),
         dpi: int = 100,
         marker: str = "o",
@@ -233,17 +232,17 @@ class Crossplot:
         y_log: bool = False,
         grid: bool = True,
         grid_alpha: float = 0.7,
-        depth_range: Optional[tuple[float, float]] = None,
+        depth_range: tuple[float, float] | None = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
         show_regression_legend: bool = True,
         show_regression_equation: bool = True,
         show_regression_r2: bool = True,
-        regression: Optional[Union[str, dict]] = None,
-        regression_by_color: Optional[Union[str, dict]] = None,
-        regression_by_group: Optional[Union[str, dict]] = None,
-        regression_by_color_and_shape: Optional[Union[str, dict]] = None,
-        regression_by_shape_and_color: Optional[Union[str, dict]] = None,
+        regression: str | dict | None = None,
+        regression_by_color: str | dict | None = None,
+        regression_by_group: str | dict | None = None,
+        regression_by_color_and_shape: str | dict | None = None,
+        regression_by_shape_and_color: str | dict | None = None,
     ):
         # Store wells as list
         if not isinstance(wells, list):
@@ -325,7 +324,8 @@ class Crossplot:
         if regression_by_shape_and_color is not None and regression_by_color_and_shape is not None:
             warnings.warn(
                 "Both regression_by_color_and_shape and regression_by_shape_and_color were specified. "
-                "These are aliases for the same feature. Using regression_by_color_and_shape."
+                "These are aliases for the same feature. Using regression_by_color_and_shape.",
+                stacklevel=2,
             )
             self.regression_by_color_and_shape = regression_by_color_and_shape
         elif regression_by_shape_and_color is not None:
@@ -359,7 +359,7 @@ class Crossplot:
         # Maps segment numbers (1-9) to legend type placed there
         self._occupied_segments = {}
 
-    def add_layer(self, x: str, y: str, label: str) -> "Crossplot":
+    def add_layer(self, x: str, y: str, label: str) -> Crossplot:
         """
         Add a new data layer to the crossplot.
 
@@ -566,7 +566,7 @@ class Crossplot:
 
         return self._data
 
-    def _parse_regression_config(self, config: Union[str, dict]) -> dict:
+    def _parse_regression_config(self, config: str | dict) -> dict:
         """Parse regression configuration from string or dict format.
 
         Args:
@@ -584,7 +584,7 @@ class Crossplot:
         else:
             raise ValueError(f"Regression config must be string or dict, got {type(config)}")
 
-    def regression(self, regression_type: Optional[str] = None) -> dict:
+    def regression(self, regression_type: str | None = None) -> dict:
         """Access regression objects.
 
         Args:
@@ -1262,7 +1262,8 @@ class Crossplot:
             if group_column is None:
                 warnings.warn(
                     "regression_by_color specified but no color grouping detected in plot. "
-                    "Use color=<property>, shape='well', or shape=<property> parameter."
+                    "Use color=<property>, shape='well', or shape=<property> parameter.",
+                    stacklevel=2,
                 )
             else:
                 # Check if color is categorical (not continuous like depth)
@@ -1273,7 +1274,8 @@ class Crossplot:
                         # For continuous values, we can't create separate regressions
                         warnings.warn(
                             f"regression_by_color requires categorical color mapping, "
-                            f"but '{self.color}' is continuous. Use regression_by_group instead."
+                            f"but '{self.color}' is continuous. Use regression_by_group instead.",
+                            stacklevel=2,
                         )
                         # Skip this section
                     else:
@@ -1417,7 +1419,8 @@ class Crossplot:
             else:
                 warnings.warn(
                     "regression_by_group specified but no shape/well grouping defined. "
-                    "Use shape='well' or set shape to a property name."
+                    "Use shape='well' or set shape to a property name.",
+                    stacklevel=2,
                 )
 
         # Add regression by color AND shape combinations
@@ -1454,12 +1457,14 @@ class Crossplot:
             if color_col is None or shape_col is None:
                 warnings.warn(
                     "regression_by_color_and_shape requires both categorical color mapping AND shape/well grouping. "
-                    "Set both color and shape parameters, or use regression_by_color or regression_by_group instead."
+                    "Set both color and shape parameters, or use regression_by_color or regression_by_group instead.",
+                    stacklevel=2,
                 )
             elif color_col == shape_col:
                 warnings.warn(
                     "regression_by_color_and_shape requires DIFFERENT color and shape mappings. "
-                    "Currently both are mapped to the same property. Use regression_by_color or regression_by_group instead."
+                    "Currently both are mapped to the same property. Use regression_by_color or regression_by_group instead.",
+                    stacklevel=2,
                 )
             else:
                 # Group by both color and shape
@@ -1537,7 +1542,9 @@ class Crossplot:
         try:
             reg.fit(x_vals, y_vals)
         except ValueError as e:
-            warnings.warn(f"Failed to fit {regression_type} regression for {name}: {e}")
+            warnings.warn(
+                f"Failed to fit {regression_type} regression for {name}: {e}", stacklevel=2
+            )
             return
 
         # Recalculate R-squared in log space if y-axis is log scale
@@ -1553,7 +1560,7 @@ class Crossplot:
         try:
             x_line, y_line = reg.get_plot_data(x_range=x_range_param, num_points=100)
         except ValueError as e:
-            warnings.warn(f"Could not generate plot data for {name} regression: {e}")
+            warnings.warn(f"Could not generate plot data for {name} regression: {e}", stacklevel=2)
             return
 
         # Create label using formatter
@@ -1606,7 +1613,7 @@ class Crossplot:
         # Apply the criteria
         return n_unique < 50
 
-    def plot(self) -> "Crossplot":
+    def plot(self) -> Crossplot:
         """Generate the crossplot figure."""
         # Reset legend placement tracking for new plot
         self._occupied_segments = {}
@@ -1692,7 +1699,8 @@ class Crossplot:
                         )
                     except ValueError as e:
                         warnings.warn(
-                            f"Could not generate plot data for {reg_type} regression: {e}"
+                            f"Could not generate plot data for {reg_type} regression: {e}",
+                            stacklevel=2,
                         )
                         continue
 
@@ -2043,16 +2051,16 @@ class Crossplot:
     def add_regression(
         self,
         regression_type: str,
-        name: Optional[str] = None,
+        name: str | None = None,
         line_color: str = "red",
         line_width: float = 2,
         line_style: str = "-",
         line_alpha: float = 0.8,
         show_equation: bool = True,
         show_r2: bool = True,
-        x_range: Optional[tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
         **kwargs,
-    ) -> "Crossplot":
+    ) -> Crossplot:
         """Add a regression line to the crossplot.
 
         Parameters
@@ -2113,7 +2121,7 @@ class Crossplot:
         try:
             reg.fit(x_clean, y_clean)
         except ValueError as e:
-            raise ValueError(f"Failed to fit {regression_type} regression: {e}")
+            raise ValueError(f"Failed to fit {regression_type} regression: {e}") from e
 
         # Recalculate R-squared in log space if y-axis is log scale
         if self.y_log:
@@ -2130,7 +2138,10 @@ class Crossplot:
             try:
                 x_line, y_line = reg.get_plot_data(x_range=x_range, num_points=200)
             except ValueError as e:
-                warnings.warn(f"Could not generate plot data for {regression_type} regression: {e}")
+                warnings.warn(
+                    f"Could not generate plot data for {regression_type} regression: {e}",
+                    stacklevel=2,
+                )
                 return self
 
             # Create label using formatter
@@ -2172,7 +2183,7 @@ class Crossplot:
 
         return self
 
-    def remove_regression(self, name: str, regression_type: Optional[str] = None) -> "Crossplot":
+    def remove_regression(self, name: str, regression_type: str | None = None) -> Crossplot:
         """Remove a regression from the plot.
 
         Parameters
@@ -2222,7 +2233,7 @@ class Crossplot:
 
         plt.show()
 
-    def save(self, filepath: str, dpi: Optional[int] = None, bbox_inches: str = "tight") -> None:
+    def save(self, filepath: str, dpi: int | None = None, bbox_inches: str = "tight") -> None:
         """Save the crossplot to a file.
 
         Parameters

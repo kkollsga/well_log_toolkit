@@ -2,15 +2,14 @@
 LAS file reader with lazy data loading.
 """
 
-import io
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 
 from ..exceptions import LasFileError, UnsupportedVersionError
-from ..utils import parse_las_line, filter_names
+from ..utils import filter_names, parse_las_line
 
 
 class LasFile:
@@ -75,7 +74,7 @@ class LasFile:
     # Supported LAS versions
     SUPPORTED_VERSIONS = {"2.0", "2", "3.0", "3"}
 
-    def __init__(self, filepath: Union[str, Path], _from_dataframe: bool = False):
+    def __init__(self, filepath: str | Path, _from_dataframe: bool = False):
         self.filepath = Path(filepath)
 
         if not _from_dataframe:
@@ -93,8 +92,8 @@ class LasFile:
         self.curves: dict[str, dict] = {}
 
         # Data management
-        self._data: Optional[pd.DataFrame] = None
-        self._ascii_start_line: Optional[int] = None
+        self._data: pd.DataFrame | None = None
+        self._ascii_start_line: int | None = None
         self._curve_names: list[str] = []  # Preserve original order
         self._las_version: str = "2.0"  # Set during _validate_version()
 
@@ -109,12 +108,12 @@ class LasFile:
         df: pd.DataFrame,
         well_name: str,
         source_name: str = "external_df",
-        unit_mappings: Optional[dict[str, str]] = None,
-        type_mappings: Optional[dict[str, str]] = None,
-        label_mappings: Optional[dict[str, dict[int, str]]] = None,
-        color_mappings: Optional[dict[str, dict[int, str]]] = None,
-        style_mappings: Optional[dict[str, dict[int, str]]] = None,
-        thickness_mappings: Optional[dict[str, dict[int, float]]] = None,
+        unit_mappings: dict[str, str] | None = None,
+        type_mappings: dict[str, str] | None = None,
+        label_mappings: dict[str, dict[int, str]] | None = None,
+        color_mappings: dict[str, dict[int, str]] | None = None,
+        style_mappings: dict[str, dict[int, str]] | None = None,
+        thickness_mappings: dict[str, dict[int, float]] | None = None,
     ) -> "LasFile":
         """
         Create a LasFile object from a DataFrame.
@@ -232,12 +231,12 @@ class LasFile:
         return instance
 
     @property
-    def well_name(self) -> Optional[str]:
+    def well_name(self) -> str | None:
         """Extract well name from well info."""
         return self.well_info.get("WELL")
 
     @property
-    def depth_column(self) -> Optional[str]:
+    def depth_column(self) -> str | None:
         """First curve (typically DEPT/DEPTH)."""
         return self._curve_names[0] if self._curve_names else None
 
@@ -266,7 +265,7 @@ class LasFile:
         # Split by comma and strip whitespace
         return [name.strip() for name in discrete_props_str.split(",") if name.strip()]
 
-    def get_discrete_labels(self, property_name: str) -> Optional[dict[int, str]]:
+    def get_discrete_labels(self, property_name: str) -> dict[int, str] | None:
         """
         Extract label mappings for a discrete property from ~Parameter section.
 
@@ -313,7 +312,7 @@ class LasFile:
 
         return labels if labels else None
 
-    def get_discrete_colors(self, property_name: str) -> Optional[dict[int, str]]:
+    def get_discrete_colors(self, property_name: str) -> dict[int, str] | None:
         """
         Extract color mappings for a discrete property from ~Parameter section.
 
@@ -377,7 +376,7 @@ class LasFile:
 
         return colors if colors else None
 
-    def get_discrete_styles(self, property_name: str) -> Optional[dict[int, str]]:
+    def get_discrete_styles(self, property_name: str) -> dict[int, str] | None:
         """
         Extract line style mappings for a discrete property from ~Parameter section.
 
@@ -441,7 +440,7 @@ class LasFile:
 
         return styles if styles else None
 
-    def get_discrete_thicknesses(self, property_name: str) -> Optional[dict[int, float]]:
+    def get_discrete_thicknesses(self, property_name: str) -> dict[int, float] | None:
         """
         Extract line thickness mappings for a discrete property from ~Parameter section.
 
@@ -678,8 +677,8 @@ class LasFile:
 
     def data(
         self,
-        include: Optional[Union[str, list[str]]] = None,
-        exclude: Optional[Union[str, list[str]]] = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Lazy-load and return data with optional column filtering.
@@ -809,7 +808,7 @@ class LasFile:
         current_section = None
         line_number = 0
 
-        with open(self.filepath, "r", encoding="utf-8", errors="ignore") as f:
+        with open(self.filepath, encoding="utf-8", errors="ignore") as f:
             for line_number, line in enumerate(f):
                 line = line.strip()
 
@@ -923,7 +922,7 @@ class LasFile:
                 on_bad_lines="skip",  # Skip malformed rows
             )
         except Exception as e:
-            raise LasFileError(f"Failed to parse ASCII data in {self.filepath}: {e}")
+            raise LasFileError(f"Failed to parse ASCII data in {self.filepath}: {e}") from e
 
         # OPTIMIZED: Batch apply multipliers and aliases instead of looping
         # Build mapping of columns to multiply and rename
@@ -955,15 +954,15 @@ class LasFile:
 
     @staticmethod
     def export_las(
-        filepath: Union[str, Path],
+        filepath: str | Path,
         well_name: str,
         df: pd.DataFrame,
-        unit_mappings: Optional[dict[str, str]] = None,
+        unit_mappings: dict[str, str] | None = None,
         null_value: float = -999.25,
-        discrete_labels: Optional[dict[str, dict[int, str]]] = None,
-        discrete_colors: Optional[dict[str, dict[int, str]]] = None,
-        discrete_styles: Optional[dict[str, dict[int, str]]] = None,
-        discrete_thicknesses: Optional[dict[str, dict[int, float]]] = None,
+        discrete_labels: dict[str, dict[int, str]] | None = None,
+        discrete_colors: dict[str, dict[int, str]] | None = None,
+        discrete_styles: dict[str, dict[int, str]] | None = None,
+        discrete_thicknesses: dict[str, dict[int, float]] | None = None,
         template_las: Optional["LasFile"] = None,
     ) -> None:
         """
@@ -1118,7 +1117,7 @@ class LasFile:
             # Preserve all other parameters
             for param_key, param_value in template_las.parameter_info.items():
                 if param_key not in skip_params:
-                    params_to_write[param_key] = (param_value, f"Preserved from original")
+                    params_to_write[param_key] = (param_value, "Preserved from original")
 
         # Add new discrete labels, colors, styles, and thicknesses if provided
         if discrete_labels:
@@ -1265,9 +1264,9 @@ class LasFile:
             with open(filepath, "w", encoding="utf-8", buffering=65536) as f:
                 f.write("\n".join(lines))
         except Exception as e:
-            raise LasFileError(f"Failed to write LAS file to {filepath}: {e}")
+            raise LasFileError(f"Failed to write LAS file to {filepath}: {e}") from e
 
-    def export(self, filepath: Union[str, Path], null_value: float = -999.25) -> None:
+    def export(self, filepath: str | Path, null_value: float = -999.25) -> None:
         """
         Export this LasFile instance to a LAS 2.0 format file.
 

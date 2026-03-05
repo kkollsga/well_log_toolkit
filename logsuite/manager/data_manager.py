@@ -2,20 +2,18 @@
 WellDataManager — global orchestrator for multi-well analysis.
 """
 
-from pathlib import Path
-from typing import Optional, Union, TYPE_CHECKING
 import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
 
-from ..exceptions import LasFileError, PropertyNotFoundError, PropertyTypeError
-from ..io import LasFile
 from ..core.well import Well
-from ..core.property import Property
-from ..utils import sanitize_well_name, sanitize_property_name, suggest_similar_names
-from ..analysis.sums_avg import SumsAvgResult, _sanitize_for_json, _flatten_to_dataframe
-from .proxy import _ManagerPropertyProxy, _ManagerMultiPropertyProxy
+from ..exceptions import LasFileError
+from ..io import LasFile
+from ..utils import sanitize_property_name, sanitize_well_name, suggest_similar_names
+from .proxy import _ManagerMultiPropertyProxy, _ManagerPropertyProxy
 
 if TYPE_CHECKING:
     from ..visualization import Template
@@ -45,7 +43,7 @@ class WellDataManager:
     >>> print(manager.wells)  # All wells from project
     """
 
-    def __init__(self, project: Optional[Union[str, Path]] = None):
+    def __init__(self, project: str | Path | None = None):
         """
         Initialize WellDataManager, optionally loading a project.
 
@@ -62,8 +60,8 @@ class WellDataManager:
         """
         self._wells: dict[str, Well] = {}  # {sanitized_name: Well}
         self._name_mapping: dict[str, str] = {}  # {original_name: sanitized_name}
-        self._project_path: Optional[Path] = None  # Track project path for save()
-        self._templates: dict[str, "Template"] = {}  # {template_name: Template}
+        self._project_path: Path | None = None  # Track project path for save()
+        self._templates: dict[str, Template] = {}  # {template_name: Template}
 
         # Load project if provided
         if project is not None:
@@ -172,11 +170,11 @@ class WellDataManager:
 
     def load_las(
         self,
-        filepath: Union[str, Path, list[Union[str, Path]]],
-        path: Optional[Union[str, Path]] = None,
+        filepath: str | Path | list[str | Path],
+        path: str | Path | None = None,
         sampled: bool = False,
-        combine: Optional[str] = None,
-        source_name: Optional[str] = None,
+        combine: str | None = None,
+        source_name: str | None = None,
         silent: bool = False,
     ) -> "WellDataManager":
         """
@@ -401,13 +399,13 @@ class WellDataManager:
         df: pd.DataFrame,
         property_name: str = "Well_Tops",
         source_name: str = "Imported_Tops",
-        well_col: Optional[str] = "Well identifier (Well name)",
-        well_name: Optional[str] = None,
+        well_col: str | None = "Well identifier (Well name)",
+        well_name: str | None = None,
         discrete_col: str = "Surface",
         depth_col: str = "MD",
-        x_col: Optional[str] = "X",
-        y_col: Optional[str] = "Y",
-        z_col: Optional[str] = "Z",
+        x_col: str | None = "X",
+        y_col: str | None = "Y",
+        z_col: str | None = "Z",
         include_coordinates: bool = False,
     ) -> "WellDataManager":
         """
@@ -602,13 +600,13 @@ class WellDataManager:
         self,
         df: pd.DataFrame,
         source_name: str = "external_df",
-        well_col: Optional[str] = "Well",
-        well_name: Optional[str] = None,
+        well_col: str | None = "Well",
+        well_name: str | None = None,
         depth_col: str = "DEPT",
-        unit_mappings: Optional[dict[str, str]] = None,
-        type_mappings: Optional[dict[str, str]] = None,
-        label_mappings: Optional[dict[str, dict[int, str]]] = None,
-        resample_method: Optional[str] = None,
+        unit_mappings: dict[str, str] | None = None,
+        type_mappings: dict[str, str] | None = None,
+        label_mappings: dict[str, dict[int, str]] | None = None,
+        resample_method: str | None = None,
     ) -> "WellDataManager":
         """
         Load properties from a DataFrame into wells.
@@ -846,6 +844,7 @@ class WellDataManager:
                             f"Resampling new data to existing grid using method '{resample_method}' "
                             f"for well '{well.name}'. This may cause data loss for sampled properties.",
                             UserWarning,
+                            stacklevel=2,
                         )
 
             # Load it (with resampling if specified)
@@ -857,7 +856,7 @@ class WellDataManager:
 
         return self
 
-    def save(self, path: Optional[Union[str, Path]] = None) -> None:
+    def save(self, path: str | Path | None = None) -> None:
         """
         Save all wells and their sources to a project folder structure.
 
@@ -956,7 +955,7 @@ class WellDataManager:
                 template_file = templates_folder / f"{template_name}.json"
                 template.save(template_file)
 
-    def load(self, path: Union[str, Path]) -> "WellDataManager":
+    def load(self, path: str | Path) -> "WellDataManager":
         """
         Load all wells and templates from a project folder structure.
 
@@ -1015,7 +1014,9 @@ class WellDataManager:
                     template_name = template_file.stem
                     self._templates[template_name] = template
                 except Exception as e:
-                    warnings.warn(f"Could not load template {template_file.name}: {e}")
+                    warnings.warn(
+                        f"Could not load template {template_file.name}: {e}", stacklevel=2
+                    )
 
         # Find all well folders (well_*) - skip templates folder
         well_folders = sorted(
@@ -1047,14 +1048,16 @@ class WellDataManager:
                 import json
 
                 try:
-                    with open(intervals_file, "r") as f:
+                    with open(intervals_file) as f:
                         saved_intervals = json.load(f)
                     # Find the well for this folder and set its intervals
                     well_key = well_folder.name  # e.g., "well_35_9_16_A"
                     if well_key in self._wells:
                         self._wells[well_key]._saved_filter_intervals = saved_intervals
                 except Exception as e:
-                    warnings.warn(f"Could not load intervals from {intervals_file}: {e}")
+                    warnings.warn(
+                        f"Could not load intervals from {intervals_file}: {e}", stacklevel=2
+                    )
 
         return self
 
@@ -1364,19 +1367,19 @@ class WellDataManager:
 
     def Crossplot(
         self,
-        x: Optional[str] = None,
-        y: Optional[str] = None,
-        wells: Optional[list[str]] = None,
-        layers: Optional[dict[str, list[str]]] = None,
-        shape: Optional[str] = None,
-        color: Optional[str] = None,
-        size: Optional[str] = None,
+        x: str | None = None,
+        y: str | None = None,
+        wells: list[str] | None = None,
+        layers: dict[str, list[str]] | None = None,
+        shape: str | None = None,
+        color: str | None = None,
+        size: str | None = None,
         colortemplate: str = "viridis",
-        color_range: Optional[tuple[float, float]] = None,
+        color_range: tuple[float, float] | None = None,
         size_range: tuple[float, float] = (20, 200),
         title: str = "Cross Plot",
-        xlabel: Optional[str] = None,
-        ylabel: Optional[str] = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
         figsize: tuple[float, float] = (10, 8),
         dpi: int = 100,
         marker: str = "o",
@@ -1388,15 +1391,15 @@ class WellDataManager:
         y_log: bool = False,
         grid: bool = True,
         grid_alpha: float = 0.3,
-        depth_range: Optional[tuple[float, float]] = None,
+        depth_range: tuple[float, float] | None = None,
         show_colorbar: bool = True,
         show_legend: bool = True,
         show_regression_legend: bool = True,
         show_regression_equation: bool = True,
         show_regression_r2: bool = True,
-        regression: Optional[Union[str, dict]] = None,
-        regression_by_color: Optional[Union[str, dict]] = None,
-        regression_by_group: Optional[Union[str, dict]] = None,
+        regression: str | dict | None = None,
+        regression_by_color: str | dict | None = None,
+        regression_by_group: str | dict | None = None,
     ) -> "Crossplot":
         """
         Create a multi-well crossplot.
