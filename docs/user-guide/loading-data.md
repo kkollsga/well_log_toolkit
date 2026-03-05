@@ -5,7 +5,7 @@
 The primary way to load well log data is from LAS files:
 
 ```python
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("path/to/well.las")
@@ -17,7 +17,7 @@ manager.load_las("path/to/well.las")
 is only loaded when you call `.data()`:
 
 ```python
-from well_log_toolkit import LasFile
+from pylog import LasFile
 
 las = LasFile("well.las")
 print(las.well_name)       # Immediate — from headers

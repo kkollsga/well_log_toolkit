@@ -2505,7 +2505,7 @@ class Well:
         >>> view.show()
         >>>
         >>> # Use custom template
-        >>> from well_log_toolkit.visualization import Template
+        >>> from pylog.visualization import Template
         >>> template = Template("custom")
         >>> template.add_track(
         ...     track_type="continuous",

@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 
 
 def create_synthetic_las_file(filepath, well_name, depth_range=(1000, 2000), n_points=500):

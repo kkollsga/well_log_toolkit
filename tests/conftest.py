@@ -1,5 +1,5 @@
 """
-Centralized pytest fixtures for well_log_toolkit test suite.
+Centralized pytest fixtures for pylog test suite.
 
 Provides reusable depth arrays, properties, wells, and managers
 for tests without requiring external LAS files.
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from well_log_toolkit import WellDataManager, Well, Property
+from pylog import WellDataManager, Well, Property
 
 
 # ---------------------------------------------------------------------------

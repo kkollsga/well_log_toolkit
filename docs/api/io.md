@@ -1,7 +1,7 @@
 # I/O: LasFile
 
 ```{eval-rst}
-.. autoclass:: well_log_toolkit.LasFile
+.. autoclass:: pylog.LasFile
    :members:
    :undoc-members:
 ```

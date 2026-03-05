@@ -5,7 +5,7 @@
 `WellDataManager` is the central orchestrator for multi-well workflows:
 
 ```python
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("well_a.las")

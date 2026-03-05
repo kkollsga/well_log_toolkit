@@ -13,7 +13,7 @@ Expected behavior after fix:
 
 import numpy as np
 import pandas as pd
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 import pytest
 
 
@@ -42,7 +42,7 @@ def test_color_well_in_prepare_data():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     # Create mock wells
@@ -115,7 +115,7 @@ def test_is_categorical_color_detection():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     well = MockWell("TestWell")
@@ -183,7 +183,7 @@ def test_plotting_with_color_well():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     well1 = MockWell("Well_A")

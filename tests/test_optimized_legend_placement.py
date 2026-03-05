@@ -10,7 +10,7 @@ This test verifies:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 import pytest
 
 
@@ -22,7 +22,7 @@ def create_test_wells_with_data_in_segment(segment: int, num_wells=3):
         4  5  6     (center left, center, center right)
         7  8  9     (lower left, lower center, lower right)
     """
-    from well_log_toolkit.core.property import Property
+    from pylog.core.property import Property
 
     class MockWell:
         def __init__(self, name, segment_focus):
@@ -69,7 +69,7 @@ def create_test_wells_with_data_in_segment(segment: int, num_wells=3):
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}", segment) for i in range(num_wells)]
@@ -169,7 +169,7 @@ def test_shape_color_sharing():
     print("="*70)
 
     # Create a scenario with both shape and color legends (small)
-    from well_log_toolkit.core.property import Property
+    from pylog.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -206,7 +206,7 @@ def test_shape_color_sharing():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     wells = [MockWell(f"Well_{chr(65+i)}") for i in range(2)]  # Only 2 wells (small)

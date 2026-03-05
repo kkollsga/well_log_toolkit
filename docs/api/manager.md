@@ -1,7 +1,7 @@
 # WellDataManager
 
 ```{eval-rst}
-.. autoclass:: well_log_toolkit.WellDataManager
+.. autoclass:: pylog.WellDataManager
    :members:
    :undoc-members:
 ```

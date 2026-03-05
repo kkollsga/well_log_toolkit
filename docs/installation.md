@@ -3,14 +3,14 @@
 ## From PyPI
 
 ```bash
-pip install well-log-toolkit
+pip install pylog
 ```
 
 ## From Source
 
 ```bash
-git clone https://github.com/kkollsga/well-log-toolkit.git
-cd well-log-toolkit
+git clone https://github.com/kkollsga/pylog.git
+cd pylog
 pip install -e .
 ```
 

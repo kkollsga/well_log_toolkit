@@ -1,11 +1,11 @@
-"""Version detection for well-log-toolkit."""
+"""Version detection for pylog."""
 
 
 def _get_version():
     """Get version from installed package metadata or pyproject.toml."""
     try:
         from importlib.metadata import version
-        return version("well-log-toolkit")
+        return version("pylog")
     except Exception:
         try:
             from pathlib import Path

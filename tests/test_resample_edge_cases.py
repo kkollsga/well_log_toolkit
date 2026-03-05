@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from well_log_toolkit import Property
+from pylog import Property
 
 
 class TestResampleGrids:

@@ -1,7 +1,7 @@
 # Regression
 
 ```{eval-rst}
-.. automodule:: well_log_toolkit.analysis.regression
+.. automodule:: pylog.analysis.regression
    :members:
    :undoc-members:
    :show-inheritance:

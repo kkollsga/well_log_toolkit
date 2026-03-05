@@ -2,7 +2,7 @@
 
 ## Available Models
 
-well-log-toolkit provides 6 regression models for crossplot analysis:
+pylog provides 6 regression models for crossplot analysis:
 
 | Model | Equation | Use Case |
 |-------|----------|----------|
@@ -16,7 +16,7 @@ well-log-toolkit provides 6 regression models for crossplot analysis:
 ## Basic Usage
 
 ```python
-from well_log_toolkit import ExponentialRegression
+from pylog import ExponentialRegression
 import numpy as np
 
 x = well.PHIE.values
@@ -37,7 +37,7 @@ y_pred = reg.predict(np.linspace(0.05, 0.35, 100))
 ## With Crossplots
 
 ```python
-from well_log_toolkit import Crossplot, PolynomialRegression
+from pylog import Crossplot, PolynomialRegression
 
 xplot = Crossplot(x=well.PHIE, y=well.PERM)
 xplot.add_regression(PolynomialRegression, degree=2)

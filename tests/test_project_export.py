@@ -8,7 +8,7 @@ import tempfile
 import shutil
 
 
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 import pytest
 
 

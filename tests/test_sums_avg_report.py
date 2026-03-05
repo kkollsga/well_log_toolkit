@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from well_log_toolkit import WellDataManager
-from well_log_toolkit.analysis.sums_avg import SumsAvgResult
+from pylog import WellDataManager
+from pylog.analysis.sums_avg import SumsAvgResult
 
 
 @pytest.fixture

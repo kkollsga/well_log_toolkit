@@ -10,7 +10,7 @@ LasFile : LAS file reader with lazy loading
 
 Examples
 --------
->>> from well_log_toolkit import WellDataManager
+>>> from pylog import WellDataManager
 >>>
 >>> # Load LAS files
 >>> manager = WellDataManager()

@@ -6,13 +6,13 @@ of color AND shape groups.
 """
 
 import numpy as np
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 import pytest
 
 
 def create_multi_well_with_formations():
     """Create multiple wells with formation data."""
-    from well_log_toolkit.core.property import Property
+    from pylog.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):
@@ -58,7 +58,7 @@ def create_multi_well_with_formations():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}", i) for i in range(3)]

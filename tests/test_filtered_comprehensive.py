@@ -6,9 +6,9 @@ Comprehensive test for filtered statistics with various configurations:
 - Nested mode
 """
 import numpy as np
-from well_log_toolkit import WellDataManager, Property
-from well_log_toolkit.utils import sanitize_well_name
-from well_log_toolkit.core.well import Well
+from pylog import WellDataManager, Property
+from pylog.utils import sanitize_well_name
+from pylog.core.well import Well
 
 print("=" * 80)
 print("COMPREHENSIVE TEST: Filtered Statistics with Various Configurations")

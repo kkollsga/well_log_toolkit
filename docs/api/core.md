@@ -3,7 +3,7 @@
 ## Well
 
 ```{eval-rst}
-.. autoclass:: well_log_toolkit.Well
+.. autoclass:: pylog.Well
    :members:
    :undoc-members:
 ```
@@ -11,7 +11,7 @@
 ## Property
 
 ```{eval-rst}
-.. autoclass:: well_log_toolkit.Property
+.. autoclass:: pylog.Property
    :members:
    :undoc-members:
 ```

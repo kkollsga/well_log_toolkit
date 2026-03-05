@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from well_log_toolkit import Property, geometric_mean, harmonic_mean
-from well_log_toolkit.analysis.statistics import compute_intervals
+from pylog import Property, geometric_mean, harmonic_mean
+from pylog.analysis.statistics import compute_intervals
 
 
 class TestGeometricMean:

@@ -1251,7 +1251,7 @@ class WellDataManager:
 
         Examples
         --------
-        >>> from well_log_toolkit import Template
+        >>> from pylog import Template
         >>>
         >>> template = Template("reservoir")
         >>> template.add_track(track_type="continuous", logs=[...])

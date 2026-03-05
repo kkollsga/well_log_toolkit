@@ -1,11 +1,11 @@
 # Quick Start
 
-A 5-minute introduction to well-log-toolkit.
+A 5-minute introduction to pyLog.
 
 ## Loading LAS Files
 
 ```python
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 
 manager = WellDataManager()
 manager.load_las("12_3-2_B.las")
@@ -54,7 +54,7 @@ zone_stats = manager.PHIE.filter('Zone').sums_avg()
 ## Visualization
 
 ```python
-from well_log_toolkit import Template, WellView
+from pylog import Template, WellView
 
 # Define track layout
 template = Template()

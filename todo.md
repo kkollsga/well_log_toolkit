@@ -1,4 +1,4 @@
-# well-log-toolkit — 10-Step Improvement Plan
+# pylog — 10-Step Improvement Plan
 
 ## Current State
 
@@ -18,9 +18,9 @@
 **Goal:** CI actually runs the test suite instead of just a smoke import.
 
 **Current problem:**
-- `build-and-publish.yml` test job only does `python -c "from well_log_toolkit import ..."`
+- `build-and-publish.yml` test job only does `python -c "from pylog import ..."`
 - `pyproject.toml` has `testpaths = ["tests"]` but the directory is `pytest/`
-- `addopts` includes `--cov=well_log_toolkit` but `pytest-cov` isn't installed in CI
+- `addopts` includes `--cov=pylog` but `pytest-cov` isn't installed in CI
 
 **Tasks:**
 - [x] Rename `pytest/` → `tests/`
@@ -41,7 +41,7 @@
 
 **Current structure (flat):**
 ```
-well_log_toolkit/
+pylog/
 ├── __init__.py          (139 lines)
 ├── exceptions.py        (48 lines)
 ├── las_file.py          (1,343 lines)
@@ -57,7 +57,7 @@ well_log_toolkit/
 
 **Target structure (domain-driven):**
 ```
-well_log_toolkit/
+pylog/
 ├── __init__.py                     # Public API re-exports (keep stable)
 ├── _version.py                     # Version detection logic
 ├── exceptions.py                   # Exception hierarchy (unchanged)
@@ -104,7 +104,7 @@ well_log_toolkit/
 ```
 
 **Migration rules:**
-1. Every existing `from well_log_toolkit import X` must keep working — the top-level `__init__.py` re-exports everything
+1. Every existing `from pylog import X` must keep working — the top-level `__init__.py` re-exports everything
 2. Each subpackage `__init__.py` re-exports its public API
 3. Internal cross-references use relative imports within subpackages
 4. No circular imports — the dependency graph flows: `io → core → analysis → manager → visualization`
@@ -352,7 +352,7 @@ def filter(self, property_name: str) -> 'Property':
 
 - [ ] Configure `docs/conf.py`:
   ```python
-  project = 'well-log-toolkit'
+  project = 'pylog'
   extensions = [
       'sphinx.ext.autodoc',
       'sphinx.ext.napoleon',       # NumPy-style docstrings
@@ -419,7 +419,7 @@ def filter(self, property_name: str) -> 'Property':
 **Goal:** Professional first impression. Accurate metadata. Concise README that points to full docs.
 
 **Current problems:**
-- Issues URL: `github.com/yourusername/well-log-toolkit/issues`
+- Issues URL: `github.com/yourusername/pylog/issues`
 - Classifier: `Development Status :: 3 - Alpha` at 152 releases
 - Description undersells: "Fast LAS file processing" (it's a full analytics library)
 - README is 2,367 lines (should be ~300 with links to docs site)
@@ -501,7 +501,7 @@ def filter(self, property_name: str) -> 'Property':
 - [ ] Add `Property.histogram()` returning bin edges and weighted counts
 - [ ] Add a registration pattern for custom statistics in `sums_avg()`:
   ```python
-  from well_log_toolkit import register_statistic
+  from pylog import register_statistic
 
   @register_statistic
   def dykstra_parsons(values, weights):

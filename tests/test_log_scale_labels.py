@@ -4,13 +4,13 @@ and linear axes show regular floats without scientific notation.
 """
 
 import numpy as np
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 import pytest
 
 
 def create_test_well_log_data():
     """Create a well with wide-range permeability data."""
-    from well_log_toolkit.core.property import Property
+    from pylog.core.property import Property
 
     class MockWell:
         def __init__(self, name):
@@ -43,7 +43,7 @@ def create_test_well_log_data():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return MockWell("TestWell")

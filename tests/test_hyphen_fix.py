@@ -8,8 +8,8 @@ import tempfile
 import shutil
 
 
-from well_log_toolkit import WellDataManager
-from well_log_toolkit.utils import sanitize_well_name
+from pylog import WellDataManager
+from pylog.utils import sanitize_well_name
 import pytest
 
 

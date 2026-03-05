@@ -7,7 +7,7 @@ in the same 1/9th section without overlap.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 
 
 def create_demo_wells(num_wells=3):
@@ -49,7 +49,7 @@ def create_demo_wells(num_wells=3):
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}", seed=i*10) for i in range(num_wells)]

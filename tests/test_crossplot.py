@@ -10,7 +10,7 @@ This script tests:
 
 import numpy as np
 import pytest
-from well_log_toolkit import (
+from pylog import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,
@@ -80,15 +80,15 @@ def test_crossplot_imports():
     print("\nTesting Crossplot imports...")
 
     try:
-        from well_log_toolkit import Crossplot
-        print("✓ Crossplot can be imported from well_log_toolkit")
+        from pylog import Crossplot
+        print("✓ Crossplot can be imported from pylog")
     except ImportError as e:
         print(f"✗ Failed to import Crossplot: {e}")
         pytest.skip("Test precondition not met")
 
     try:
-        from well_log_toolkit.visualization import Crossplot
-        print("✓ Crossplot can be imported from well_log_toolkit.visualization")
+        from pylog.visualization import Crossplot
+        print("✓ Crossplot can be imported from pylog.visualization")
     except ImportError as e:
         print(f"✗ Failed to import Crossplot from visualization: {e}")
         pytest.skip("Test precondition not met")
@@ -99,7 +99,7 @@ def test_api_structure():
     """Test that the API is properly structured."""
     print("\nTesting API structure...")
 
-    from well_log_toolkit import Well, WellDataManager
+    from pylog import Well, WellDataManager
 
     # Check if Well has Crossplot method
     if hasattr(Well, 'Crossplot'):

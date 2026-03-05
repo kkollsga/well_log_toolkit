@@ -1,7 +1,7 @@
 # Statistics
 
 ```{eval-rst}
-.. automodule:: well_log_toolkit.analysis.statistics
+.. automodule:: pylog.analysis.statistics
    :members:
    :undoc-members:
 ```

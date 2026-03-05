@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from well_log_toolkit.io import LasFile
+from pylog.io import LasFile
 
 
 @pytest.fixture

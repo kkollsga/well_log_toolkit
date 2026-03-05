@@ -1,11 +1,11 @@
 """
-Examples demonstrating the usage of well_log_toolkit.
+Examples demonstrating the usage of pylog.
 
-This module provides practical examples of how to use the well_log_toolkit
+This module provides practical examples of how to use the pylog
 for loading, analyzing, and filtering well log data from LAS files.
 """
 
-from well_log_toolkit import WellDataManager, LasFile
+from pylog import WellDataManager, LasFile
 
 
 # =============================================================================
@@ -481,7 +481,7 @@ def example_las_export():
     print("Exported with custom null value (-9999.0)")
 
     # 8. Standalone export using LasFile.export_las()
-    from well_log_toolkit import LasFile
+    from pylog import LasFile
 
     # Create any DataFrame with DEPT column
     df = well.data(include=['DEPT', 'PHIE', 'SW'])

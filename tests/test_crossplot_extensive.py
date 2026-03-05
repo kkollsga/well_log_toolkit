@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import tempfile
 import os
 
-from well_log_toolkit import (
+from pylog import (
     LinearRegression,
     LogarithmicRegression,
     ExponentialRegression,
@@ -536,7 +536,7 @@ class PlottingTests:
         print("-" * 50)
 
         # Create mock well data
-        from well_log_toolkit import Well, Property
+        from pylog import Well, Property
 
         try:
             # Create synthetic well

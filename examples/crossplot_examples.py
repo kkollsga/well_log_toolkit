@@ -7,7 +7,7 @@ including single and multi-well plots, color/size/shape mapping, regression
 analysis, and advanced customization.
 """
 
-from well_log_toolkit import WellDataManager, LinearRegression, PolynomialRegression
+from pylog import WellDataManager, LinearRegression, PolynomialRegression
 
 # =============================================================================
 # EXAMPLE 1: Basic Crossplot from a Single Well

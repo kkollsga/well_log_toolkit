@@ -4,7 +4,7 @@ Supports: multi-well, single-well with name, single-well with default
 """
 import pandas as pd
 import numpy as np
-from well_log_toolkit import WellDataManager
+from pylog import WellDataManager
 
 print("=" * 80)
 print("Testing Flexible Loading Patterns (v0.1.57)")

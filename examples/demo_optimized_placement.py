@@ -9,12 +9,12 @@ This demo shows how legends are intelligently placed:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from well_log_toolkit.visualization import Crossplot
+from pylog.visualization import Crossplot
 
 
 def create_demo_wells_with_clustered_data():
     """Create wells with data clustered in the center (segment 5)."""
-    from well_log_toolkit.core.property import Property
+    from pylog.core.property import Property
 
     class MockWell:
         def __init__(self, name, offset):
@@ -55,7 +55,7 @@ def create_demo_wells_with_clustered_data():
         def get_property(self, name):
             if name in self._properties:
                 return self._properties[name]
-            from well_log_toolkit.exceptions import PropertyNotFoundError
+            from pylog.exceptions import PropertyNotFoundError
             raise PropertyNotFoundError(f"Property {name} not found")
 
     return [MockWell(f"Well_{chr(65+i)}", i) for i in range(3)]

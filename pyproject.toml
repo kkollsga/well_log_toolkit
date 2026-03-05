@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "well-log-toolkit"
-version = "0.1.158"
+name = "pylog"
+version = "0.1.159"
 description = "Petrophysical well log analysis with depth-weighted statistics, hierarchical filtering, and template-driven visualization"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,18 +61,18 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kkollsga/well-log-toolkit"
-Documentation = "https://well-log-toolkit.readthedocs.io"
-Repository = "https://github.com/kkollsga/well-log-toolkit"
-Issues = "https://github.com/kkollsga/well-log-toolkit/issues"
-Changelog = "https://github.com/kkollsga/well-log-toolkit/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/kkollsga/pylog"
+Documentation = "https://pylog.readthedocs.io"
+Repository = "https://github.com/kkollsga/pylog"
+Issues = "https://github.com/kkollsga/pylog/issues"
+Changelog = "https://github.com/kkollsga/pylog/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["well_log_toolkit*"]
+include = ["pylog*"]
 
 [tool.setuptools.package-data]
-well_log_toolkit = ["py.typed"]
+pylog = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -116,11 +116,11 @@ addopts = [
 ]
 
 [tool.towncrier]
-package = "well_log_toolkit"
+package = "pylog"
 directory = "changes"
 filename = "CHANGELOG.md"
 title_format = "## [{version}] - {project_date}"
-issue_format = "[#{issue}](https://github.com/kkollsga/well-log-toolkit/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/kkollsga/pylog/issues/{issue})"
 
 [[tool.towncrier.type]]
 directory = "feature"

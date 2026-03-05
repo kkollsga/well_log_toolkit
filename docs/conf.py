@@ -1,11 +1,11 @@
-"""Sphinx configuration for well-log-toolkit documentation."""
+"""Sphinx configuration for pyLog documentation."""
 
 import importlib.metadata
 
-project = "well-log-toolkit"
+project = "pyLog"
 copyright = "2024, Kristian dF Kollsgård"
 author = "Kristian dF Kollsgård"
-release = importlib.metadata.version("well-log-toolkit")
+release = importlib.metadata.version("pylog")
 version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
@@ -26,9 +26,9 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = "furo"
-html_title = "well-log-toolkit"
+html_title = "pyLog"
 html_theme_options = {
-    "source_repository": "https://github.com/kkollsga/well-log-toolkit",
+    "source_repository": "https://github.com/kkollsga/pylog",
     "source_branch": "main",
     "source_directory": "docs/",
 }

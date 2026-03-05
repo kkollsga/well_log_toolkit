@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 # Import statistics functions
-from well_log_toolkit.analysis.statistics import compute_intervals, compute_zone_intervals
+from pylog.analysis.statistics import compute_intervals, compute_zone_intervals
 
 
 # =============================================================================
@@ -491,7 +491,7 @@ class TestNumericalPrecision:
 # Test Integration with Property Class
 # =============================================================================
 
-from well_log_toolkit import Property
+from pylog import Property
 
 
 class TestPropertyIntegration:

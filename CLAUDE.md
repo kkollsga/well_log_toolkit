@@ -1,19 +1,19 @@
-# well-log-toolkit — Claude Code Conventions
+# pyLog — Claude Code Conventions
 
 ## Build & Test
 
 ```bash
 python -m pytest                              # run full test suite
-python -m pytest --cov=well_log_toolkit       # with coverage
-ruff check well_log_toolkit/                  # lint (always run before pushing)
-black well_log_toolkit/                       # format
-mypy well_log_toolkit/                        # type check
+python -m pytest --cov=pylog       # with coverage
+ruff check pylog/                  # lint (always run before pushing)
+black pylog/                       # format
+mypy pylog/                        # type check
 ```
 
 ## Architecture
 
 ```text
-well_log_toolkit/
+pylog/
 ├── io/              LAS 2.0 reader with lazy loading (headers on init, data on .data())
 │   └── las_file.py
 ├── core/            Well → Property → PropertyOperationsMixin

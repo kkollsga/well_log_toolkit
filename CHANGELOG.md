@@ -10,6 +10,14 @@ To add a changelog entry, create a file in the `changes/` directory.
 
 <!-- towncrier release notes start -->
 
+## [0.1.159] - 2026-03-05
+
+### Breaking Changes
+
+- **Package renamed to pyLog**: PyPI package is now `pylog` (was `well-log-toolkit`).
+  Import changes: `from pylog import WellDataManager, Well, Property`.
+  Install: `pip install pylog`.
+
 ## [0.1.158] - 2026-03-05
 
 ### Documentation
@@ -20,8 +28,8 @@ To add a changelog entry, create a file in the `changes/` directory.
   multi-well), and API reference for all public classes and functions.
 - **ReadTheDocs configuration**: `.readthedocs.yaml` for automated builds.
 - **Documentation dependencies**: Added `[docs]` optional dependency group.
-- **Repo rename**: Updated all project URLs from `well_log_toolkit` to
-  `well-log-toolkit` to match PyPI package name.
+- **Repo rename**: Updated all project URLs from `pylog` to
+  `pylog` to match PyPI package name.
 
 ## [0.1.157] - 2026-03-05
 
@@ -35,7 +43,7 @@ To add a changelog entry, create a file in the `changes/` directory.
 - **`Property.histogram(bins, weighted)`**: Compute histogram of property
   values, optionally weighted by depth intervals.
 - **`PolynomialExponentialRegression`**: Now exported at top-level
-  (`from well_log_toolkit import PolynomialExponentialRegression`).
+  (`from pylog import PolynomialExponentialRegression`).
 - **Basic LAS 3.0 support**: Read LAS 3.0 files with `~Log_Definition` and
   `~Log_Data` sections (single data section, tab-delimited).
 
@@ -80,9 +88,9 @@ To add a changelog entry, create a file in the `changes/` directory.
 ### Breaking Changes
 
 - Restructured package into domain-driven subpackages. Direct imports from flat
-  modules (e.g., `from well_log_toolkit.statistics import mean`) must now use
-  subpackage paths (e.g., `from well_log_toolkit.analysis.statistics import mean`).
-  Top-level imports (`from well_log_toolkit import Well, Property`) are unchanged.
+  modules (e.g., `from pylog.statistics import mean`) must now use
+  subpackage paths (e.g., `from pylog.analysis.statistics import mean`).
+  Top-level imports (`from pylog import Well, Property`) are unchanged.
 
 ### Internal Changes
 

@@ -1,7 +1,7 @@
 # Exceptions
 
 ```{eval-rst}
-.. automodule:: well_log_toolkit.exceptions
+.. automodule:: pylog.exceptions
    :members:
    :undoc-members:
    :show-inheritance:

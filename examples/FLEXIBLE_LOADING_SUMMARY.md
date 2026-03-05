@@ -98,12 +98,12 @@ else:
 
 ### Modified Files
 
-1. `/well_log_toolkit/manager.py`:
+1. `/pylog/manager.py`:
    - Updated `load_properties()` signature and implementation
    - Updated `load_tops()` signature and implementation
    - Enhanced docstrings with examples for all three patterns
 
-2. `/well_log_toolkit/__init__.py`:
+2. `/pylog/__init__.py`:
    - Version bumped to 0.1.57
 
 ### Testing

@@ -69,8 +69,8 @@ class WellView:
 
     Examples
     --------
-    >>> from well_log_toolkit import WellDataManager
-    >>> from well_log_toolkit.visualization import WellView, Template
+    >>> from pylog import WellDataManager
+    >>> from pylog.visualization import WellView, Template
     >>>
     >>> # Load data
     >>> manager = WellDataManager()
