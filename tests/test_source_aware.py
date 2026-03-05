@@ -5,10 +5,9 @@ Test script for source-aware architecture refactoring.
 import sys
 from pathlib import Path
 
-# Add the package to path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from well_log_toolkit import WellDataManager
+import pytest
 
 def test_basic_loading():
     """Test basic LAS file loading with source-aware architecture."""
@@ -23,8 +22,7 @@ def test_basic_loading():
     files = glob.glob('WellData/*')
 
     if not files:
-        print("No LAS files found in WellData/ directory")
-        return False
+        pytest.skip("No LAS files found in WellData/ directory")
 
     print(f"Found {len(files)} files")
 
@@ -39,7 +37,6 @@ def test_basic_loading():
         print(f"  Sources: {well.sources}")
         print(f"  Properties: {well.properties[:5]}...")  # Show first 5
 
-    return True
 
 
 def test_source_access():
@@ -54,8 +51,7 @@ def test_source_access():
     files = glob.glob('WellData/*')[:1]  # Just use first file
 
     if not files:
-        print("No LAS files found")
-        return False
+        pytest.skip("No LAS files found")
 
     manager.load_las(files[0])
 
@@ -82,7 +78,6 @@ def test_source_access():
             print(f"  Depth samples: {len(prop.depth)}")
             print(f"  Value range: [{prop.values.min():.2f}, {prop.values.max():.2f}]")
 
-    return True
 
 
 def test_unique_property_access():
@@ -97,8 +92,7 @@ def test_unique_property_access():
     files = glob.glob('WellData/*')[:1]
 
     if not files:
-        print("No LAS files found")
-        return False
+        pytest.skip("No LAS files found")
 
     manager.load_las(files[0])
 
@@ -118,7 +112,6 @@ def test_unique_property_access():
         except AttributeError as e:
             print(f"  Error (expected if ambiguous): {e}")
 
-    return True
 
 
 def test_property_methods():
@@ -133,8 +126,7 @@ def test_property_methods():
     files = glob.glob('WellData/*')[:1]
 
     if not files:
-        print("No LAS files found")
-        return False
+        pytest.skip("No LAS files found")
 
     manager.load_las(files[0])
 
@@ -151,9 +143,8 @@ def test_property_methods():
         print(f"  Columns: {list(df.columns[:5])}...")
     except Exception as e:
         print(f"  Error: {e}")
-        return False
+        pytest.skip("Test precondition not met")
 
-    return True
 
 
 def main():

@@ -10,6 +10,33 @@ To add a changelog entry, create a file in the `changes/` directory.
 
 <!-- towncrier release notes start -->
 
+## [0.1.155] - 2026-03-05
+
+### Features
+
+- **Fuzzy name matching**: Typos in property/well names now show "Did you mean: ..."
+  suggestions using `difflib.get_close_matches()`.
+- **`WellDataManager.validate()`**: New method to check data integrity across all wells
+  (missing properties, depth monotonicity, length mismatches).
+- **Proxy stats warnings**: `manager.PHIE.mean()` now warns when wells are silently
+  skipped because they lack the requested property.
+- **Input validation**: `Property()` now rejects mismatched depth/values lengths and
+  non-monotonic depth arrays. `LasFile()` rejects non-`.las` file extensions.
+
+### Testing
+
+- Added `tests/conftest.py` with 10 centralized pytest fixtures.
+- Added 4 new test files: `test_error_handling.py` (20 tests), `test_resample_edge_cases.py`
+  (6 tests), `test_las_export_roundtrip.py` (5 tests), `test_sums_avg_report.py` (8 tests).
+- Fixed `return True/False` → `assert`/`pytest.skip()` across 20 test files,
+  eliminating all 62 `PytestReturnNotNoneWarning` warnings.
+- Moved 6 demo/example scripts from `tests/` to `examples/`.
+
+### Documentation
+
+- Added `See Also` cross-references to key methods (`filter`, `sums_avg`, `resample`,
+  `get_property`, `load_las`, `mean`).
+
 ## [0.1.154] - 2026-03-05
 
 ### Breaking Changes

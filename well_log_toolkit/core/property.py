@@ -14,7 +14,7 @@ from ..analysis.statistics import (
     compute_zone_intervals,
     mean as stat_mean, sum as stat_sum, std as stat_std, percentile as stat_percentile
 )
-from ..utils import filter_names
+from ..utils import filter_names, suggest_similar_names
 from .operations import PropertyOperationsMixin
 
 if TYPE_CHECKING:
@@ -145,6 +145,23 @@ class Property(PropertyOperationsMixin):
             if depth is not None and values is not None:
                 self._depth_cache = np.asarray(depth, dtype=np.float64)
                 self._values_cache = np.asarray(values, dtype=np.float64)
+
+                # Validate depth/values length match
+                if len(self._depth_cache) != len(self._values_cache):
+                    raise ValueError(
+                        f"Property '{name}': depth length ({len(self._depth_cache)}) "
+                        f"!= values length ({len(self._values_cache)})"
+                    )
+
+                # Validate depth monotonicity
+                if len(self._depth_cache) > 1:
+                    diffs = np.diff(self._depth_cache)
+                    if np.any(diffs <= 0):
+                        n_violations = int(np.sum(diffs <= 0))
+                        raise ValueError(
+                            f"Property '{name}': depth must be monotonically increasing "
+                            f"({n_violations} violation(s))"
+                        )
 
                 # Replace null values with np.nan
                 self._values_cache = np.where(
@@ -690,6 +707,10 @@ class Property(PropertyOperationsMixin):
         >>> # Resample to regular 0.5m grid
         >>> target = np.arange(2800, 3500, 0.5)
         >>> phie_regular = well.PHIE.resample(target)
+
+        See Also
+        --------
+        filter : Add discrete property as grouping dimension (auto-resamples).
         """
         # Extract depth array if Property object passed
         if hasattr(target_depth, 'depth'):
@@ -1053,6 +1074,12 @@ class Property(PropertyOperationsMixin):
         PropertyTypeError
             If property is not discrete type
 
+        See Also
+        --------
+        sums_avg : Compute statistics grouped by filter values.
+        filter_intervals : Filter by depth intervals instead of discrete property.
+        resample : Resample to a different depth grid before filtering.
+
         Examples
         --------
         >>> filtered = well.phie.filter("Zone").filter("NTG_Flag")
@@ -1079,11 +1106,13 @@ class Property(PropertyOperationsMixin):
         try:
             discrete_prop = self.parent_well.get_property(property_name, source=source)
         except KeyError:
-            available = ', '.join(self.parent_well.properties)
-            raise PropertyNotFoundError(
-                f"Property '{property_name}' not found in well '{self.parent_well.name}'. "
-                f"Available properties: {available}"
-            )
+            available = self.parent_well.properties
+            suggestions = suggest_similar_names(property_name, available)
+            msg = f"Property '{property_name}' not found in well '{self.parent_well.name}'."
+            if suggestions:
+                msg += f" Did you mean: {', '.join(suggestions)}?"
+            msg += f" Available properties: {', '.join(available)}"
+            raise PropertyNotFoundError(msg)
 
         # Validate it's discrete
         if discrete_prop.type != 'discrete':
@@ -1699,6 +1728,12 @@ class Property(PropertyOperationsMixin):
         >>> # Custom precision
         >>> stats = phie.sums_avg(precision=3)
         >>> # {'mean': 0.180, 'sum': 45.200, ...}
+
+        See Also
+        --------
+        filter : Add a discrete property as a grouping dimension.
+        mean : Compute single mean value (without full statistics).
+        std : Compute single standard deviation.
         """
         # Set defaults based on property type
         # Sampled data: use arithmetic (each sample has equal weight)

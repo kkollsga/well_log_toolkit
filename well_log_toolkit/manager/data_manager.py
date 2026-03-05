@@ -12,7 +12,7 @@ from ..exceptions import LasFileError, PropertyNotFoundError, PropertyTypeError
 from ..io import LasFile
 from ..core.well import Well
 from ..core.property import Property
-from ..utils import sanitize_well_name, sanitize_property_name
+from ..utils import sanitize_well_name, sanitize_property_name, suggest_similar_names
 from ..analysis.sums_avg import SumsAvgResult, _sanitize_for_json, _flatten_to_dataframe
 from .proxy import _ManagerPropertyProxy, _ManagerMultiPropertyProxy
 
@@ -102,10 +102,13 @@ class WellDataManager:
         if name.startswith('well_'):
             if name in self._wells:
                 return self._wells[name]
-            raise AttributeError(
-                f"Well '{name}' not found in manager. "
-                f"Available wells: {', '.join(self._wells.keys()) or 'none'}"
-            )
+            available = list(self._wells.keys())
+            suggestions = suggest_similar_names(name, available)
+            msg = f"Well '{name}' not found in manager."
+            if suggestions:
+                msg += f" Did you mean: {', '.join(suggestions)}?"
+            msg += f" Available wells: {', '.join(available) or 'none'}"
+            raise AttributeError(msg)
 
         # Otherwise, treat as property name for broadcasting
         # Return a proxy that can be used for operations across all wells
@@ -240,6 +243,12 @@ class WellDataManager:
         Loaded sources:
         - Well 36/7-5 B: CorePlugs (2 files combined)
         - Well 36/7-4: CorePlugs (2 files combined)
+
+        See Also
+        --------
+        save : Save loaded wells to project directory.
+        load : Load a previously saved project.
+        load_properties : Load properties from a DataFrame.
         """
         # Handle list of files
         if isinstance(filepath, list):
@@ -1569,6 +1578,71 @@ class WellDataManager:
             regression_by_color=regression_by_color,
             regression_by_group=regression_by_group,
         )
+
+    def validate(self) -> dict[str, list[str]]:
+        """
+        Check data integrity across all wells.
+
+        Returns a dictionary mapping well names to lists of issue descriptions.
+        An empty dict means no issues were found.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Well names mapped to lists of issue strings. Empty if all OK.
+
+        Examples
+        --------
+        >>> issues = manager.validate()
+        >>> if issues:
+        ...     for well, problems in issues.items():
+        ...         print(f"{well}: {problems}")
+        """
+        issues: dict[str, list[str]] = {}
+
+        # Collect all property names across wells for cross-comparison
+        all_property_names: set[str] = set()
+        for well in self._wells.values():
+            all_property_names.update(well.properties)
+
+        for well_name, well in self._wells.items():
+            well_issues: list[str] = []
+            well_props = set(well.properties)
+
+            # Check for missing properties compared to other wells
+            missing = all_property_names - well_props
+            if missing:
+                well_issues.append(
+                    f"Missing properties present in other wells: {', '.join(sorted(missing))}"
+                )
+
+            # Check each property for depth issues
+            for source_data in well._sources.values():
+                for prop_name, prop in source_data['properties'].items():
+                    depth = prop.depth
+                    values = prop.values
+
+                    # Depth/values length mismatch
+                    if len(depth) != len(values):
+                        well_issues.append(
+                            f"Property '{prop_name}': depth length ({len(depth)}) != "
+                            f"values length ({len(values)})"
+                        )
+
+                    # Depth monotonicity
+                    if len(depth) > 1:
+                        diffs = np.diff(depth)
+                        non_increasing = np.sum(diffs <= 0)
+                        if non_increasing > 0:
+                            well_issues.append(
+                                f"Property '{prop_name}': depth not monotonically increasing "
+                                f"({non_increasing} violation(s))"
+                            )
+
+            if well_issues:
+                issues[well_name] = well_issues
+
+        return issues
 
     def __repr__(self) -> str:
         """String representation."""

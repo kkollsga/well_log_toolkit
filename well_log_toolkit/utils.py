@@ -1,8 +1,32 @@
 """
 Utility functions for well log toolkit.
 """
+import difflib
 import re
 from typing import Optional, List, Iterable
+
+
+def suggest_similar_names(name: str, available: Iterable[str], n: int = 3, cutoff: float = 0.5) -> list[str]:
+    """
+    Suggest similar names using fuzzy matching.
+
+    Parameters
+    ----------
+    name : str
+        The name that was not found.
+    available : Iterable[str]
+        Available valid names to match against.
+    n : int, default 3
+        Maximum number of suggestions to return.
+    cutoff : float, default 0.5
+        Minimum similarity ratio (0.0–1.0) for a match to be included.
+
+    Returns
+    -------
+    list[str]
+        Similar names sorted by similarity, or empty list if none found.
+    """
+    return difflib.get_close_matches(name, list(available), n=n, cutoff=cutoff)
 
 
 def sanitize_well_name(name: str, keep_hyphens: bool = False) -> str:

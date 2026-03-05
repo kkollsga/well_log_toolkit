@@ -10,7 +10,7 @@ import pandas as pd
 from ..exceptions import WellError, WellNameMismatchError, PropertyNotFoundError
 from .property import Property
 from ..io import LasFile
-from ..utils import sanitize_property_name, sanitize_well_name, filter_names
+from ..utils import sanitize_property_name, sanitize_well_name, filter_names, suggest_similar_names
 
 if TYPE_CHECKING:
     from ..manager import WellDataManager
@@ -51,12 +51,14 @@ class SourceView:
         if sanitized_name in self._properties:
             return self._properties[sanitized_name]
 
-        # Not found
-        available = ', '.join(self._properties.keys())
-        raise AttributeError(
-            f"Source '{self._source_name}' has no property '{name}'. "
-            f"Available properties: {available or 'none'}"
-        )
+        # Not found — suggest similar names
+        available = list(self._properties.keys())
+        suggestions = suggest_similar_names(name, available)
+        msg = f"Source '{self._source_name}' has no property '{name}'."
+        if suggestions:
+            msg += f" Did you mean: {', '.join(suggestions)}?"
+        msg += f" Available properties: {', '.join(available) or 'none'}"
+        raise AttributeError(msg)
 
     def __repr__(self) -> str:
         return f"SourceView('{self._source_name}', properties={len(self._properties)})"
@@ -1022,18 +1024,22 @@ class Well:
                 f"Use explicit source access: well.{matching_sources[0]}.{name}"
             )
 
-        # Not found - provide helpful error with available sources and properties
-        available_sources = ', '.join(self._sources.keys())
+        # Not found — suggest similar names
+        available_sources = list(self._sources.keys())
         all_properties = set()
         for source_data in self._sources.values():
             all_properties.update(source_data['properties'].keys())
-        available_properties = ', '.join(sorted(all_properties))
+        all_names = available_sources + sorted(all_properties)
+        suggestions = suggest_similar_names(name, all_names)
 
-        raise AttributeError(
-            f"Well '{self.name}' has no source or property named '{name}'. "
-            f"Available sources: {available_sources or 'none'}. "
-            f"Available properties: {available_properties or 'none'}"
+        msg = f"Well '{self.name}' has no source or property named '{name}'."
+        if suggestions:
+            msg += f" Did you mean: {', '.join(suggestions)}?"
+        msg += (
+            f" Available sources: {', '.join(available_sources) or 'none'}."
+            f" Available properties: {', '.join(sorted(all_properties)) or 'none'}"
         )
+        raise AttributeError(msg)
     
     @property
     def properties(self) -> list[str]:
@@ -1157,6 +1163,11 @@ class Well:
         PropertyNotFoundError
             If property not found or is ambiguous (exists in multiple sources)
 
+        See Also
+        --------
+        properties : List all accessible property names.
+        sources : List all source names.
+
         Examples
         --------
         >>> prop = well.get_property("PHIE")  # Gets PHIE if unique
@@ -1218,16 +1229,16 @@ class Well:
                 f"Use source parameter: well.get_property('{name}', source='{matching_sources[0]}')"
             )
 
-        # Not found
+        # Not found — suggest similar names
         all_properties = set()
         for source_data in self._sources.values():
             all_properties.update(source_data['properties'].keys())
-        available = ', '.join(sorted(all_properties))
-
-        raise PropertyNotFoundError(
-            f"Property '{name}' not found in well '{self.name}'. "
-            f"Available properties: {available or 'none'}"
-        )
+        suggestions = suggest_similar_names(name, all_properties)
+        msg = f"Property '{name}' not found in well '{self.name}'."
+        if suggestions:
+            msg += f" Did you mean: {', '.join(suggestions)}?"
+        msg += f" Available properties: {', '.join(sorted(all_properties)) or 'none'}"
+        raise PropertyNotFoundError(msg)
 
     def get_intervals(self, name: str) -> list[dict]:
         """

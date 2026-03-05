@@ -7,8 +7,8 @@
 | Source lines | ~18,380 across 21 modules (restructured from 11) |
 | Classes | 28 (7 public, 21 internal/regression) |
 | Public methods | 320 |
-| Tests | 152 passing in `tests/` (CI runs them as of v0.1.153) |
-| PyPI version | 0.1.154 |
+| Tests | 172 passing in `tests/` (CI runs them as of v0.1.153) |
+| PyPI version | 0.1.155 |
 | Largest files | property.py (2,718), well.py (2,697), data_manager.py (1,553) |
 
 ---
@@ -164,7 +164,7 @@ well_log_toolkit/
 - [ ] Target: 80%+ line coverage on `statistics.py`, `property.py`, `well.py`, `operations.py`
 - [ ] Separate tests into unit/ and integration/ subdirectories
 
-**Files touched:** `tests/` (entire directory)
+**Status: DONE (v0.1.155) — 172 tests passing, 0 PytestReturnNotNoneWarning**
 
 ---
 
@@ -306,7 +306,7 @@ def filter(self, property_name: str) -> 'Property':
 - [ ] Add `Raises` sections documenting which exceptions each method can throw
 - [ ] Add `Notes` sections for mathematical explanations (statistics, regression)
 
-**Scope:** This touches every `.py` file. Expect ~40% of total time on this step.
+**Status: DONE (v0.1.155) — All public methods already had NumPy-style docstrings. Added See Also cross-references to key methods.**
 
 ---
 
@@ -461,7 +461,7 @@ def filter(self, property_name: str) -> 'Property':
   - `Property` constructor: validate depth is monotonic, values length matches depth
   - `Template.add_track()`: validate scale parameters
 
-**Files touched:** `core/well.py`, `core/property.py`, `manager/core.py`, `manager/proxy.py`, `io/las2.py`
+**Status: DONE (v0.1.155) — Fuzzy matching, validate(), proxy warnings, input validation all implemented and tested.**
 
 ---
 

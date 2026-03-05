@@ -163,6 +163,19 @@ class _ManagerPropertyProxy:
                     result[key] = extracted
             return result if result else None
 
+    def _warn_skipped_wells(self, result: dict) -> None:
+        """Warn if any wells were skipped because they lack this property."""
+        all_wells = set(self._manager._wells.keys())
+        included = set(result.keys())
+        skipped = all_wells - included
+        if skipped:
+            names = ', '.join(sorted(skipped))
+            warnings.warn(
+                f"Skipped {len(skipped)} well(s) without property "
+                f"'{self._property_name}': {names}",
+                stacklevel=3,
+            )
+
     def _compute_for_well(self, well, stat_func, nested=False):
         """
         Helper to compute a statistic for a property in a well.
@@ -470,6 +483,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -482,6 +496,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result
@@ -534,6 +549,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -546,6 +562,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result
@@ -587,6 +604,11 @@ class _ManagerPropertyProxy:
            Well    Group       PHIE
         0  well_A  Zone_1     0.17
         1  well_A  Zone_2     0.22
+
+        See Also
+        --------
+        std : Compute standard deviation across wells.
+        sums_avg : Compute full grouped statistics.
         """
         # If filters are applied, use grouped statistics
         if self._filters:
@@ -603,6 +625,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -615,6 +638,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             # Only convert to DF if there's nesting (ambiguous properties or nested=True)
             return _flatten_to_dataframe(result, self._property_name)
@@ -673,6 +697,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -685,6 +710,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result
@@ -756,6 +782,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -768,6 +795,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result
@@ -825,6 +853,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -837,6 +866,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result
@@ -898,6 +928,7 @@ class _ManagerPropertyProxy:
                         result[well_name] = extracted
 
             result = _sanitize_for_json(result)
+            self._warn_skipped_wells(result)
             if return_df and result:
                 return _flatten_to_dataframe(result, self._property_name)
             return result
@@ -910,6 +941,7 @@ class _ManagerPropertyProxy:
                 result[well_name] = value
 
         result = _sanitize_for_json(result)
+        self._warn_skipped_wells(result)
         if return_df and result and any(isinstance(v, dict) for v in result.values()):
             return _flatten_to_dataframe(result, self._property_name)
         return result

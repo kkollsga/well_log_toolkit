@@ -77,8 +77,13 @@ class LasFile:
     def __init__(self, filepath: Union[str, Path], _from_dataframe: bool = False):
         self.filepath = Path(filepath)
 
-        if not _from_dataframe and not self.filepath.exists():
-            raise LasFileError(f"File not found: {filepath}")
+        if not _from_dataframe:
+            if self.filepath.suffix.lower() != '.las':
+                raise LasFileError(
+                    f"Expected .las file extension, got '{self.filepath.suffix}': {filepath}"
+                )
+            if not self.filepath.exists():
+                raise LasFileError(f"File not found: {filepath}")
 
         # Metadata containers
         self.version_info: dict[str, str] = {}

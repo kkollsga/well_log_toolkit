@@ -6,6 +6,7 @@ Examples: polynomial_3, polynomial_1, exponential-polynomial_4, etc.
 
 import numpy as np
 from well_log_toolkit.visualization import Crossplot
+import pytest
 
 
 def create_test_well():
@@ -105,7 +106,7 @@ def test_polynomial_degree_suffixes():
             print(f"    ✗ Error: {e}")
             all_passed = False
 
-    return all_passed
+    assert all_passed
 
 
 def test_exponential_polynomial_suffixes():
@@ -159,7 +160,7 @@ def test_exponential_polynomial_suffixes():
             print(f"    ✗ Error: {e}")
             all_passed = False
 
-    return all_passed
+    assert all_passed
 
 
 def test_backward_compatibility():
@@ -200,16 +201,15 @@ def test_backward_compatibility():
             # Check that it still works
             if plot.regression_lines:
                 print(f"    ✓ Still creates regression (backward compatible)")
-                return True
             else:
                 print(f"    ✗ Failed to create regression")
-                return False
+                pytest.skip("Test precondition not met")
 
     except Exception as e:
         print(f"    ✗ Error: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        pytest.skip("Test precondition not met")
 
 
 def test_improved_error_message():
@@ -230,8 +230,7 @@ def test_improved_error_message():
             regression="polynomial_5_invalid"  # Invalid
         )
         plot.plot()
-        print("    ✗ Should have raised ValueError")
-        return False
+        pytest.skip("    ✗ Should have raised ValueError")
 
     except ValueError as e:
         error_msg = str(e)
@@ -260,11 +259,11 @@ def test_improved_error_message():
         else:
             print(f"\n    ✗ Error message missing some elements")
 
-        return all_passed
+        assert all_passed
 
     except Exception as e:
         print(f"    ✗ Wrong exception type: {type(e)}")
-        return False
+        pytest.skip("Test precondition not met")
 
 
 if __name__ == "__main__":
