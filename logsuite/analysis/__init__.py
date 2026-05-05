@@ -16,6 +16,7 @@ from .regression import (
     PolynomialRegression,
     PowerRegression,
 )
+from .regression_fit import RegressionFit
 from .statistics import (
     compute_all_statistics,
     compute_intervals,
@@ -47,6 +48,7 @@ __all__ = [
     "PolynomialRegression",
     "PowerRegression",
     "PolynomialExponentialRegression",
+    "RegressionFit",
     # Sums/Avg
     "SumsAvgResult",
     "_sanitize_for_json",

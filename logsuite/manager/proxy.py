@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ..analysis.statistics import compute_intervals
 from ..analysis.sums_avg import SumsAvgResult, _flatten_to_dataframe, _sanitize_for_json
 from ..core.property import Property
 from ..exceptions import PropertyNotFoundError, PropertyTypeError
-from ..utils import suggest_similar_names
+from ..utils import emit_status, suggest_similar_names
 
 if TYPE_CHECKING:
     from .data_manager import WellDataManager
@@ -347,7 +348,9 @@ class _ManagerPropertyProxy:
             except (AttributeError, PropertyNotFoundError):
                 pass
         if count > 0:
-            print(f"✓ Set type='{value}' for property '{self._property_name}' in {count} well(s)")
+            emit_status(
+                f"✓ Set type='{value}' for property '{self._property_name}' in {count} well(s)"
+            )
 
     @property
     def labels(self):
@@ -379,7 +382,7 @@ class _ManagerPropertyProxy:
             except (AttributeError, PropertyNotFoundError):
                 pass
         if count > 0:
-            print(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
+            emit_status(f"✓ Set labels for property '{self._property_name}' in {count} well(s)")
 
     @property
     def colors(self):
@@ -404,7 +407,7 @@ class _ManagerPropertyProxy:
             except (AttributeError, PropertyNotFoundError):
                 pass
         if count > 0:
-            print(f"✓ Set colors for property '{self._property_name}' in {count} well(s)")
+            emit_status(f"✓ Set colors for property '{self._property_name}' in {count} well(s)")
 
     @property
     def styles(self):
@@ -429,7 +432,7 @@ class _ManagerPropertyProxy:
             except (AttributeError, PropertyNotFoundError):
                 pass
         if count > 0:
-            print(f"✓ Set styles for property '{self._property_name}' in {count} well(s)")
+            emit_status(f"✓ Set styles for property '{self._property_name}' in {count} well(s)")
 
     @property
     def thicknesses(self):
@@ -454,7 +457,9 @@ class _ManagerPropertyProxy:
             except (AttributeError, PropertyNotFoundError):
                 pass
         if count > 0:
-            print(f"✓ Set thicknesses for property '{self._property_name}' in {count} well(s)")
+            emit_status(
+                f"✓ Set thicknesses for property '{self._property_name}' in {count} well(s)"
+            )
 
     def min(self, nested: bool = False, return_df: bool = False):
         """
@@ -1024,7 +1029,13 @@ class _ManagerPropertyProxy:
         self._cache[cache_key] = result
         return result
 
-    def stats(self, methods=None, weighted: bool = True, return_df: bool = False):
+    def stats(
+        self,
+        methods=None,
+        weighted: bool = True,
+        return_df: bool = False,
+        flat_columns: bool = False,
+    ):
         """
         Compute multiple statistics for this property across all wells.
 
@@ -1121,9 +1132,10 @@ class _ManagerPropertyProxy:
 
         # Convert to DataFrame with statistics as columns
         # First, flatten each statistic to get rows
+        group_names = [name for name, _ in self._filters] if flat_columns else None
         dfs = []
         for stat_name, stat_dict in results.items():
-            df = _flatten_to_dataframe(stat_dict, stat_name)
+            df = _flatten_to_dataframe(stat_dict, stat_name, group_names=group_names)
             if not df.empty:
                 dfs.append(df)
 
@@ -1143,6 +1155,101 @@ class _ManagerPropertyProxy:
             merged = pd.merge(merged, df, on=grouping_cols, how="outer")
 
         return merged
+
+    def data(
+        self,
+        weighted: bool = False,
+        warn_missing: bool = True,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """
+        Return long-format data across all wells as a DataFrame.
+
+        Concatenates per-well property values with a leading ``well`` column.
+        Filters and ``filter_intervals`` stored on the proxy are applied per
+        well; wells that lack the property or any filter property are skipped
+        (consistent with stat methods).
+
+        Parameters
+        ----------
+        weighted : bool, default False
+            If True, append a ``Weight`` column with the depth interval each
+            row represents (half the interval before plus half after,
+            edge-corrected per well). Use these to replicate depth-weighted
+            statistics externally, e.g.
+            ``np.average(df["PHIE"], weights=df["Weight"])``.
+        warn_missing : bool, default True
+            Emit a ``UserWarning`` listing wells that lacked the property
+            and were skipped. Set ``False`` for batch / scripted workflows
+            where missing-well skips are expected.
+        **kwargs
+            Forwarded to :meth:`Property.data`. Useful options include
+            ``discrete_labels`` (default True — emits label strings for
+            discrete filters), ``clip_edges`` (default True),
+            ``clip_to_property``, ``include``, ``exclude``.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ``well``, ``DEPT``, ``<property_name>``, optional
+            ``Weight``, then one column per active filter named after the
+            filter property. Rows ordered by (well, DEPT). Empty DataFrame
+            if no well has the property.
+
+        Examples
+        --------
+        >>> manager.PHIE.filter("Zone").data().head()
+             well    DEPT   PHIE          Zone
+        0  Well_A  1000.0  0.150  NonReservoir
+        1  Well_A  1001.0  0.157  NonReservoir
+        """
+        dfs = []
+        included_wells: dict = {}
+
+        for well_name, well in self._manager._wells.items():
+            try:
+                prop = well.get_property(self._property_name)
+            except PropertyNotFoundError:
+                continue
+
+            prop = self._apply_operation(prop)
+            if not isinstance(prop, Property):
+                continue
+
+            if self._custom_intervals:
+                prop = self._apply_filter_intervals(prop, well)
+                if prop is None:
+                    continue
+
+            skip = False
+            for filter_name, insert_boundaries in self._filters:
+                try:
+                    if insert_boundaries is not None:
+                        prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                    else:
+                        prop = prop.filter(filter_name)
+                except (PropertyNotFoundError, PropertyTypeError):
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            df = prop.data(**kwargs)
+            if weighted and len(df) > 1:
+                df["Weight"] = compute_intervals(df["DEPT"].to_numpy())
+            elif weighted:
+                df["Weight"] = 0.0
+            df.insert(0, "well", well.name)
+            dfs.append(df)
+            included_wells[well_name] = 1
+
+        if not dfs:
+            return pd.DataFrame()
+
+        if warn_missing:
+            self._warn_skipped_wells(included_wells)
+
+        return pd.concat(dfs, ignore_index=True)
 
     def filter(
         self, property_name: str, insert_boundaries: bool | None = None
@@ -1651,7 +1758,7 @@ class _ManagerPropertyProxy:
 
         # Provide feedback
         if applied_count > 0:
-            print(f"✓ Created property '{target_name}' in {applied_count} well(s)")
+            emit_status(f"✓ Created property '{target_name}' in {applied_count} well(s)")
         if skipped_wells:
             warnings.warn(
                 f"Skipped {len(skipped_wells)} well(s) without property '{self._property_name}': "
@@ -1761,6 +1868,168 @@ class _ManagerMultiPropertyProxy:
         }
         return _ManagerMultiPropertyProxy(
             self._manager, self._property_names, self._filters, intervals_config
+        )
+
+    def data(self, weighted: bool = False, **kwargs) -> pd.DataFrame:
+        """
+        Return long-format data across all wells as a DataFrame.
+
+        Per well, all listed properties are filtered with the same active
+        filters and joined on DEPT, producing one column per property.
+        Filter columns are emitted once. Wells with none of the listed
+        properties (or that fail the filters) are skipped.
+
+        Parameters
+        ----------
+        weighted : bool, default False
+            If True, append a ``Weight`` column with the depth interval each
+            row represents (half the interval before plus half after,
+            edge-corrected per well). Use these to replicate depth-weighted
+            statistics externally.
+        **kwargs
+            Forwarded to :meth:`Property.data`.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ``well``, ``DEPT``, one column per property, optional
+            ``Weight``, then one column per active filter. Rows ordered by
+            (well, DEPT). Empty DataFrame if no well has any of the
+            requested properties.
+
+        Examples
+        --------
+        >>> manager.properties(["PHIE", "PERM"]).filter("Zone").data().head()
+             well    DEPT   PHIE   PERM          Zone
+        0  Well_A  1000.0  0.150   80.0  NonReservoir
+        """
+        dfs = []
+
+        for well in self._manager._wells.values():
+            filtered_props = []
+            skip_well = False
+
+            for prop_name in self._property_names:
+                try:
+                    prop = well.get_property(prop_name)
+                except (PropertyNotFoundError, AttributeError):
+                    continue
+
+                if self._custom_intervals:
+                    prop = self._apply_filter_intervals(prop, well)
+                    if prop is None:
+                        continue
+
+                for filter_name, insert_boundaries in self._filters:
+                    try:
+                        if insert_boundaries is not None:
+                            prop = prop.filter(filter_name, insert_boundaries=insert_boundaries)
+                        else:
+                            prop = prop.filter(filter_name)
+                    except (PropertyNotFoundError, PropertyTypeError):
+                        skip_well = True
+                        break
+                if skip_well:
+                    break
+
+                filtered_props.append(prop)
+
+            if skip_well or not filtered_props:
+                continue
+
+            base_df = filtered_props[0].data(**kwargs)
+
+            for prop in filtered_props[1:]:
+                extra = prop.data(**kwargs)[["DEPT", prop.name]]
+                base_df = base_df.merge(extra, on="DEPT", how="outer")
+
+            prop_cols = [p.name for p in filtered_props if p.name in base_df.columns]
+            filter_cols = [c for c in base_df.columns if c != "DEPT" and c not in prop_cols]
+            base_df = base_df[["DEPT"] + prop_cols + filter_cols]
+            base_df = base_df.sort_values("DEPT").reset_index(drop=True)
+
+            if weighted and len(base_df) > 1:
+                base_df["Weight"] = compute_intervals(base_df["DEPT"].to_numpy())
+            elif weighted:
+                base_df["Weight"] = 0.0
+
+            base_df.insert(0, "well", well.name)
+            dfs.append(base_df)
+
+        if not dfs:
+            return pd.DataFrame()
+
+        return pd.concat(dfs, ignore_index=True)
+
+    def fit(
+        self,
+        model,
+        name: str | None = None,
+        decimals: int = 4,
+        equation_format: str = "natural",
+        line_color: str | None = None,
+        line_width: float = 2.0,
+        line_style: str = "-",
+        line_alpha: float = 1.0,
+    ):
+        """
+        Fit a regression model to the data and return a :class:`RegressionFit`.
+
+        The proxy must hold exactly two properties; the first is treated as
+        the independent variable (``x``), the second as the dependent
+        variable (``y``). Pooled across all wells in the (sub-)view.
+
+        Parameters
+        ----------
+        model : RegressionBase
+            An unfitted regression model (e.g. ``ExponentialRegression()``).
+            ``model.fit(x, y)`` is called inside.
+        name : str, optional
+            Display name for the resulting artifact. Defaults to
+            ``"{x_property}-{y_property}"``.
+        decimals, equation_format, line_color, line_width, line_style, line_alpha :
+            Forwarded to :class:`RegressionFit`.
+
+        Returns
+        -------
+        RegressionFit
+            A fitted artifact ready to ``crossplot.add(fit)`` or pass to a
+            tabular consumer.
+
+        Raises
+        ------
+        ValueError
+            If the proxy does not hold exactly two properties, or if the
+            pooled data is empty.
+
+        Examples
+        --------
+        >>> fit = manager.properties(["PHIE", "PERM"]).fit(
+        ...     ExponentialRegression(), name="all wells", equation_format="petrel"
+        ... )
+        >>> crossplot.add(fit)
+        """
+        from ..analysis.regression_fit import RegressionFit
+
+        if len(self._property_names) != 2:
+            raise ValueError(
+                f"fit() requires exactly 2 properties (x, y); got "
+                f"{len(self._property_names)}: {self._property_names}"
+            )
+        df = self.data()
+        if df.empty:
+            raise ValueError("No data available to fit; pooled DataFrame is empty.")
+        x_col, y_col = self._property_names
+        model.fit(df[x_col].to_numpy(), df[y_col].to_numpy())
+        return RegressionFit(
+            model,
+            name=name if name is not None else f"{x_col}-{y_col}",
+            decimals=decimals,
+            equation_format=equation_format,
+            line_color=line_color,
+            line_width=line_width,
+            line_style=line_style,
+            line_alpha=line_alpha,
         )
 
     def sums_avg(

@@ -1,78 +1,53 @@
-# Quick Start
+# Quick start
 
-A 5-minute introduction to logSuite.
-
-## Loading LAS Files
+A working DG3 deliverable in 30 seconds and seven lines.
 
 ```python
-from logsuite import WellDataManager
+from logsuite import Crossplot, WellDataManager, set_quiet
 
+set_quiet(True)                                    # silence broadcast prints
 manager = WellDataManager()
-manager.load_las("12_3-2_B.las")
+manager.load_las("12_3-2_B.las").load_las("12_3-2_C.las")
+manager.Facies.colors = {0: "#999999", 1: "#3b82f6", 2: "#10b981"}
 
-# Access wells by sanitized name
-well = manager.well_12_3_2_B
-print(well.properties)
+xplot = Crossplot(manager, x="PHIE", y="PERM", color="Facies", y_log=True,
+                  equation_format="petrel", decimals=3)
+xplot.add_regression_per("Facies", "exponential", legend_loc="upper left")
+xplot.save("poroperm.svg")
 ```
 
-## Working with Properties
+What this gives you:
 
-```python
-# Access properties as attributes
-phie = well.PHIE
-print(f"Mean porosity: {phie.mean():.3f}")
-print(f"Range: {phie.min():.3f} - {phie.max():.3f}")
+* a poroperm crossplot of all wells,
+* one regression line per facies in the manager palette,
+* legend equations in Petrel calculator syntax (``pow(10, c1*x + c0)``),
+* zero monkey-patching of internals.
 
-# Create computed properties
-well.HC_Volume = well.PHIE * (1 - well.SW)
-```
+## The three abstractions
 
-## Filtering and Statistics
+| Layer | Class | What it owns |
+|-------|-------|--------------|
+| Data | ``WellDataManager``, ``ManagerView`` | Wells, properties, filtering, broadcasting |
+| Result | ``RegressionFit`` (and other ``Artifact`` subclasses) | Fitted state + equation + render methods |
+| Display | ``Crossplot``, ``WellView``, ``Template`` | Reads from a Manager-substrate, accepts artifacts via ``.add()`` |
 
-```python
-# Mark discrete properties
-zone = well.get_property('Zone')
-zone.type = 'discrete'
-zone.labels = {0: 'NonReservoir', 1: 'Reservoir'}
+The architecture is layered. Data layers know nothing about display.
+Display consumers read from the manager substrate or from a filtered
+view; they don't construct themselves from below.
 
-# Chain filters and compute statistics
-stats = well.PHIE.filter('Zone').filter('NTG_Flag').sums_avg()
-# Returns nested dict: {'Reservoir': {'Net': {...}, 'NonNet': {...}}, ...}
-```
+## Common patterns
 
-## Multi-Well Analysis
+* **One filter per group**: ``manager.PHIE.filter("Zone").filter("Facies").stats()``
+* **Pooled raw data**: ``manager.PHIE.filter("Facies").data(weighted=True)``
+* **Subset view**: ``manager.filter(wells=["A", "B"], where={"Facies": "Clean"})``
+* **Per-category regression**: ``xplot.add_regression_per("Facies", "exponential")``
+* **Combined deliverable**: ``xplot.add_table_panel(stats); xplot.save(...)``
+* **Single-well log**: ``WellView(manager["Well_A"], template=template).save(...)``
 
-```python
-# Load multiple wells
-manager.load_las("well_a.las").load_las("well_b.las")
+Each has a dedicated [how-to guide](how-to/index.md).
 
-# Broadcast operations across all wells
-all_means = manager.PHIE.mean()
-zone_stats = manager.PHIE.filter('Zone').sums_avg()
-```
+## Where next
 
-## Visualization
-
-```python
-from logsuite import Template, WellView
-
-# Define track layout
-template = Template()
-template.add_track(
-    track_type="continuous",
-    logs=[{"name": "PHIE", "color": "blue", "x_range": [0, 0.4]}],
-    title="Porosity",
-    width=2,
-)
-
-# Create well view
-view = WellView(well, template=template)
-view.show()
-```
-
-## Next Steps
-
-- {doc}`user-guide/loading-data` for LAS file loading details
-- {doc}`user-guide/wells-properties` for property operations
-- {doc}`user-guide/statistics` for depth-weighted calculations
-- {doc}`user-guide/visualization` for plotting options
+* [How-to guides](how-to/index.md) — task-focused recipes (regression per group, Petrel equations, deliverable composition, log plots).
+* [User guide](user-guide/loading-data.md) — topical reference (loading data, statistics, visualisation, regression).
+* [API reference](api/index.md) — every public class and method.

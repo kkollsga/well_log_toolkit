@@ -46,7 +46,7 @@ las.update_curve('Zone_Log', type='discrete')
 
 ## DataFrames
 
-Load data directly from pandas DataFrames:
+Load data directly from pandas DataFrames via the manager:
 
 ```python
 import pandas as pd
@@ -57,20 +57,29 @@ df = pd.DataFrame({
     'SW': [0.45, 0.40, 0.50],
 })
 
-manager.add_dataframe(df, well_name="Test Well")
+manager.load_properties(
+    df,
+    well_col=None,
+    well_name="Test Well",
+    source_name="petrophysics",
+)
 ```
 
 ### With Metadata
 
 ```python
-manager.add_dataframe(
+manager.load_properties(
     df,
+    well_col=None,
     well_name="Test Well",
+    source_name="petrophysics",
     unit_mappings={'DEPT': 'm', 'PHIE': 'v/v'},
     type_mappings={'Zone': 'discrete'},
     label_mappings={'Zone': {0: 'NonRes', 1: 'Reservoir'}},
 )
 ```
+
+Set ``logsuite.set_quiet(True)`` once at startup to silence the ``✓ Loaded …`` confirmation messages in scripted use.
 
 ## Multiple Sources
 

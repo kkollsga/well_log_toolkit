@@ -6,6 +6,46 @@ import difflib
 import re
 from collections.abc import Iterable
 
+# ---------------------------------------------------------------------------
+# Library-wide verbosity for informational ("✓ Set …") status messages.
+# Defaults to verbose to preserve current behaviour. Users wanting clean
+# script output call ``logsuite.set_quiet(True)`` once at startup.
+# ---------------------------------------------------------------------------
+
+_QUIET: bool = False
+
+
+def set_quiet(quiet: bool = True) -> None:
+    """Suppress library-emitted informational status messages.
+
+    Affects broadcast confirmations (``✓ Set colors for …``,
+    ``✓ Loaded N properties …``) printed by ``WellDataManager`` and the
+    property proxies. Warnings and errors are not affected.
+
+    Parameters
+    ----------
+    quiet : bool, default True
+        ``True`` silences status messages; ``False`` re-enables them.
+
+    Examples
+    --------
+    >>> import logsuite
+    >>> logsuite.set_quiet(True)  # for clean script output
+    """
+    global _QUIET
+    _QUIET = bool(quiet)
+
+
+def is_quiet() -> bool:
+    """Return whether informational broadcast messages are currently suppressed."""
+    return _QUIET
+
+
+def emit_status(message: str) -> None:
+    """Print an informational status message, unless :func:`set_quiet` was called."""
+    if not _QUIET:
+        print(message)
+
 
 def suggest_similar_names(
     name: str, available: Iterable[str], n: int = 3, cutoff: float = 0.5

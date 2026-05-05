@@ -52,6 +52,7 @@ from .analysis.regression import (
     PolynomialRegression,
     PowerRegression,
 )
+from .analysis.regression_fit import RegressionFit
 from .analysis.statistics import (
     compute_all_statistics,
     compute_intervals,
@@ -63,7 +64,7 @@ from .analysis.statistics import (
     std,
     sum,
 )
-from .core import Property, Well
+from .core import Artifact, Property, Well
 from .exceptions import (
     DepthAlignmentError,
     LasFileError,
@@ -76,13 +77,14 @@ from .exceptions import (
     WellNameMismatchError,
 )
 from .io import LasFile
-from .manager import WellDataManager
-from .utils import sanitize_property_name, sanitize_well_name
+from .manager import ManagerView, WellDataManager
+from .utils import sanitize_property_name, sanitize_well_name, set_quiet
 from .visualization import Crossplot, Template, WellView
 
 __all__ = [
     # Main classes
     "WellDataManager",
+    "ManagerView",
     "Well",
     "Property",
     "LasFile",
@@ -97,9 +99,13 @@ __all__ = [
     "PolynomialRegression",
     "PowerRegression",
     "PolynomialExponentialRegression",
+    # Artifacts
+    "Artifact",
+    "RegressionFit",
     # Utilities
     "sanitize_well_name",
     "sanitize_property_name",
+    "set_quiet",
     # Statistics
     "compute_intervals",
     "mean",

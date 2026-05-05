@@ -20,8 +20,30 @@ manager.load_las("well_c.las")
 well = manager.well_12_3_2_B
 
 # List all wells
-print(manager.well_names)
+print(manager.wells)            # ['12/3-2 B', '12/3-2 A', ...] — original names
+
+# Iterate Well objects
+for well in manager:
+    print(well.name)
 ```
+
+## Filtered views
+
+`manager.filter(wells=[...], where={...})` returns an immutable
+`ManagerView` exposing the same property/well attribute access as the
+manager but restricted to a subset:
+
+```python
+view = manager.filter(wells=["Well_A", "Well_B"])
+view.PHIE.mean()                # only over the two wells
+
+sub = manager.filter(where={"Facies": "Reservoir"})
+sub.PHIE.data()                 # only Reservoir-facies rows
+```
+
+`ManagerView` is the canonical input to ``Crossplot(view, x=, y=)`` —
+visualization consumers read from a manager substrate rather than a
+list of Wells.
 
 ## Broadcasting
 

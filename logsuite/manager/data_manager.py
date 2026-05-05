@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -14,11 +14,12 @@ import pandas as pd
 from ..core.well import Well
 from ..exceptions import LasFileError
 from ..io import LasFile
-from ..utils import sanitize_property_name, sanitize_well_name, suggest_similar_names
+from ..utils import emit_status, sanitize_property_name, sanitize_well_name, suggest_similar_names
 from .proxy import _ManagerMultiPropertyProxy, _ManagerPropertyProxy
 
 if TYPE_CHECKING:
     from ..visualization import Crossplot, Template
+    from .view import ManagerView
 
 
 class WellDataManager:
@@ -115,6 +116,136 @@ class WellDataManager:
         # Otherwise, treat as property name for broadcasting
         # Return a proxy that can be used for operations across all wells
         return _ManagerPropertyProxy(self, name)
+
+    def __getitem__(self, name: str) -> Well:
+        """
+        Get a well by name (original, sanitized, or sanitized-with-prefix).
+
+        ``manager["12/3-2 B"]`` works for original names containing characters
+        that aren't valid Python attributes. Equivalent to the legacy
+        ``manager.well_12_3_2_B`` form, but doesn't require the user to
+        sanitize the name.
+
+        Raises
+        ------
+        KeyError
+            If no well matches the supplied name.
+        TypeError
+            If ``name`` is not a string.
+        """
+        if not isinstance(name, str):
+            raise TypeError(f"WellDataManager indices must be str, got {type(name).__name__}")
+        # Try direct dict-key match (already sanitized form)
+        if name in self._wells:
+            return self._wells[name]
+        # Try matching against the well's original name
+        for well in self._wells.values():
+            if well.name == name:
+                return well
+        # Try sanitizing and prefixing
+        sanitized_key = f"well_{sanitize_well_name(name)}"
+        if sanitized_key in self._wells:
+            return self._wells[sanitized_key]
+        available = [w.name for w in self._wells.values()]
+        suggestions = suggest_similar_names(name, available)
+        msg = f"Well '{name}' not found in manager."
+        if suggestions:
+            msg += f" Did you mean: {', '.join(suggestions)}?"
+        msg += f" Available: {available}" if available else " Manager is empty."
+        raise KeyError(msg)
+
+    def __contains__(self, name: object) -> bool:
+        if not isinstance(name, str):
+            return False
+        if name in self._wells:
+            return True
+        if any(w.name == name for w in self._wells.values()):
+            return True
+        sanitized_key = f"well_{sanitize_well_name(name)}"
+        return sanitized_key in self._wells
+
+    def __iter__(self):
+        """Iterate Well objects in insertion order."""
+        return iter(self._wells.values())
+
+    def __len__(self) -> int:
+        """Number of wells in the manager."""
+        return len(self._wells)
+
+    def filter(
+        self,
+        *,
+        wells: list[str] | str | None = None,
+        where: dict[str, Any] | None = None,
+    ) -> ManagerView:
+        """
+        Return a filtered view over a subset of wells and/or property values.
+
+        The view exposes the same property-proxy and well-attribute access
+        as the manager. Without ``where``, statistics and ``.data()`` calls
+        on the view operate over the well subset. With ``where``, ``.data()``
+        outputs are post-filtered to rows matching the allowed values, while
+        statistical methods raise :class:`NotImplementedError` (use
+        ``.data()`` and compute externally, or ``.filter("Zone")`` for
+        grouped stats).
+
+        Parameters
+        ----------
+        wells : str or list of str, optional
+            Well names (original, sanitized, or manager dict key) to include.
+            ``None`` returns a view containing every well.
+        where : dict, optional
+            Mapping of column name -> allowed value(s). Special key ``"well"``
+            selects wells (intersected with ``wells``); other keys post-filter
+            ``.data()`` outputs.
+
+        Returns
+        -------
+        ManagerView
+            Read-only view. Immutable — chain :meth:`ManagerView.filter` to
+            narrow further.
+
+        Examples
+        --------
+        >>> view = manager.filter(wells=["Well_A", "Well_B"])
+        >>> view.PHIE.mean()
+        {'well_Well_A': 0.182, 'well_Well_B': 0.205}
+        >>> sub = manager.filter(where={"Zone": "Reservoir"})
+        >>> sub.PHIE.data().head()
+        """
+        from .view import ManagerView
+
+        target: list[str] | None = None
+        if wells is not None:
+            wells_list = [wells] if isinstance(wells, str) else list(wells)
+            target = []
+            for n in wells_list:
+                for key, well in self._wells.items():
+                    if n == key or n == well.name or n == getattr(well, "sanitized_name", None):
+                        if key not in target:
+                            target.append(key)
+                        break
+
+        value_filters: dict[str, list] | None = None
+        if where is not None:
+            value_filters = {}
+            for key, vals in where.items():
+                if key == "well":
+                    well_names = list(vals) if isinstance(vals, (list, tuple, set)) else [vals]
+                    if target is None:
+                        target = []
+                    for n in well_names:
+                        for k, w in self._wells.items():
+                            if n == k or n == w.name or n == getattr(w, "sanitized_name", None):
+                                if k not in target:
+                                    target.append(k)
+                                break
+                else:
+                    value_filters[key] = (
+                        list(vals) if isinstance(vals, (list, tuple, set)) else [vals]
+                    )
+
+        return ManagerView(self, target, value_filters)
 
     def properties(self, property_names: list[str]) -> _ManagerMultiPropertyProxy:
         """
@@ -852,8 +983,9 @@ class WellDataManager:
             # Load it (with resampling if specified)
             well.load_las(las, resample_method=resample_method)
 
-            print(
-                f"✓ Loaded {len(prop_cols)} properties into well '{well.name}' from source '{base_source_name}'"
+            emit_status(
+                f"✓ Loaded {len(prop_cols)} properties into well '{well.name}' "
+                f"from source '{base_source_name}'"
             )
 
         return self
@@ -1529,7 +1661,24 @@ class WellDataManager:
         >>> plot.add_regression("linear", line_color="red")
         >>> plot.add_regression("polynomial", degree=2, line_color="blue")
         >>> plot.show()
+
+        Notes
+        -----
+        .. deprecated::
+            ``WellDataManager.Crossplot()`` violates the layered-dependency
+            rule (``manager`` cannot import ``visualization``). Construct
+            directly: ``Crossplot(manager.filter(wells=[...]), x=..., y=...)``
+            or ``Crossplot(manager, ...)`` for all wells.
         """
+        warnings.warn(
+            "WellDataManager.Crossplot() is deprecated and will be removed "
+            "in a future release (it violates the layered-dependency rule — "
+            "manager cannot depend on visualization). Construct directly: "
+            "from logsuite import Crossplot; "
+            "Crossplot(manager.filter(wells=[...]), x=..., y=...).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..visualization import Crossplot as CrossplotClass
 
         # Get well objects

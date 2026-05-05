@@ -48,26 +48,43 @@ view.show()
 
 ## Crossplot
 
-Create crossplots with optional regression:
+Crossplot accepts a `WellDataManager`, a `ManagerView`, a single `Well`, or
+a list of wells — pass any of them as the first argument:
 
 ```python
 from logsuite import Crossplot
 
 xplot = Crossplot(
-    wells=well,
+    manager,                # or manager.filter(wells=[...]) for a subset
     x="PHIE",
     y="PERM",
-    color="Zone",
+    color="Facies",
 )
 xplot.show()
 ```
 
-### With Regression
+### Per-group regression in one call
 
 ```python
-from logsuite import Crossplot
-
-xplot = Crossplot(wells=well, x="PHIE", y="PERM")
-xplot.add_regression("exponential")
+xplot = Crossplot(manager, x="PHIE", y="PERM", color="Facies",
+                  equation_format="petrel", decimals=3)
+xplot.add_regression_per("Facies", "exponential", legend_loc="upper left")
 xplot.show()
+```
+
+Line colours come from `manager.Facies.colors` automatically; the legend
+shows Petrel-syntax equations because of the constructor-level
+`equation_format`. See the
+[per-group regression how-to](../how-to/fit-regressions-per-group.md)
+for the full pattern.
+
+### Adding a stats table panel
+
+```python
+stats = manager.PHIE.filter("Facies").stats(return_df=True, flat_columns=True)
+
+xplot.add_table_panel(stats, position="bottom",
+                      title="Per-facies summary",
+                      formatters={"mean": ".4f"})
+xplot.save("deliverable.svg")     # crossplot + table in one file
 ```

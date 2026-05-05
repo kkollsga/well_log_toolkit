@@ -2,6 +2,7 @@
 Well class for managing log properties from a single well.
 """
 
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -2532,7 +2533,22 @@ class Well:
         ...     template=template,
         ...     header_config={"header_log_spacing": 0.04}
         ... )
+
+        Notes
+        -----
+        .. deprecated::
+            ``Well.WellView()`` violates the layered-dependency rule
+            (``core`` cannot import ``visualization``). Construct directly
+            instead: ``WellView(well, ...)``.
         """
+        warnings.warn(
+            "Well.WellView() is deprecated and will be removed in a future "
+            "release (it violates the layered-dependency rule — core cannot "
+            "depend on visualization). Use 'WellView(well, ...)' directly: "
+            "from logsuite import WellView; WellView(well, depth_range=...).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..visualization import WellView as WellViewClass
 
         return WellViewClass(
@@ -2673,7 +2689,22 @@ class Well:
 
         >>> plot = well.Crossplot(x="PERM", y="PHIE", x_log=True)
         >>> plot.show()
+
+        Notes
+        -----
+        .. deprecated::
+            ``Well.Crossplot()`` violates the layered-dependency rule
+            (``core`` cannot import ``visualization``). Construct directly:
+            ``Crossplot(well, x=..., y=...)``.
         """
+        warnings.warn(
+            "Well.Crossplot() is deprecated and will be removed in a future "
+            "release (it violates the layered-dependency rule — core cannot "
+            "depend on visualization). Use 'Crossplot(well, ...)' directly: "
+            "from logsuite import Crossplot; Crossplot(well, x=..., y=...).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..visualization import Crossplot as CrossplotClass
 
         return CrossplotClass(

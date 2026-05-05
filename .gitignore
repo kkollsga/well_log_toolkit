@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Story-script regenerated outputs (the .py scripts are tracked; outputs are not)
+story_tests/output_*.png
+story_tests/output_*.svg
+
 # Distribution / packaging
 .Python
 build/

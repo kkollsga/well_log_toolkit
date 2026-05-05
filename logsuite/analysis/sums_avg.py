@@ -576,7 +576,11 @@ class SumsAvgResult(dict):
                 print("")
 
 
-def _flatten_to_dataframe(nested_dict: dict, property_name: str) -> pd.DataFrame:
+def _flatten_to_dataframe(
+    nested_dict: dict,
+    property_name: str,
+    group_names: list[str] | None = None,
+) -> pd.DataFrame:
     """
     Flatten nested dictionary results into a DataFrame.
 
@@ -589,6 +593,11 @@ def _flatten_to_dataframe(nested_dict: dict, property_name: str) -> pd.DataFrame
         Nested dictionary with well names as top-level keys
     property_name : str
         Name of the property being analyzed (used for value column name)
+    group_names : list of str, optional
+        Names for the grouping levels (one per nested filter). When supplied,
+        these names replace the generic ``Group``/``Group1``/``Group2``
+        column labels. Length should match the number of grouping levels;
+        if shorter, remaining levels fall back to ``Group{i}``.
 
     Returns
     -------
@@ -630,18 +639,25 @@ def _flatten_to_dataframe(nested_dict: dict, property_name: str) -> pd.DataFrame
     # Pad shorter rows with None
     padded_rows = [row + [None] * (max_depth - len(row)) for row in rows]
 
-    # Create column names
-    # Last column is the value, others are grouping levels
-    if max_depth == 2:
-        # Simple case: just well and value
-        columns = ["Well", property_name]
-    elif max_depth == 3:
-        # Well, one grouping level (e.g., Source or Zone), value
-        columns = ["Well", "Group", property_name]
+    # Determine grouping-level column names.
+    # max_depth == 2 means Well + value (no grouping levels).
+    # Otherwise there are (max_depth - 2) grouping levels between them.
+    n_groups = max(0, max_depth - 2)
+
+    if n_groups == 0:
+        group_cols = []
+    elif group_names:
+        # Use supplied names for as many levels as we have, fall back to
+        # Group{i} for any remaining (shouldn't happen if caller is consistent).
+        group_cols = [
+            group_names[i] if i < len(group_names) else f"Group{i + 1}" for i in range(n_groups)
+        ]
+    elif n_groups == 1:
+        group_cols = ["Group"]
     else:
-        # Well, multiple grouping levels, value
-        # Use generic names: Group1, Group2, etc.
-        columns = ["Well"] + [f"Group{i}" for i in range(1, max_depth - 1)] + [property_name]
+        group_cols = [f"Group{i}" for i in range(1, n_groups + 1)]
+
+    columns = ["Well"] + group_cols + [property_name]
 
     df = pd.DataFrame(padded_rows, columns=columns)
 

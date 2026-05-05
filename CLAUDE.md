@@ -12,6 +12,8 @@ mypy logsuite/                        # type check
 
 ## Architecture
 
+See `ARCHITECTURE.md` for the layered-dependency constitution that governs every module. The tree below reflects the **current** state — the target structure adds `core/artifact.py`, `manager/view.py`, `analysis/regression/fit.py`, and `visualization/style.py`, and removes upward convenience methods (`Well.Crossplot`, `WellDataManager.Crossplot`, etc.).
+
 ```text
 logsuite/
 ├── io/              LAS 2.0 reader with lazy loading (headers on init, data on .data())

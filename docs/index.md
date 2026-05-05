@@ -35,6 +35,13 @@ quickstart
 
 ```{toctree}
 :maxdepth: 2
+:caption: How-to guides
+
+how-to/index
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: User Guide
 
 user-guide/loading-data

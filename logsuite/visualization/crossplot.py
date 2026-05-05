@@ -238,14 +238,21 @@ class Crossplot:
         show_regression_legend: bool = True,
         show_regression_equation: bool = True,
         show_regression_r2: bool = True,
+        equation_format: str = "natural",
+        decimals: int = 4,
         regression: str | dict | None = None,
         regression_by_color: str | dict | None = None,
         regression_by_group: str | dict | None = None,
         regression_by_color_and_shape: str | dict | None = None,
         regression_by_shape_and_color: str | dict | None = None,
     ):
-        # Store wells as list
-        if not isinstance(wells, list):
+        # Accept WellDataManager / ManagerView / Well / list[Well]
+        from ..manager.data_manager import WellDataManager
+        from ..manager.view import ManagerView
+
+        if isinstance(wells, (ManagerView, WellDataManager)):
+            self.wells = list(wells._wells.values())
+        elif not isinstance(wells, list):
             self.wells = [wells]
         else:
             self.wells = wells
@@ -316,9 +323,40 @@ class Crossplot:
         self.show_regression_legend = show_regression_legend
         self.show_regression_equation = show_regression_equation
         self.show_regression_r2 = show_regression_r2
-        self.regression = regression
+        # Crossplot-level defaults for equation rendering. add_regression()
+        # consults these when its own kwargs are not set explicitly, so a
+        # user can pass equation_format="petrel" once at construction and
+        # have every fit's legend match.
+        self._equation_format = equation_format
+        self._decimals = decimals
+        # Override location for the regression legend (set by add_regression
+        # via legend_loc=). None means use _find_optimal_legend_segment.
+        self._regression_legend_loc: str | tuple | None = None
+        self._initial_regression = regression
         self.regression_by_color = regression_by_color
         self.regression_by_group = regression_by_group
+
+        # M3.4 deprecation: the five constructor regression kwargs are
+        # superseded by .add_regression(where=...) and .add(RegressionFit).
+        if any(
+            v is not None
+            for v in (
+                regression,
+                regression_by_color,
+                regression_by_group,
+                regression_by_color_and_shape,
+                regression_by_shape_and_color,
+            )
+        ):
+            warnings.warn(
+                "Passing 'regression', 'regression_by_color', 'regression_by_group', "
+                "'regression_by_color_and_shape', or 'regression_by_shape_and_color' "
+                "to Crossplot.__init__ is deprecated and will be removed in a future "
+                "release. Use 'crossplot.add_regression(kind, where=...)' for subsets, "
+                "or 'crossplot.add(RegressionFit(...))' for pre-built fits.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # Handle regression_by_shape_and_color as alias for regression_by_color_and_shape
         if regression_by_shape_and_color is not None and regression_by_color_and_shape is not None:
@@ -354,6 +392,8 @@ class Crossplot:
         # Discrete property labels storage
         # Maps property role ('shape', 'color', 'size') to labels dict {0: 'label0', 1: 'label1', ...}
         self._discrete_labels = {}
+        # Same shape, but for Property.colors palettes (consumed by visualization/style.py)
+        self._discrete_colors = {}
 
         # Legend placement tracking
         # Maps segment numbers (1-9) to legend type placed there
@@ -487,9 +527,11 @@ class Crossplot:
                     elif self.color and self.color != "depth":
                         try:
                             color_prop = well.get_property(self.color)
-                            # Store labels if discrete property (only once)
+                            # Store labels and colors if discrete property (only once)
                             if "color" not in self._discrete_labels:
                                 self._store_discrete_labels(color_prop, "color")
+                            if "color" not in self._discrete_colors:
+                                self._store_discrete_colors(color_prop, "color")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(color_prop.depth, depths):
                                 color_values = align_property(color_prop, depths)
@@ -513,9 +555,11 @@ class Crossplot:
                     elif self.size:
                         try:
                             size_prop = well.get_property(self.size)
-                            # Store labels if discrete property (only once)
+                            # Store labels and colors if discrete property (only once)
                             if "size" not in self._discrete_labels:
                                 self._store_discrete_labels(size_prop, "size")
+                            if "size" not in self._discrete_colors:
+                                self._store_discrete_colors(size_prop, "size")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(size_prop.depth, depths):
                                 size_values = align_property(size_prop, depths)
@@ -536,9 +580,11 @@ class Crossplot:
                     elif self.shape and self.shape != "well":
                         try:
                             shape_prop = well.get_property(self.shape)
-                            # Store labels if discrete property (only once)
+                            # Store labels and colors if discrete property (only once)
                             if "shape" not in self._discrete_labels:
                                 self._store_discrete_labels(shape_prop, "shape")
+                            if "shape" not in self._discrete_colors:
+                                self._store_discrete_colors(shape_prop, "shape")
                             # Align to x depth grid using appropriate method for property type
                             if needs_alignment(shape_prop.depth, depths):
                                 shape_values = align_property(shape_prop, depths)
@@ -873,6 +919,249 @@ class Crossplot:
         ):
             self._discrete_labels[role] = prop.labels.copy()
 
+    def _store_discrete_colors(self, prop, role: str) -> None:
+        """
+        Store ``Property.colors`` palette for later use in scatter colors and legends.
+
+        Args:
+            prop: Property object (must have type and colors attributes)
+            role: Property role - 'shape', 'color', or 'size'
+        """
+        if (
+            hasattr(prop, "type")
+            and prop.type == "discrete"
+            and hasattr(prop, "colors")
+            and prop.colors
+        ):
+            self._discrete_colors[role] = dict(prop.colors)
+
+    def _apply_where_filter(self, data: pd.DataFrame, where) -> pd.DataFrame:
+        """Apply a ``where=`` filter from add_regression to prepared data.
+
+        Accepts a dict of ``{column: allowed}`` (with public column-name
+        aliasing and label→code translation for discrete properties) or a
+        callable returning a boolean mask. Raises :class:`ValueError` for
+        unknown dict keys, :class:`TypeError` for invalid ``where`` types.
+        """
+        if callable(where):
+            mask = where(data)
+            return data[mask]
+        if isinstance(where, dict):
+            for key, vals in where.items():
+                col = self._resolve_where_column(key)
+                if col is None or col not in data.columns:
+                    raise ValueError(
+                        f"where key '{key}' does not match any of x={self.x!r}, "
+                        f"y={self.y!r}, color={self.color!r}, shape={self.shape!r}, "
+                        f"size={self.size!r}, or 'well'."
+                    )
+                allowed = list(vals) if isinstance(vals, (list, tuple, set)) else [vals]
+                # Translate label strings to integer codes when the underlying
+                # column holds discrete codes — users pass natural names like
+                # 'Reservoir' and shouldn't need to know the integer code.
+                role = self._role_for_column(col)
+                if role and role in self._discrete_labels:
+                    inverse = {label: code for code, label in self._discrete_labels[role].items()}
+                    allowed = [inverse.get(v, v) for v in allowed]
+                data = data[data[col].isin(allowed)]
+            return data
+        raise TypeError(f"where must be a dict or callable, got {type(where).__name__}")
+
+    def _role_for_column(self, col: str) -> str | None:
+        """Map a prepared-data column name to its property role."""
+        return {"color_val": "color", "shape_val": "shape", "size_val": "size"}.get(col)
+
+    def _resolve_line_color_from_where(self, where) -> str | None:
+        """Pick a regression line color from ``Property.colors``.
+
+        Activates only when ``where`` is a one-key, one-value dict and that
+        key matches a discrete property bound to color/shape/size whose
+        palette has been stored. The ``where`` value may be a label string
+        (translated via ``_discrete_labels``) or a numeric code.
+        """
+        if not isinstance(where, dict) or len(where) != 1:
+            return None
+        key, vals = next(iter(where.items()))
+        allowed = list(vals) if isinstance(vals, (list, tuple, set)) else [vals]
+        if len(allowed) != 1:
+            return None
+        val = allowed[0]
+        col = self._resolve_where_column(key)
+        if col is None:
+            return None
+        role = self._role_for_column(col)
+        if role is None or role not in self._discrete_colors:
+            return None
+        user_colors = self._discrete_colors[role]
+        # Translate label string to code if needed.
+        if role in self._discrete_labels:
+            inverse = {label: code for code, label in self._discrete_labels[role].items()}
+            if val in inverse:
+                val = inverse[val]
+        # Coerce float code to int (Property values come out as floats).
+        if isinstance(val, float):
+            try:
+                int_val = int(round(val))
+                if int_val in user_colors:
+                    val = int_val
+            except (ValueError, TypeError):
+                pass
+        return user_colors.get(val)
+
+    def add_regression_per(
+        self,
+        group_property: str,
+        regression_type: str,
+        min_samples: int = 5,
+        **kwargs,
+    ) -> Crossplot:
+        """Fit one regression per unique value of a group property.
+
+        Convenience wrapper around :meth:`add_regression` that enumerates
+        the unique values of ``group_property`` (from the prepared crossplot
+        data) and calls ``add_regression`` once per value with the
+        appropriate ``where=`` and ``name=`` set automatically. Each
+        resulting line picks up its color from ``Property.colors`` via
+        :meth:`_resolve_line_color_from_where` when the palette is set,
+        otherwise defaults apply.
+
+        Parameters
+        ----------
+        group_property : str
+            Public column name (e.g. the property bound to ``color`` or
+            ``shape`` on this Crossplot). Must resolve to a column on the
+            prepared data.
+        regression_type : str
+            Forwarded to :meth:`add_regression` (``"linear"``,
+            ``"exponential"``, ...).
+        min_samples : int, default 5
+            Forwarded to :meth:`add_regression`. Subsets smaller than this
+            are skipped with a warning.
+        **kwargs
+            Other arguments forwarded to :meth:`add_regression`. ``where=``
+            and ``name=`` are filled in by this method; passing them
+            explicitly raises :class:`TypeError`.
+
+        Returns
+        -------
+        Crossplot
+            Self for method chaining.
+
+        Examples
+        --------
+        >>> xplot = Crossplot(manager, x="PHIE", y="PERM", color="Facies")
+        >>> xplot.add_regression_per("Facies", "exponential", equation_format="petrel")
+        # Three regressions added, one per facies, each colored from
+        # manager.Facies.colors when set.
+        """
+        if "where" in kwargs or "name" in kwargs:
+            raise TypeError(
+                "add_regression_per supplies 'where' and 'name' itself; pass other "
+                "regression options instead."
+            )
+
+        data = self._prepare_data()
+        col = self._resolve_where_column(group_property)
+        if col is None or col not in data.columns:
+            raise ValueError(
+                f"group_property {group_property!r} does not match any of x={self.x!r}, "
+                f"y={self.y!r}, color={self.color!r}, shape={self.shape!r}, "
+                f"size={self.size!r}."
+            )
+        role = self._role_for_column(col)
+        unique_vals = pd.Series(data[col]).dropna().unique()
+
+        for val in unique_vals:
+            display = self._get_display_label(val, role) if role else str(val)
+            # Use the label form when available so palette + filter both
+            # round-trip through label-aware logic; otherwise fall back to
+            # the raw value (matches numeric column dtypes correctly).
+            if role and role in self._discrete_labels:
+                where_val: object = display
+            else:
+                where_val = val
+            self.add_regression(
+                regression_type,
+                name=display,
+                where={group_property: [where_val]},
+                min_samples=min_samples,
+                **kwargs,
+            )
+        return self
+
+    def _resolve_where_column(self, key: str) -> str | None:
+        """Map a public column name (or internal) to the prepared data column."""
+        if key == self.x:
+            return "x"
+        if key == self.y:
+            return "y"
+        if key == self.color:
+            return "color_val"
+        if key == self.shape:
+            return "shape_val"
+        if key == self.size:
+            return "size_val"
+        # Accept internal column names directly (back-compat / power users)
+        if key in {"x", "y", "color_val", "shape_val", "size_val", "well"}:
+            return key
+        return None
+
+    def column_for(self, public_name: str) -> str | None:
+        """Return the prepared-data column name for a public property reference.
+
+        Useful when writing a callable for ``add_regression(where=callable)``
+        that needs to inspect the prepared crossplot DataFrame: instead of
+        hardcoding ``"color_val"``, you can write
+        ``df[xplot.column_for("Facies")] == 2.0`` and stay independent of
+        which property is bound to which role.
+
+        Parameters
+        ----------
+        public_name : str
+            A property name bound to ``x``, ``y``, ``color``, ``shape``,
+            or ``size`` on this Crossplot, or one of the literal internal
+            column names (``"x"``, ``"y"``, ``"color_val"``,
+            ``"shape_val"``, ``"size_val"``, ``"well"``).
+
+        Returns
+        -------
+        str or None
+            The internal column name, or ``None`` if ``public_name`` does
+            not match any binding.
+
+        Examples
+        --------
+        >>> xplot = Crossplot(manager, x="PHIE", y="PERM", color="Facies")
+        >>> xplot.column_for("Facies")
+        'color_val'
+        >>> xplot.column_for("PHIE")
+        'x'
+        """
+        return self._resolve_where_column(public_name)
+
+    def _resolve_categorical_palette(self, unique_categories, role: str = "color") -> dict:
+        """
+        Resolve color palette for categorical values, honoring ``Property.colors``.
+
+        Builds the existing fallback palette (DEFAULT_COLORS or matplotlib
+        cmap for many categories) and routes through
+        :func:`logsuite.visualization.style.resolve_discrete_palette` so any
+        ``Property.colors`` entries override the fallback.
+        """
+        from .style import resolve_discrete_palette
+
+        n_categories = len(unique_categories)
+        if n_categories <= len(DEFAULT_COLORS):
+            default_palette = list(DEFAULT_COLORS)
+        else:
+            cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
+            default_palette = [cmap_obj(i) for i in range(n_categories)]
+        return resolve_discrete_palette(
+            self._discrete_colors.get(role),
+            list(unique_categories),
+            default_palette,
+        )
+
     def _get_display_label(self, value, role: str) -> str:
         """
         Get display label for a value, using stored labels for discrete properties.
@@ -1075,7 +1364,13 @@ class Crossplot:
                 color_legend.set_clip_on(False)  # Prevent clipping outside axes
 
     def _format_regression_label(
-        self, name: str, reg, include_equation: bool = None, include_r2: bool = None
+        self,
+        name: str,
+        reg,
+        include_equation: bool = None,
+        include_r2: bool = None,
+        decimals: int | None = None,
+        equation_format: str = "natural",
     ) -> str:
         """Format a modern, compact regression label.
 
@@ -1084,6 +1379,11 @@ class Crossplot:
             reg: Regression object
             include_equation: Whether to include equation (uses self.show_regression_equation if None)
             include_r2: Whether to include R-squared (uses self.show_regression_r2 if None)
+            decimals: Decimal precision for the equation. ``None`` keeps the
+                model's native formatting (4 decimals for built-in models).
+            equation_format: ``"natural"`` (default) | ``"log10"`` | ``"petrel"``.
+                ``log10`` and ``petrel`` are meaningful for exponential fits;
+                other models fall back to the natural form.
 
         Returns:
             Formatted label string
@@ -1097,7 +1397,17 @@ class Crossplot:
         # Equation and R-squared will be colored grey in the legend update method
         first_line = name
         if include_equation:
-            eq = reg.equation()
+            if decimals is not None or equation_format != "natural":
+                # Route through RegressionFit so the requested format/decimals apply.
+                from ..analysis.regression_fit import RegressionFit
+
+                eq = RegressionFit(
+                    reg,
+                    decimals=4 if decimals is None else decimals,
+                    equation_format=equation_format,
+                ).equation()
+            else:
+                eq = reg.equation()
             eq = eq.replace(" ", "")  # Remove spaces for compactness
             # Add equation in parentheses (will be styled grey later)
             first_line = f"{name} ({eq})"
@@ -1132,8 +1442,10 @@ class Crossplot:
             regression_labels.append(line.get_label())
 
         if regression_handles:
-            # Get smart placement based on data density using optimized segment algorithm
-            if self._data is not None:
+            # User-supplied legend_loc on add_regression overrides smart placement.
+            if self._regression_legend_loc is not None:
+                secondary_loc = self._regression_legend_loc
+            elif self._data is not None:
                 # Determine if regression legend is large
                 regression_is_large = len(regression_handles) > 5
                 segment, secondary_loc = self._find_optimal_legend_segment(
@@ -1163,8 +1475,8 @@ class Crossplot:
                 reg_type_str = config.get("type", None)
             else:
                 base_title = "Regressions"
-                if self.regression:
-                    config = self._parse_regression_config(self.regression)
+                if self._initial_regression:
+                    config = self._parse_regression_config(self._initial_regression)
                     reg_type_str = config.get("type", None)
 
             # Add regression type to title (e.g., "Regressions by color - Power")
@@ -1298,7 +1610,7 @@ class Crossplot:
         """Add automatic regressions based on initialization parameters."""
         if not any(
             [
-                self.regression,
+                self._initial_regression,
                 self.regression_by_color,
                 self.regression_by_group,
                 self.regression_by_color_and_shape,
@@ -1324,8 +1636,8 @@ class Crossplot:
         color_idx = 0
 
         # Add overall regression
-        if self.regression:
-            config = self._parse_regression_config(self.regression)
+        if self._initial_regression:
+            config = self._parse_regression_config(self._initial_regression)
             reg_type = config["type"]
 
             if "line_color" not in config:
@@ -1729,20 +2041,10 @@ class Crossplot:
             if is_categorical:
                 # Handle categorical colors with discrete palette
                 unique_categories = pd.Series(c_vals_raw).dropna().unique()
-                n_categories = len(unique_categories)
 
-                # Create color map for categories
-                if n_categories <= len(DEFAULT_COLORS):
-                    color_palette = DEFAULT_COLORS
-                else:
-                    # Use colormap for many categories
-                    cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
-                    color_palette = [cmap_obj(i) for i in range(n_categories)]
-
-                category_colors = {
-                    cat: color_palette[i % len(color_palette)]
-                    for i, cat in enumerate(unique_categories)
-                }
+                # Resolve palette: honors Property.colors first, falls back
+                # to DEFAULT_COLORS / cmap for codes not in the user palette.
+                category_colors = self._resolve_categorical_palette(unique_categories, "color")
 
                 # Map each value to its color
                 c_vals = [category_colors.get(val, DEFAULT_COLORS[0]) for val in c_vals_raw]
@@ -1863,20 +2165,10 @@ class Crossplot:
             is_categorical = self._is_categorical_color(c_vals_all)
 
             if is_categorical:
-                # Prepare color mapping for categorical values
+                # Resolve palette: honors Property.colors first, falls back
+                # to DEFAULT_COLORS / cmap for codes not in the user palette.
                 unique_categories = pd.Series(c_vals_all).dropna().unique()
-                n_categories = len(unique_categories)
-
-                if n_categories <= len(DEFAULT_COLORS):
-                    color_palette = DEFAULT_COLORS
-                else:
-                    cmap_obj = cm.get_cmap(self.colortemplate, n_categories)
-                    color_palette = [cmap_obj(i) for i in range(n_categories)]
-
-                category_colors = {
-                    cat: color_palette[i % len(color_palette)]
-                    for i, cat in enumerate(unique_categories)
-                }
+                category_colors = self._resolve_categorical_palette(unique_categories, "color")
 
         # Track for colorbar (use first scatter)
         first_scatter = None
@@ -2028,13 +2320,19 @@ class Crossplot:
         self,
         regression_type: str,
         name: str | None = None,
-        line_color: str = "red",
+        line_color: str | None = None,
         line_width: float = 2,
         line_style: str = "-",
         line_alpha: float = 0.8,
         show_equation: bool = True,
         show_r2: bool = True,
         x_range: tuple[float, float] | None = None,
+        where: dict | None = None,
+        min_samples: int = 5,
+        decimals: int | None = None,
+        legend_decimals: int | None = None,
+        equation_format: str | None = None,
+        legend_loc: str | tuple | None = None,
         **kwargs,
     ) -> Crossplot:
         """Add a regression line to the crossplot.
@@ -2061,6 +2359,40 @@ class Crossplot:
         x_range : tuple[float, float], optional
             Custom x-axis range for plotting the regression line.
             If None, uses the data range from fitting.
+        where : dict or callable, optional
+            Restrict the fit to a subset of points. Two forms:
+
+            - dict: ``{column: allowed_value(s)}``. Keys may be public
+              property names (the same as ``x``, ``y``, ``color``,
+              ``shape``, ``size`` on the Crossplot) or the literal
+              column name ``"well"``. Values are scalars or lists.
+              Example: ``where={"Facies": [5, 6]}``.
+            - callable: a function ``f(df) -> boolean mask`` over the
+              prepared crossplot data. Example:
+              ``where=lambda df: df["color_val"].isin([5, 6])``.
+        min_samples : int, default 5
+            Minimum number of points required after filtering. If the
+            filtered subset has fewer rows, a warning is emitted and the
+            regression is skipped (no exception).
+        decimals : int, optional
+            Decimal precision for the equation in the legend. ``None``
+            falls back to the Crossplot constructor's ``decimals=`` (4 by
+            default).
+        legend_decimals : int, optional
+            Alias for ``decimals``. If both are supplied, ``legend_decimals``
+            wins. Provided for API symmetry with ``legend_loc``.
+        equation_format : {"natural", "log10", "petrel"}, optional
+            Equation form rendered in the legend. ``None`` (default) falls
+            back to the Crossplot constructor's ``equation_format=``.
+            ``log10`` and ``petrel`` are meaningful for exponential fits —
+            Petrel form yields ``pow(10, c1*x + c0)``, suitable for direct
+            paste into Petrel calculators. Other models fall back to natural.
+        legend_loc : str or tuple, optional
+            Matplotlib ``loc`` for the regression legend (e.g.
+            ``"upper left"``, ``(0.65, 0.05)``). When supplied, overrides
+            the auto-placement algorithm. The latest ``legend_loc=`` value
+            across all add_regression calls wins, since the regression
+            legend is rebuilt as one block.
         **kwargs
             Additional arguments for regression (e.g., degree for polynomial)
 
@@ -2077,8 +2409,27 @@ class Crossplot:
         >>> plot.add_regression("linear", x_range=(0, 10))  # Custom range
         >>> plot.show()
         """
+        # Resolve legend-rendering knobs: explicit kwarg → Crossplot default.
+        if legend_decimals is not None:
+            decimals = legend_decimals
+        if decimals is None:
+            decimals = self._decimals
+        if equation_format is None:
+            equation_format = self._equation_format
+        if legend_loc is not None:
+            self._regression_legend_loc = legend_loc
+
+        # Resolve line color: explicit kwarg → Property.colors via where → default red.
+        if line_color is None:
+            line_color = self._resolve_line_color_from_where(where) or "red"
+
         # Ensure data is prepared
         data = self._prepare_data()
+
+        # Apply where filter if requested
+        if where is not None:
+            data = self._apply_where_filter(data, where)
+
         x_vals = data["x"].values
         y_vals = data["y"].values
 
@@ -2087,8 +2438,13 @@ class Crossplot:
         x_clean = x_vals[mask]
         y_clean = y_vals[mask]
 
-        if len(x_clean) < 2:
-            raise ValueError("Need at least 2 valid data points for regression")
+        if len(x_clean) < min_samples:
+            warnings.warn(
+                f"Subset has {len(x_clean)} samples, below min_samples={min_samples}. "
+                f"Skipping regression '{name or regression_type}'.",
+                stacklevel=2,
+            )
+            return self
 
         # Create regression object using factory function
         reg = _create_regression(regression_type, **kwargs)
@@ -2122,7 +2478,12 @@ class Crossplot:
 
             # Create label using formatter
             label = self._format_regression_label(
-                reg_name, reg, include_equation=show_equation, include_r2=show_r2
+                reg_name,
+                reg,
+                include_equation=show_equation,
+                include_r2=show_r2,
+                decimals=decimals,
+                equation_format=equation_format,
             )
 
             # Plot line
@@ -2200,6 +2561,102 @@ class Crossplot:
             if self.ax is not None:
                 self.ax.legend(loc="best", frameon=True, framealpha=0.9, edgecolor="black")
 
+        return self
+
+    def add(self, artifact) -> Crossplot:
+        """Add an :class:`Artifact` to the crossplot.
+
+        The artifact's ``_render_in_crossplot(ax)`` method is called with
+        this crossplot's matplotlib axis. Artifacts that do not support
+        Crossplot rendering raise :class:`TypeError`. The plot is rendered
+        first if it has not been already.
+
+        Parameters
+        ----------
+        artifact : Artifact
+            Any object implementing ``_render_in_crossplot(ax)``.
+
+        Returns
+        -------
+        Crossplot
+            Self for method chaining.
+
+        Examples
+        --------
+        >>> from logsuite import ExponentialRegression, RegressionFit
+        >>> reg = ExponentialRegression().fit(df["PHIE"], df["PERM"])
+        >>> fit = RegressionFit(reg, name="all wells", equation_format="petrel")
+        >>> xplot = Crossplot(...).add(fit)
+        """
+        if self.fig is None:
+            self.plot()
+        artifact._render_in_crossplot(self.ax)
+        if self.show_legend:
+            self.ax.legend(loc="best", frameon=True, framealpha=0.9, edgecolor="black")
+        return self
+
+    def add_table_panel(
+        self,
+        df,
+        position: str = "bottom",
+        title: str | None = None,
+        formatters: dict | None = None,
+        table_fraction: float = 0.30,
+    ) -> Crossplot:
+        """Attach a DataFrame as a rendered table panel to this Crossplot.
+
+        Grows the figure along the panel's axis so the scatter is not
+        squished, then renders the DataFrame using
+        :func:`logsuite.visualization.table_panel.render_table_panel`.
+        After this call, ``self.save("file.svg")`` produces the combined
+        scatter+table figure as a single deliverable.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Rows × columns of values to render. ``NaN`` values become
+            ``"N/A"``; ``MultiIndex`` columns flatten via ``" | "``;
+            ``MultiIndex`` rows visually merge repeated outer levels.
+        position : {"bottom", "right"}, default "bottom"
+            Where the panel sits relative to the scatter axes.
+        title : str, optional
+            Heading rendered above the table.
+        formatters : dict, optional
+            Per-column formatter spec. Each value may be a callable
+            ``f(value) -> str`` or a Python format spec like ``".4f"``.
+            Example: ``{"PHIE": ".4f", "PERM": ".2f"}``.
+        table_fraction : float, default 0.30
+            Fraction of the figure dimension reserved for the panel.
+
+        Returns
+        -------
+        Crossplot
+            Self for method chaining.
+
+        Examples
+        --------
+        >>> stats = manager.PHIE.filter("Facies").stats(
+        ...     return_df=True, flat_columns=True
+        ... )
+        >>> xplot = Crossplot(manager, x="PHIE", y="PERM", color="Facies")
+        >>> xplot.add_regression_per("Facies", "exponential")
+        >>> xplot.add_table_panel(stats, title="Per-facies summary",
+        ...                        formatters={"mean": ".4f", "p50": ".4f"})
+        >>> xplot.save("deliverable.svg")
+        """
+        if self.fig is None:
+            self.plot()
+        from .table_panel import render_table_panel
+
+        render_table_panel(
+            self.fig,
+            self.ax,
+            df,
+            position=position,
+            title=title,
+            formatters=formatters,
+            table_fraction=table_fraction,
+        )
         return self
 
     def show(self) -> None:
