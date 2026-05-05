@@ -247,7 +247,24 @@ class _ValueFilteringProxy:
         self._value_filters = dict(value_filters)
 
     def data(self, *args, **kwargs) -> pd.DataFrame:
-        df = self._proxy.data(*args, **kwargs)
+        # Auto-add a chain filter for any where-key whose column the proxy
+        # doesn't already emit. Without this the post-filter below silently
+        # no-ops because the column is missing from the DataFrame, which
+        # masks the where=… intent (e.g. caller asked for one zone, got all).
+        proxy = self._proxy
+        existing = {name for name, _ in getattr(proxy, "_filters", [])}
+        for col in self._value_filters:
+            if col == "well" or col in existing:
+                continue
+            try:
+                proxy = proxy.filter(col)
+            except Exception:
+                # Proxy doesn't recognise this column as a filterable property
+                # (not discrete, not present). Leave the proxy untouched; the
+                # post-filter will skip and behaviour matches the legacy path.
+                pass
+
+        df = proxy.data(*args, **kwargs)
         if df.empty:
             return df
         for col, allowed in self._value_filters.items():
@@ -283,6 +300,52 @@ class _ValueFilteringProxy:
             name=kwargs.pop("name", f"{x_col}-{y_col}"),
             **kwargs,
         )
+
+    def fit_per(self, group_property: str, model, **kwargs) -> dict:
+        """``fit_per`` through a where-filtered view; returns ``{label: RegressionFit}``."""
+        import copy as _copy
+        import warnings
+
+        from ..analysis.regression_fit import RegressionFit
+
+        property_names = getattr(self._proxy, "_property_names", None)
+        if property_names is None or len(property_names) != 2:
+            raise ValueError("fit_per() requires a multi-property proxy with exactly 2 properties.")
+        # Add the group filter to the underlying proxy so the column appears
+        # in the data; wrap the result back in this filter so ``where=`` still
+        # applies.
+        existing = {name for name, _ in getattr(self._proxy, "_filters", [])}
+        if group_property in existing:
+            self_with_group = self
+        else:
+            self_with_group = _ValueFilteringProxy(
+                self._proxy.filter(group_property), self._value_filters
+            )
+
+        df = self_with_group.data()
+        if df.empty:
+            return {}
+        if group_property not in df.columns:
+            raise ValueError(
+                f"group_property {group_property!r} not in data columns: {sorted(df.columns)}"
+            )
+
+        x_col, y_col = property_names
+        min_samples = kwargs.pop("min_samples", 5)
+        fits: dict = {}
+        for label in df[group_property].dropna().unique():
+            sub = df[df[group_property] == label]
+            if len(sub) < min_samples:
+                warnings.warn(
+                    f"Subset for {group_property}={label!r} has {len(sub)} samples, "
+                    f"below min_samples={min_samples}. Skipping.",
+                    stacklevel=2,
+                )
+                continue
+            sub_model = _copy.deepcopy(model)
+            sub_model.fit(sub[x_col].to_numpy(), sub[y_col].to_numpy())
+            fits[str(label)] = RegressionFit(sub_model, name=str(label), **kwargs)
+        return fits
 
     def __getattr__(self, name: str):
         if name in _STAT_METHODS_BLOCKED_BY_WHERE:

@@ -1035,6 +1035,7 @@ class _ManagerPropertyProxy:
         weighted: bool = True,
         return_df: bool = False,
         flat_columns: bool = False,
+        pool: bool = False,
     ):
         """
         Compute multiple statistics for this property across all wells.
@@ -1082,6 +1083,13 @@ class _ManagerPropertyProxy:
         0  well_A  Zone_1    0.170     0.042     0.05     0.35     0.168     0.09     0.168     0.24
         1  well_A  Zone_2    0.220     0.038     0.08     0.42     0.218     0.12     0.218     0.28
         """
+        # If pooling is requested, take the long-form data path and aggregate
+        # across wells with pandas — gives statistically correct cross-well
+        # mean / std / min / max / percentiles. Returns a DataFrame with one
+        # row per filter-group (instead of per (well, group)).
+        if pool:
+            return self._pooled_stats(methods, flat_columns)
+
         # Define default statistics
         default_methods = [
             "mean",
@@ -1155,6 +1163,95 @@ class _ManagerPropertyProxy:
             merged = pd.merge(merged, df, on=grouping_cols, how="outer")
 
         return merged
+
+    def _pooled_stats(self, methods, flat_columns: bool) -> pd.DataFrame:
+        """Cross-well pooled stats from the long-form ``.data()`` output.
+
+        Returns a DataFrame with one row per filter-group combination
+        (or a single row if no filters are active). Columns: filter
+        properties, then the requested stats. ``flat_columns=True`` uses
+        property names; ``False`` uses ``Group``/``Group1``/... like
+        the per-well path.
+
+        Currently unweighted — for depth-weighted pooled stats, use
+        ``self.data(weighted=True)`` and aggregate manually.
+        """
+        default_methods = [
+            "samples",
+            "mean",
+            "median",
+            "std",
+            "min",
+            "max",
+            "percentile_10",
+            "percentile_50",
+            "percentile_90",
+        ]
+        if methods is None:
+            stat_methods = default_methods
+        elif isinstance(methods, str):
+            stat_methods = [methods]
+        elif isinstance(methods, list):
+            stat_methods = methods
+        else:
+            raise ValueError("methods must be None, str, or list of str")
+
+        df = self.data(warn_missing=False)
+        if df.empty:
+            return pd.DataFrame()
+
+        target = self._property_name
+        group_cols_raw = [name for name, _ in self._filters]
+
+        # Build the agg spec.
+        agg_funcs: dict = {}
+        for method in stat_methods:
+            if method == "samples":
+                agg_funcs["samples"] = (target, "size")
+            elif method == "mean":
+                agg_funcs["mean"] = (target, "mean")
+            elif method == "median":
+                agg_funcs["median"] = (target, "median")
+            elif method == "std":
+                agg_funcs["std"] = (target, "std")
+            elif method == "min":
+                agg_funcs["min"] = (target, "min")
+            elif method == "max":
+                agg_funcs["max"] = (target, "max")
+            elif method.startswith("percentile_"):
+                p = int(method.split("_")[1])
+                agg_funcs[f"p{p}"] = (target, lambda v, p=p: v.quantile(p / 100.0))
+            elif len(method) > 1 and method[0] in {"p", "P"} and method[1:].isdigit():
+                # Short form: "p10", "p50", "p90" — accepted as input AND output.
+                p = int(method[1:])
+                agg_funcs[f"p{p}"] = (target, lambda v, p=p: v.quantile(p / 100.0))
+            else:
+                raise ValueError(f"Unknown statistic: {method}")
+
+        if not group_cols_raw:
+            # No filters — single overall row.
+            single_row = {}
+            for col_name, (col, agg) in agg_funcs.items():
+                series = df[col]
+                if callable(agg):
+                    single_row[col_name] = agg(series)
+                elif agg == "size":
+                    single_row[col_name] = len(series)
+                else:
+                    single_row[col_name] = getattr(series, agg)()
+            return pd.DataFrame([single_row])
+
+        if flat_columns:
+            group_cols = group_cols_raw
+        elif len(group_cols_raw) == 1:
+            group_cols = ["Group"]
+            df = df.rename(columns={group_cols_raw[0]: "Group"})
+        else:
+            group_cols = [f"Group{i}" for i in range(1, len(group_cols_raw) + 1)]
+            rename_map = dict(zip(group_cols_raw, group_cols, strict=True))
+            df = df.rename(columns=rename_map)
+
+        return df.groupby(group_cols, sort=False).agg(**agg_funcs).reset_index()
 
     def data(
         self,
@@ -2031,6 +2128,103 @@ class _ManagerMultiPropertyProxy:
             line_style=line_style,
             line_alpha=line_alpha,
         )
+
+    def fit_per(
+        self,
+        group_property: str,
+        model,
+        min_samples: int = 5,
+        decimals: int = 4,
+        equation_format: str = "natural",
+        line_color: str | None = None,
+        line_width: float = 2.0,
+        line_style: str = "-",
+        line_alpha: float = 1.0,
+    ) -> dict:
+        """
+        Fit one regression per unique value of ``group_property``.
+
+        Pools across wells, partitions the data by ``group_property``, and
+        fits a fresh copy of ``model`` on each subset. Returns a dict
+        ``{label: RegressionFit}`` keyed by the group label (label string
+        when ``Property.labels`` is set, else the raw value).
+
+        Parameters
+        ----------
+        group_property : str
+            Name of a discrete property to group by (e.g. ``"Zone"``,
+            ``"Facies"``). The column is added to the proxy's filter
+            chain automatically if not already present.
+        model : RegressionBase
+            An unfitted regression instance (e.g.
+            ``ExponentialRegression()``). The instance is deep-copied
+            once per group, so any ``locked_params`` / ``degree`` / etc.
+            on the original are preserved across groups.
+        min_samples : int, default 5
+            Subsets smaller than this are skipped with a ``UserWarning``
+            (no exception, no entry in the returned dict).
+        decimals, equation_format, line_color, line_width, line_style, line_alpha :
+            Forwarded to each :class:`RegressionFit`.
+
+        Returns
+        -------
+        dict[str, RegressionFit]
+            Group label → fitted artifact. Iterate to render, print, or
+            feed to ``Crossplot.add(fit)`` / ``Table.add(fit)``.
+
+        Examples
+        --------
+        >>> fits = manager.properties(["PHIE", "PERM"]).fit_per(
+        ...     "Zone", ExponentialRegression(), equation_format="petrel"
+        ... )
+        >>> for label, fit in fits.items():
+        ...     print(label, fit.equation())
+        """
+        import copy as _copy
+
+        from ..analysis.regression_fit import RegressionFit
+
+        if len(self._property_names) != 2:
+            raise ValueError(
+                f"fit_per() requires exactly 2 properties (x, y); got "
+                f"{len(self._property_names)}: {self._property_names}"
+            )
+
+        # Ensure the group column ends up in the data DataFrame.
+        existing = {name for name, _ in self._filters}
+        proxy = self if group_property in existing else self.filter(group_property)
+        df = proxy.data()
+        if df.empty:
+            return {}
+        if group_property not in df.columns:
+            raise ValueError(
+                f"group_property {group_property!r} not in data columns: {list(df.columns)}"
+            )
+
+        x_col, y_col = self._property_names
+        fits: dict = {}
+        for label in df[group_property].dropna().unique():
+            sub = df[df[group_property] == label]
+            if len(sub) < min_samples:
+                warnings.warn(
+                    f"Subset for {group_property}={label!r} has {len(sub)} samples, "
+                    f"below min_samples={min_samples}. Skipping.",
+                    stacklevel=2,
+                )
+                continue
+            sub_model = _copy.deepcopy(model)
+            sub_model.fit(sub[x_col].to_numpy(), sub[y_col].to_numpy())
+            fits[str(label)] = RegressionFit(
+                sub_model,
+                name=str(label),
+                decimals=decimals,
+                equation_format=equation_format,
+                line_color=line_color,
+                line_width=line_width,
+                line_style=line_style,
+                line_alpha=line_alpha,
+            )
+        return fits
 
     def sums_avg(
         self, weighted: bool | None = None, arithmetic: bool | None = None, precision: int = 6

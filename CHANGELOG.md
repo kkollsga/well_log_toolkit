@@ -10,6 +10,18 @@ To add a changelog entry, create a file in the `changes/` directory.
 
 <!-- towncrier release notes start -->
 
+## [0.2.4] - 2026-05-05
+
+### Features
+
+- Added ``_ManagerMultiPropertyProxy.fit_per(group_property, model, ...)`` — fits one regression per unique value of a discrete grouping property and returns a ``{label: RegressionFit}`` dict. Mirrors ``Crossplot.add_regression_per`` at the proxy level so users can produce per-group fits for tables and reports without going through a plot. Each group gets a fresh deep-copy of ``model`` so locked params and degree settings persist across groups; subsets smaller than ``min_samples`` (default 5) are skipped with a warning. Also available through ``manager.filter(where=...)`` views via ``_ValueFilteringProxy.fit_per``. ([#proxy-fit-per](https://github.com/kkollsga/logsuite/issues/proxy-fit-per))
+- Added ``pool=True`` to ``_ManagerPropertyProxy.stats()``. When set, returns a DataFrame with one row per filter-group combination instead of one row per (well, group) — ``mean``, ``std``, ``min``, ``max``, and percentiles are computed across the pooled long-form data, so dispersion statistics are correct (not the mean of per-well point estimates). The new ``samples`` method counts data points per group. Percentile methods accept both long form (``percentile_10``) and short form (``p10``). ([#stats-pool](https://github.com/kkollsga/logsuite/issues/stats-pool))
+
+### Bug Fixes
+
+- Fixed: ``manager.filter(where={"Zone": "Reservoir"}).PHIE.data()`` now actually filters by Zone. Previously the post-filter on ``_ValueFilteringProxy.data()`` silently no-op'd when the filter column was missing from the underlying proxy's chain — the column wasn't in the DataFrame and the ``col in df.columns`` guard skipped. The wrapper now auto-adds ``proxy.filter(col)`` for any ``where=`` key whose column the proxy doesn't already emit, so the where clause is applied consistently across ``view.PROP.data()``, ``view.properties([...]).data()``, and ``view.PROP_PAIR.fit()`` paths. ([#where-actually-filters](https://github.com/kkollsga/logsuite/issues/where-actually-filters))
+
+
 ## [0.2.3] - 2026-05-05
 
 ### Features

@@ -227,3 +227,33 @@ class TestWhereFilter:
         r = repr(sub)
         assert "where=" in r
         assert "Zone" in r
+
+    def test_where_actually_filters_when_chain_lacks_filter(self, manager):
+        # Regression: previously a where filter on a column not in the
+        # proxy's filter chain was silently skipped (the post-filter
+        # checked `col in df.columns` and dropped through). Result was
+        # that view.PHIE.data() returned the FULL dataset instead of
+        # the where-filtered subset.
+        sub = manager.filter(where={"Zone": "Reservoir"})
+        df = sub.PHIE.data(warn_missing=False)
+        assert "Zone" in df.columns
+        assert set(df["Zone"].dropna().unique()) == {"Reservoir"}
+
+    def test_where_filters_multi_property_data(self, manager):
+        sub = manager.filter(where={"Zone": "Reservoir"})
+        df = sub.properties(["PHIE"]).data()
+        assert "Zone" in df.columns
+        assert set(df["Zone"].dropna().unique()) == {"Reservoir"}
+
+    def test_where_fit_uses_actual_subset(self, manager):
+        # The fit on a where-filtered view must use the subset, not all data.
+        from logsuite import LinearRegression
+
+        full = manager.properties(["PHIE", "SW"]).fit(LinearRegression())
+        sub = (
+            manager.filter(where={"Zone": "Reservoir"})
+            .properties(["PHIE", "SW"])
+            .fit(LinearRegression())
+        )
+        # Fits on different subsets generally produce different slopes.
+        assert full.model.slope != sub.model.slope
